@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CapsuleClientSharp", "CapsuleClientSharp\CapsuleClientSharp.csproj", "{779BAF01-DD67-4A29-A369-FE5B9581B670}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CapsuleClientSharpExample", "CapsuleClientSharpExample\CapsuleClientSharpExample.csproj", "{B37CBB45-D9F2-4626-8DCD-04E540C916DA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{779BAF01-DD67-4A29-A369-FE5B9581B670}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{779BAF01-DD67-4A29-A369-FE5B9581B670}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{779BAF01-DD67-4A29-A369-FE5B9581B670}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{779BAF01-DD67-4A29-A369-FE5B9581B670}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B37CBB45-D9F2-4626-8DCD-04E540C916DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B37CBB45-D9F2-4626-8DCD-04E540C916DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B37CBB45-D9F2-4626-8DCD-04E540C916DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B37CBB45-D9F2-4626-8DCD-04E540C916DA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

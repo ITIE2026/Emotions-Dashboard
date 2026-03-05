@@ -1,0 +1,26 @@
+var searchData=
+[
+  ['rate_20values_3a_0',['Fatigue Growth Rate values:',['../productivity_metrics.html#autotoc_md38',1,'']]],
+  ['raw_20and_20raw_20filtered_20signal_1',['RAW and RAW filtered signal',['../raw_and_raw_filtered_signal.html',1,'capsule_flow']]],
+  ['raw_20and_20raw_20filtered_20signal_2emd_2',['Raw and Raw filtered signal.md',['../_raw_01and_01_raw_01filtered_01signal_8md.html',1,'']]],
+  ['raw_20filtered_20signal_3',['RAW and RAW filtered signal',['../raw_and_raw_filtered_signal.html',1,'capsule_flow']]],
+  ['raw_20signal_20example_4',['Raw Signal Example',['../example.html#autotoc_md29',1,'']]],
+  ['readings_5',['Work With Accelerometer And Gyroscope Readings',['../work_with_accelerometer_and_gyroscope_readings.html',1,'device_connection']]],
+  ['readings_20from_20mems_20event_3a_6',['Get accelerometer and gyroscope readings from MEMS event:',['../work_with_accelerometer_and_gyroscope_readings.html#autotoc_md48',1,'']]],
+  ['readings_20from_20ppg_20event_3a_7',['Get data readings from PPG event:',['../work_with_cardio_metrics.html#autotoc_md51',1,'']]],
+  ['reason_20values_3a_8',['Fail Reason values:',['../connect_to_device.html#autotoc_md12',1,'']]],
+  ['receive_20the_20following_20responses_20_3a_9',['FailReason values (if the calibration process failed you will receive the following responses):',['../calibration.html#autotoc_md1',1,'']]],
+  ['recommendation_20salues_3a_10',['Recommendation salues:',['../productivity_metrics.html#autotoc_md36',1,'']]],
+  ['relaxation_11',['relaxation',['../structcl_c_emotions___states.html#a770de89136c7ff72f56cc238137e5e28',1,'clCEmotions_States::relaxation'],['../structcl_c_physiological_states___value.html#a6b69cab2113dc7b1697e52d74b6f72f4',1,'clCPhysiologicalStates_Value::relaxation'],['../structcl_c_productivity___indexes.html#ab59b1324bc94392d4c3ab2943dad714a',1,'clCProductivity_Indexes::relaxation'],['../structcl_c_productivity___baselines.html#a4ab0c4b69da158872dd19eab1b5dc48a',1,'clCProductivity_Baselines::relaxation']]],
+  ['relaxationbaseline_12',['relaxationBaseline',['../structcl_c_productivity___indexes.html#a5042ac233269dfe0c0c3f38671d19105',1,'clCProductivity_Indexes']]],
+  ['relaxationscore_13',['relaxationScore',['../structcl_c_productivity___metrics.html#ab257bf0b9884b64bc88dd974cb0745ac',1,'clCProductivity_Metrics']]],
+  ['requestdevices_14',['RequestDevices',['../classcapsule_1_1client_1_1_device_locator.html#acfa138236637c654a35c30ef193f02e9',1,'capsule::client::DeviceLocator']]],
+  ['requestindexesstate_15',['RequestIndexesState',['../classcapsule_1_1client_1_1_classification_productivity.html#a351ee7ac5f1c05edcae8e57846701dd1',1,'capsule::client::ClassificationProductivity']]],
+  ['resetaccumulatedfatigue_16',['ResetAccumulatedFatigue',['../classcapsule_1_1client_1_1_classification_productivity.html#a1d22e362d84a8f74a69f8396c4322f0a',1,'capsule::client::ClassificationProductivity']]],
+  ['resetdevice_17',['ResetDevice',['../classcapsule_1_1client_1_1_device_locator.html#a117af12413b852b8813566e29478de0e',1,'capsule::client::DeviceLocator']]],
+  ['responses_20_3a_18',['FailReason values (if the calibration process failed you will receive the following responses):',['../calibration.html#autotoc_md1',1,'']]],
+  ['result_20values_3a_19',['Call Result values:',['../clcnfb.html#autotoc_md9',1,'']]],
+  ['reversefatigue_20',['reverseFatigue',['../structcl_c_productivity___baselines.html#a4a81661940f23d404d83bd418a7f1d58',1,'clCProductivity_Baselines']]],
+  ['reversefatiguebaseline_21',['reverseFatigueBaseline',['../structcl_c_productivity___indexes.html#aec60278f72aac754e4e335e0b09c83dd',1,'clCProductivity_Indexes']]],
+  ['reversefatiguescore_22',['reverseFatigueScore',['../structcl_c_productivity___metrics.html#a02051c90aa3e79c8cb1c401dae1be9b1',1,'clCProductivity_Metrics']]]
+];

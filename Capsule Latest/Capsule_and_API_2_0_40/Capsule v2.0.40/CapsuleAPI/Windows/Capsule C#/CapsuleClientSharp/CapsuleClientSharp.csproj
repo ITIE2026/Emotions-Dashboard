@@ -1,0 +1,51 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <OutputType>Library</OutputType>
+        <AppDesignerFolder>Properties</AppDesignerFolder>
+        <LangVersion>8</LangVersion>
+        <TargetFramework>netstandard2.1</TargetFramework>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <Arch Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64'">x86_64</Arch>
+        <Arch Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'Arm64'">arm64</Arch>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <IsWindows Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindows>
+        <IsOSX Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsOSX>
+        <IsLinux Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinux>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(IsWindows)' == 'true'">
+        <DefineConstants>$(DefineConstants);_WINDOWS;$(PlatformShortName)</DefineConstants>
+        <OsName>Windows</OsName>
+        <LibraryName>CapsuleClient.dll</LibraryName>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(IsOSX)' == 'true'">
+        <DefineConstants>$(DefineConstants);_OSX</DefineConstants>
+        <OsName>Darwin</OsName>
+        <LibraryName>libCapsuleClient.dylib</LibraryName>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(IsLinux)' == 'true'">
+        <DefineConstants>$(DefineConstants);_LINUX</DefineConstants>
+        <OsName>Linux</OsName>
+        <LibraryName>libCapsuleClient.so</LibraryName>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <LibraryPath>$(SolutionDir)../../Lib/$(OsName)/$(Arch)/$(Configuration)/$(LibraryName)</LibraryPath>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="$(LibraryPath)">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+    
+</Project>
