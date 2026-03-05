@@ -1,0 +1,13 @@
+[2026-03-05 14:07:26.874] [Client] [error] Failed to create emotions module: clCEmotions module already exists
+[2026-03-05 14:08:20.224] [Client] [error] Failed to create clCDevice: Empty list of available devices
+[2026-03-05 14:08:25.223] [Client] [error] Failed to create clCDevice: Empty list of available devices
+[2026-03-05 14:08:32.476] [Client] [error] Failed to create emotions module: clCEmotions module already exists
+[2026-03-05 14:08:36.393] [Client] [error] clCDevice_Start error: Failed to launch Signal and SignalAndResist
+[2026-03-05 14:08:40.836] [Client] [error] clCDevice_Start error: Failed to launch Signal and SignalAndResist
+[2026-03-05 14:08:51.728] [Client] [error] clCDevice_Start error: Failed to launch Signal and SignalAndResist
+[2026-03-05 14:38:37.974] [Client] [error] clCDevice_Start error: Failed to launch Signal and SignalAndResist
+[2026-03-05 14:38:40.222] [Client] [error] Failed to disconnect device: bad function call
+[2026-03-05 14:40:05.082] [Client] [error] Failed to create emotions module: clCEmotions module already exists
+[2026-03-05 14:40:58.336] [Client] [error] Failed to create clCDevice: Empty list of available devices
+[2026-03-05 15:13:54.769] [Client] [error] Failed to create clCDevice: Empty list of available devices
+[2026-03-05 15:16:17.993] [Client] [error] Failed to create clCDevice: Empty list of available devices

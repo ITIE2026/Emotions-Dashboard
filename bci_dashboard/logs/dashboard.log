@@ -1,0 +1,295 @@
+2026-03-05 13:08:24,653 [INFO] main: Starting BCI Dashboard
+2026-03-05 13:08:37,809 [INFO] main: Entering event loop
+2026-03-05 13:08:51,023 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 13:10:34,396 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 166, in _on_phy_baselines
+    self._finish()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 172, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+ValueError: invalid literal for int() with base 10: b'@dYM'
+
+2026-03-05 13:12:02,895 [INFO] gui.main_window: Application closing
+2026-03-05 13:12:02,895 [INFO] gui.main_window: Session stopped
+2026-03-05 13:12:02,895 [INFO] gui.main_window: Device disconnected
+2026-03-05 13:12:02,896 [INFO] gui.main_window: Session stopped
+2026-03-05 13:14:05,513 [INFO] main: Starting BCI Dashboard
+2026-03-05 13:14:06,961 [INFO] main: Entering event loop
+2026-03-05 13:14:34,898 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 13:15:22,837 [INFO] gui.main_window: Device disconnected
+2026-03-05 13:15:22,838 [INFO] gui.main_window: Session stopped
+2026-03-05 13:15:48,983 [INFO] gui.main_window: Application closing
+2026-03-05 13:15:48,983 [INFO] gui.main_window: Session stopped
+2026-03-05 13:15:48,984 [INFO] gui.main_window: Device disconnected
+2026-03-05 13:15:48,984 [INFO] gui.main_window: Session stopped
+2026-03-05 13:56:32,301 [INFO] main: Starting BCI Dashboard
+2026-03-05 13:56:33,508 [INFO] main: Entering event loop
+2026-03-05 13:56:37,155 [INFO] gui.main_window: Application closing
+2026-03-05 13:56:37,155 [INFO] gui.main_window: Session stopped
+2026-03-05 13:57:46,007 [INFO] main: Starting BCI Dashboard
+2026-03-05 13:57:47,135 [INFO] main: Entering event loop
+2026-03-05 13:57:54,635 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 13:59:41,717 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 166, in _on_phy_baselines
+    self._finish()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 172, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+ValueError: invalid literal for int() with base 10: b'\x00m\xc5\\'
+
+2026-03-05 14:00:47,351 [INFO] gui.main_window: Application closing
+2026-03-05 14:00:47,351 [INFO] gui.main_window: Session stopped
+2026-03-05 14:00:47,351 [INFO] gui.main_window: Device disconnected
+2026-03-05 14:00:47,351 [INFO] gui.main_window: Session stopped
+2026-03-05 14:06:01,973 [INFO] main: Starting BCI Dashboard
+2026-03-05 14:06:03,128 [INFO] main: Entering event loop
+2026-03-05 14:06:17,213 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 14:07:05,512 [INFO] gui.main_window: Device disconnected
+2026-03-05 14:07:05,513 [INFO] gui.main_window: Session stopped
+2026-03-05 14:07:26,873 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 14:07:26,874 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 132, in _on_device_connected
+    self._create_classifiers()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 152, in _create_classifiers
+    self._emotions_h = EmotionsHandler(dev, lib, parent=self)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\classifiers\emotions_handler.py", line 26, in __init__
+    self._emotions = Emotions(device, lib)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\capsule_sdk\Emotions.py", line 25, in __init__
+    raise CapsuleException(error)
+Error.CapsuleException: b'clCEmotions module already exists'
+
+2026-03-05 14:08:15,233 [INFO] gui.main_window: Device disconnected
+2026-03-05 14:08:15,234 [INFO] gui.main_window: Session stopped
+2026-03-05 14:08:15,234 [WARNING] gui.main_window: Headband disconnected – attempting to reconnect…
+2026-03-05 14:08:32,474 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 14:08:32,476 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 132, in _on_device_connected
+    self._create_classifiers()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 152, in _create_classifiers
+    self._emotions_h = EmotionsHandler(dev, lib, parent=self)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\classifiers\emotions_handler.py", line 26, in __init__
+    self._emotions = Emotions(device, lib)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\capsule_sdk\Emotions.py", line 25, in __init__
+    raise CapsuleException(error)
+Error.CapsuleException: b'clCEmotions module already exists'
+
+2026-03-05 14:08:35,146 [INFO] gui.main_window: Reconnected successfully
+2026-03-05 14:08:36,392 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 194, in _start_calibration
+    self._dm.start_streaming()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\device\device_manager.py", line 72, in start_streaming
+    self._device.start()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\capsule_sdk\Device.py", line 173, in start
+    raise CapsuleException(error)
+Error.CapsuleException: b'Failed to start: Failed to launch Signal and SignalAndResist'
+
+2026-03-05 14:08:40,836 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 194, in _start_calibration
+    self._dm.start_streaming()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\device\device_manager.py", line 72, in start_streaming
+    self._device.start()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\capsule_sdk\Device.py", line 173, in start
+    raise CapsuleException(error)
+Error.CapsuleException: b'Failed to start: Failed to launch Signal and SignalAndResist'
+
+2026-03-05 14:08:51,728 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 194, in _start_calibration
+    self._dm.start_streaming()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\device\device_manager.py", line 72, in start_streaming
+    self._device.start()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\capsule_sdk\Device.py", line 173, in start
+    raise CapsuleException(error)
+Error.CapsuleException: b'Failed to start: Failed to launch Signal and SignalAndResist'
+
+2026-03-05 14:38:37,974 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 194, in _start_calibration
+    self._dm.start_streaming()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\device\device_manager.py", line 72, in start_streaming
+    self._device.start()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\capsule_sdk\Device.py", line 173, in start
+    raise CapsuleException(error)
+Error.CapsuleException: b'Failed to start: Failed to launch Signal and SignalAndResist'
+
+2026-03-05 14:38:40,220 [INFO] gui.main_window: Application closing
+2026-03-05 14:38:40,220 [INFO] gui.main_window: Session stopped
+2026-03-05 14:38:43,712 [INFO] main: Starting BCI Dashboard
+2026-03-05 14:38:48,467 [INFO] main: Entering event loop
+2026-03-05 14:39:00,461 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 14:39:48,749 [INFO] gui.main_window: Device disconnected
+2026-03-05 14:39:48,749 [INFO] gui.main_window: Session stopped
+2026-03-05 14:40:05,081 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 14:40:05,083 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 132, in _on_device_connected
+    self._create_classifiers()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 152, in _create_classifiers
+    self._emotions_h = EmotionsHandler(dev, lib, parent=self)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\classifiers\emotions_handler.py", line 26, in __init__
+    self._emotions = Emotions(device, lib)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\capsule_sdk\Emotions.py", line 25, in __init__
+    raise CapsuleException(error)
+Error.CapsuleException: b'clCEmotions module already exists'
+
+2026-03-05 14:40:53,333 [INFO] gui.main_window: Device disconnected
+2026-03-05 14:40:53,334 [INFO] gui.main_window: Session stopped
+2026-03-05 14:40:53,335 [WARNING] gui.main_window: Headband disconnected – attempting to reconnect…
+2026-03-05 15:05:55,527 [INFO] main: Starting BCI Dashboard
+2026-03-05 15:05:58,129 [INFO] main: Entering event loop
+2026-03-05 15:06:10,503 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 15:07:27,964 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 173, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 188, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 194, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+ValueError: invalid literal for int() with base 10: b'\x902*\x1b'
+
+2026-03-05 15:08:33,066 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 303, in _on_physio_states
+    self._track_screen.update_data(physio=data)
+TypeError: TrackingScreen.update_data() got an unexpected keyword argument 'physio'
+
+2026-03-05 15:09:41,528 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 303, in _on_physio_states
+    self._track_screen.update_data(physio=data)
+TypeError: TrackingScreen.update_data() got an unexpected keyword argument 'physio'
+
+2026-03-05 15:10:41,524 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 303, in _on_physio_states
+    self._track_screen.update_data(physio=data)
+TypeError: TrackingScreen.update_data() got an unexpected keyword argument 'physio'
+
+2026-03-05 15:11:28,862 [INFO] gui.main_window: Application closing
+2026-03-05 15:11:28,862 [INFO] gui.main_window: Session stopped
+2026-03-05 15:11:28,863 [INFO] gui.main_window: Device disconnected
+2026-03-05 15:11:28,863 [INFO] gui.main_window: Session stopped
+2026-03-05 15:11:44,600 [INFO] main: Starting BCI Dashboard
+2026-03-05 15:11:46,759 [INFO] main: Entering event loop
+2026-03-05 15:11:59,471 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 15:12:47,649 [INFO] gui.main_window: Device disconnected
+2026-03-05 15:12:47,650 [INFO] gui.main_window: Session stopped
+2026-03-05 15:13:01,410 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 15:13:49,768 [INFO] gui.main_window: Device disconnected
+2026-03-05 15:13:49,769 [INFO] gui.main_window: Session stopped
+2026-03-05 15:13:49,769 [WARNING] gui.main_window: Headband disconnected – attempting to reconnect…
+2026-03-05 15:14:06,964 [INFO] main: Starting BCI Dashboard
+2026-03-05 15:14:10,533 [INFO] main: Entering event loop
+2026-03-05 15:14:22,134 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 15:15:10,112 [INFO] gui.main_window: Device disconnected
+2026-03-05 15:15:10,113 [INFO] gui.main_window: Session stopped
+2026-03-05 15:15:24,953 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 15:16:12,992 [INFO] gui.main_window: Device disconnected
+2026-03-05 15:16:12,993 [INFO] gui.main_window: Session stopped
+2026-03-05 15:16:12,994 [WARNING] gui.main_window: Headband disconnected – attempting to reconnect…
+2026-03-05 15:16:27,809 [INFO] main: Starting BCI Dashboard
+2026-03-05 15:16:31,713 [INFO] main: Entering event loop
+2026-03-05 15:16:49,424 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 15:17:37,763 [INFO] gui.main_window: Device disconnected
+2026-03-05 15:17:37,764 [INFO] gui.main_window: Session stopped
+2026-03-05 15:18:41,143 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 15:19:48,805 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 173, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 188, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 194, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+ValueError: invalid literal for int() with base 10: b'\x80\x94\xf6\xc9'
+
+2026-03-05 15:20:56,547 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 303, in _on_physio_states
+    self._track_screen.update_data(physio=data)
+TypeError: TrackingScreen.update_data() got an unexpected keyword argument 'physio'
+
+2026-03-05 15:21:56,607 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 303, in _on_physio_states
+    self._track_screen.update_data(physio=data)
+TypeError: TrackingScreen.update_data() got an unexpected keyword argument 'physio'
+
+2026-03-05 15:22:56,606 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 303, in _on_physio_states
+    self._track_screen.update_data(physio=data)
+TypeError: TrackingScreen.update_data() got an unexpected keyword argument 'physio'
+
+2026-03-05 15:23:56,665 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 303, in _on_physio_states
+    self._track_screen.update_data(physio=data)
+TypeError: TrackingScreen.update_data() got an unexpected keyword argument 'physio'
+
+2026-03-05 15:24:56,787 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 303, in _on_physio_states
+    self._track_screen.update_data(physio=data)
+TypeError: TrackingScreen.update_data() got an unexpected keyword argument 'physio'
+
+2026-03-05 15:26:32,256 [INFO] gui.main_window: Application closing
+2026-03-05 15:26:32,256 [INFO] gui.main_window: Session stopped
+2026-03-05 15:26:32,257 [INFO] gui.main_window: Device disconnected
+2026-03-05 15:26:32,257 [INFO] gui.main_window: Session stopped
+2026-03-05 15:26:32,258 [WARNING] gui.main_window: Headband disconnected – attempting to reconnect…
+2026-03-05 15:42:52,171 [INFO] main: Starting BCI Dashboard
+2026-03-05 15:42:55,244 [INFO] main: Entering event loop
+2026-03-05 15:43:07,688 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 15:44:25,330 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 173, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 188, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 194, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+ValueError: invalid literal for int() with base 10: b' x\xa56'
+
+2026-03-05 15:54:15,404 [INFO] gui.main_window: Application closing
+2026-03-05 15:54:15,405 [INFO] gui.main_window: Session stopped
+2026-03-05 15:54:15,405 [INFO] gui.main_window: Device disconnected
+2026-03-05 15:54:15,405 [INFO] gui.main_window: Session stopped
+2026-03-05 15:54:26,713 [INFO] main: Starting BCI Dashboard
+2026-03-05 15:54:28,480 [INFO] main: Entering event loop
+2026-03-05 15:54:30,437 [INFO] gui.main_window: Application closing
+2026-03-05 15:54:30,437 [INFO] gui.main_window: Session stopped
+2026-03-05 15:57:04,212 [INFO] main: Starting BCI Dashboard
+2026-03-05 15:57:05,760 [INFO] main: Entering event loop
+2026-03-05 15:57:14,802 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-05 15:58:28,362 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 173, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 188, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 194, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\Emotions Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+ValueError: invalid literal for int() with base 10: b'\xa0\xc1HU'
+
+2026-03-05 16:03:12,501 [INFO] gui.main_window: Application closing
+2026-03-05 16:03:12,502 [INFO] gui.main_window: Session stopped
+2026-03-05 16:03:12,502 [INFO] gui.main_window: Device disconnected
+2026-03-05 16:03:12,502 [INFO] gui.main_window: Session stopped
