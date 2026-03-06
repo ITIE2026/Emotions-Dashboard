@@ -1,0 +1,22 @@
+[2026-03-05 16:43:48.460] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-05 16:43:50.747] [SDK] [error] Failed create Smart Band BLE Protocol: [Can not read Model number] Code: [0]
+[2026-03-06 11:06:44.583] [SDK] [warning] Failed write characteristic value: The operation was canceled by the user.
+[2026-03-06 11:45:37.272] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
+[2026-03-06 11:45:37.273] [SDK] [warning] Failed start BLE scanner
+[2026-03-06 11:45:37.301] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
+[2026-03-06 11:45:37.301] [SDK] [warning] Failed start BLE scanner
+[2026-03-06 11:45:37.329] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
+[2026-03-06 11:46:13.676] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
+[2026-03-06 11:46:13.676] [SDK] [warning] Failed start BLE scanner
+[2026-03-06 11:46:13.706] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
+[2026-03-06 11:46:13.706] [SDK] [warning] Failed start BLE scanner
+[2026-03-06 11:46:13.736] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
+[2026-03-06 11:47:24.478] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
+[2026-03-06 11:47:24.478] [SDK] [warning] Failed start BLE scanner
+[2026-03-06 11:47:24.508] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
+[2026-03-06 11:47:24.508] [SDK] [warning] Failed start BLE scanner
+[2026-03-06 11:47:24.538] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
+[2026-03-06 12:06:54.556] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-06 12:07:02.315] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-06 12:07:10.071] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-06 12:07:10.072] [SDK] [error] Failed create Smart Band BLE Protocol: [Can not read Serial number] Code: [0]

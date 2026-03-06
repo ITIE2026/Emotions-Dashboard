@@ -126,6 +126,14 @@ class CalibrationManager(QObject):
             self.stage_changed.emit(self.STAGE_NFB, "Close your eyes for 30 seconds")
             self.progress_updated.emit(0.0)
 
+            # Local 1-Hz timer to animate progress during the 30 s NFB stage
+            self._nfb_elapsed = 0
+            self._nfb_duration = 30          # seconds
+            self._nfb_timer = QTimer(self)
+            self._nfb_timer.setInterval(1000)
+            self._nfb_timer.timeout.connect(self._nfb_tick)
+            self._nfb_timer.start()
+
             self._calibrator.calibrate_quick()
         except Exception as exc:
             msg = str(exc)
@@ -133,12 +141,26 @@ class CalibrationManager(QObject):
                 msg = exc.message.decode('utf-8', errors='replace')
             self.calibration_failed.emit(msg)
 
+    def _nfb_tick(self):
+        """Called every 1 s during the NFB stage to update progress."""
+        self._nfb_elapsed += 1
+        if self._nfb_elapsed >= self._nfb_duration:
+            self._nfb_timer.stop()
+            return
+        # NFB stage spans 0.0 → 0.33 of overall progress
+        fraction = self._nfb_elapsed / self._nfb_duration
+        self.progress_updated.emit(fraction * 0.33)
+
     # ── NFB callbacks ─────────────────────────────────────────────────
     def _on_nfb_stage(self, calibrator_obj):
         pass  # quick mode has a single stage
 
     def _on_nfb_finished(self, calibrator_obj, nfb_data: IndividualNFBData):
         try:
+            # Stop the local countdown timer
+            if hasattr(self, '_nfb_timer') and self._nfb_timer.isActive():
+                self._nfb_timer.stop()
+
             if self._calibrator.has_calibration_failed():
                 self.calibration_failed.emit("NFB calibration failed \u2013 too many artifacts")
                 return

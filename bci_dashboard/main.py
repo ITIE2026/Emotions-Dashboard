@@ -63,6 +63,64 @@ def main():
 
     app = QApplication(sys.argv)
 
+    # ── Global dark stylesheet ────────────────────────────────────────
+    from utils.config import (
+        BG_PRIMARY, BG_CARD, BG_INPUT, BORDER_SUBTLE,
+        TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_GREEN,
+    )
+
+    app.setStyleSheet(f"""
+        * {{
+            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        }}
+        QMainWindow, QWidget {{
+            background-color: {BG_PRIMARY};
+            color: {TEXT_PRIMARY};
+        }}
+        QScrollArea {{
+            background: transparent;
+            border: none;
+        }}
+        QScrollBar:vertical {{
+            background: {BG_PRIMARY};
+            width: 6px;
+            border: none;
+        }}
+        QScrollBar::handle:vertical {{
+            background: #333;
+            border-radius: 3px;
+            min-height: 20px;
+        }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+            height: 0px;
+        }}
+        QGroupBox {{
+            background: {BG_CARD};
+            border: 1px solid {BORDER_SUBTLE};
+            border-radius: 12px;
+            padding: 14px 12px 10px 12px;
+            margin-top: 8px;
+            font-weight: bold;
+            color: {TEXT_SECONDARY};
+        }}
+        QGroupBox::title {{
+            subcontrol-origin: margin;
+            left: 14px;
+            padding: 0 4px;
+            color: {TEXT_SECONDARY};
+        }}
+        QMessageBox {{
+            background: {BG_CARD};
+            color: {TEXT_PRIMARY};
+        }}
+        QToolTip {{
+            background: {BG_CARD};
+            color: {TEXT_PRIMARY};
+            border: 1px solid {BORDER_SUBTLE};
+            padding: 4px;
+        }}
+    """)
+
     # Import here so logging is already configured
     from gui.main_window import MainWindow
 

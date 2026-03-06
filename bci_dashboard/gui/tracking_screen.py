@@ -1,17 +1,28 @@
 """
 TrackingScreen – session summary / timeline view.
-
-Shows overall session parameters and timeline-style breakdown
-of productivity.
+Dark-themed layout matching Mind Tracker BCI style.
 """
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QGridLayout, QScrollArea,
 )
 from PySide6.QtCore import Qt, QTimer
 from datetime import datetime
 
 from gui.widgets.metric_card import MetricCard
+from utils.config import (
+    BG_CARD, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY,
+    ACCENT_GREEN, COLOR_COGNITIVE, COLOR_FOCUS,
+)
+
+
+def _dark_section(text: str) -> QLabel:
+    lbl = QLabel(text)
+    lbl.setStyleSheet(
+        f"font-size: 13px; font-weight: bold; color: {TEXT_SECONDARY}; "
+        f"padding-top: 8px; padding-bottom: 2px;"
+    )
+    return lbl
 
 
 class TrackingScreen(QWidget):
@@ -36,6 +47,7 @@ class TrackingScreen(QWidget):
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -43,67 +55,80 @@ class TrackingScreen(QWidget):
 
         # Title
         title = QLabel("Tracking")
-        title.setStyleSheet("font-size: 22px; font-weight: bold;")
+        title.setStyleSheet(f"font-size: 22px; font-weight: bold; color: {TEXT_PRIMARY};")
         layout.addWidget(title)
 
         # Session info
         self._session_label = QLabel("Session: --")
-        self._session_label.setStyleSheet("font-size: 13px; color: #aaa;")
+        self._session_label.setStyleSheet(f"font-size: 13px; color: {TEXT_SECONDARY};")
         layout.addWidget(self._session_label)
 
-        # ── Overall score section ─────────────────────────────────────
-        score_group = QGroupBox("Productivity")
-        score_layout = QVBoxLayout(score_group)
+        # ── Productivity card ─────────────────────────────────────────
+        prod_card = QWidget()
+        prod_card.setStyleSheet(
+            f"background: {BG_CARD}; border: 1px solid {BORDER_SUBTLE}; border-radius: 12px;"
+        )
+        prod_layout = QVBoxLayout(prod_card)
+        prod_layout.setContentsMargins(16, 14, 16, 14)
+        prod_layout.setSpacing(8)
 
         self._overall_label = QLabel("Cognitive Score")
-        self._overall_label.setStyleSheet("font-size: 14px;")
+        self._overall_label.setStyleSheet(
+            f"font-size: 14px; color: {TEXT_SECONDARY}; background: transparent; border: none;"
+        )
         self._overall_label.setAlignment(Qt.AlignCenter)
-        score_layout.addWidget(self._overall_label)
+        prod_layout.addWidget(self._overall_label)
 
         self._overall_value = QLabel("--%")
-        self._overall_value.setStyleSheet("font-size: 48px; font-weight: bold; color: #69F0AE;")
+        self._overall_value.setStyleSheet(
+            f"font-size: 48px; font-weight: bold; color: {ACCENT_GREEN}; "
+            f"background: transparent; border: none;"
+        )
         self._overall_value.setAlignment(Qt.AlignCenter)
-        score_layout.addWidget(self._overall_value)
+        prod_layout.addWidget(self._overall_value)
 
-        # Sub cards
+        # Sub cards row
         cards_row = QHBoxLayout()
-        self._t_cognitive = MetricCard("Cognitive", "#64B5F6")
-        self._t_focus = MetricCard("Focus", "#B388FF")
+        cards_row.setSpacing(8)
+        self._t_cognitive = MetricCard("Cognitive", COLOR_COGNITIVE)
+        self._t_focus = MetricCard("Focus", COLOR_FOCUS)
         self._t_concentration = MetricCard("Concentration", "#FFD54F")
         cards_row.addWidget(self._t_cognitive)
         cards_row.addWidget(self._t_focus)
         cards_row.addWidget(self._t_concentration)
-        score_layout.addLayout(cards_row)
-        layout.addWidget(score_group)
+        prod_layout.addLayout(cards_row)
+        layout.addWidget(prod_card)
 
-        # ── Parameters grid ───────────────────────────────────────────
-        params_group = QGroupBox("Parameters")
-        params_grid = QGridLayout(params_group)
+        # ── Parameters section ────────────────────────────────────────
+        layout.addWidget(_dark_section("Parameters"))
+
+        params_grid = QGridLayout()
+        params_grid.setSpacing(8)
         self._p_cards = {}
         names = [
-            ("cognitive", "Cognitive", "#64B5F6"),
-            ("focus", "Focus", "#B388FF"),
+            ("cognitive", "Cognitive", COLOR_COGNITIVE),
+            ("focus", "Focus", COLOR_FOCUS),
             ("calmness", "Calmness", "#81C784"),
             ("tension", "Tension", "#FF8A65"),
             ("self_ctrl", "Self-c.", "#4DD0E1"),
             ("anger", "Anger", "#E57373"),
-            ("relax_idx", "Relax.", "#69F0AE"),
+            ("relax_idx", "Relax.", ACCENT_GREEN),
             ("conc_idx", "Conc.", "#FFD54F"),
         ]
         for i, (key, label, colour) in enumerate(names):
             card = MetricCard(label, colour)
             params_grid.addWidget(card, i // 4, i % 4)
             self._p_cards[key] = card
-        layout.addWidget(params_group)
+        layout.addLayout(params_grid)
 
         # Fatigue summary
         self._fatigue_label = QLabel("Fatigue: --%")
-        self._fatigue_label.setStyleSheet("font-size: 14px; color: #aaa;")
+        self._fatigue_label.setStyleSheet(f"font-size: 14px; color: {TEXT_SECONDARY};")
         layout.addWidget(self._fatigue_label)
 
         # Session duration
         self._duration_label = QLabel("Duration: 0 min")
-        self._duration_label.setStyleSheet("font-size: 13px; color: #888;")
+        self._duration_label.setStyleSheet("font-size: 13px; color: #666;")
         layout.addWidget(self._duration_label)
 
         layout.addStretch()
@@ -173,3 +198,4 @@ class TrackingScreen(QWidget):
             elapsed = (datetime.now() - self._session_start).total_seconds()
             mins = int(elapsed // 60)
             self._duration_label.setText(f"Duration: {mins} min")
+

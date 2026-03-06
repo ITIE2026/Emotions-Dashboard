@@ -1,25 +1,39 @@
 """
 DashboardScreen – the main monitoring view.
+Dark-themed layout matching the Mind Tracker BCI app:
 
-Layout:
   ┌─────────────────────────────────┐
-  │  Metric cards (3 primary)       │
-  │  Real-time graph                │
-  │  Secondary metric cards row     │
+  │  Primary metric cards (3)       │
+  │  Details section (5 cards)      │
   │  Fatigue panel                  │
   │  Heart rate section             │
+  │  Save CSV row                  │
   └─────────────────────────────────┘
 """
+import os
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QGridLayout,
-    QScrollArea,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout,
+    QScrollArea, QPushButton,
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 
 from gui.widgets.metric_card import MetricCard
 from gui.widgets.fatigue_panel import FatiguePanel
-from gui.realtime_graph import RealtimeGraph
-from utils.config import GRAPH_UPDATE_INTERVAL_MS, COLOR_FOCUS, COLOR_COGNITIVE, COLOR_RELAXATION
+from utils.config import (
+    COLOR_FOCUS, COLOR_COGNITIVE, COLOR_RELAXATION,
+    BG_CARD, BORDER_SUBTLE, TEXT_SECONDARY, ACCENT_RED,
+)
+from utils.config import SESSION_DIR
+
+
+def _section_label(text: str) -> QLabel:
+    """Create a small section header label."""
+    lbl = QLabel(text)
+    lbl.setStyleSheet(
+        f"font-size: 13px; font-weight: bold; color: {TEXT_SECONDARY}; "
+        f"padding-top: 8px; padding-bottom: 2px;"
+    )
+    return lbl
 
 
 class DashboardScreen(QWidget):
@@ -30,25 +44,23 @@ class DashboardScreen(QWidget):
         self._latest_cardio = {}
         self._latest_indexes = {}
         self._latest_physio = {}
+        self._session_file: str | None = None
         self._build_ui()
-
-        # Graph update timer (1 Hz)
-        self._graph_timer = QTimer(self)
-        self._graph_timer.setInterval(GRAPH_UPDATE_INTERVAL_MS)
-        self._graph_timer.timeout.connect(self._push_graph_data)
 
     # ── UI construction ───────────────────────────────────────────────
     def _build_ui(self):
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(12, 8, 12, 12)
+        layout.setSpacing(10)
 
         # ── Primary metric cards ──────────────────────────────────────
         cards_row = QHBoxLayout()
+        cards_row.setSpacing(8)
         self._card_cognitive = MetricCard("Cognitive Score", COLOR_COGNITIVE)
         self._card_focus = MetricCard("Focus", COLOR_FOCUS)
         self._card_relaxation = MetricCard("Relaxation", COLOR_RELAXATION)
@@ -57,43 +69,80 @@ class DashboardScreen(QWidget):
         cards_row.addWidget(self._card_relaxation)
         layout.addLayout(cards_row)
 
-        # ── Real-time graph ───────────────────────────────────────────
-        self._graph = RealtimeGraph()
-        self._graph.setMinimumHeight(260)
-        layout.addWidget(self._graph)
+        # ── Details section ───────────────────────────────────────────
+        layout.addWidget(_section_label("Details"))
 
-        # ── Secondary metrics ─────────────────────────────────────────
-        sec_group = QGroupBox("Details")
-        sec_grid = QGridLayout(sec_group)
+        details_grid = QGridLayout()
+        details_grid.setSpacing(8)
         self._card_chill = MetricCard("Calmness", "#81C784")
         self._card_stress = MetricCard("Tension", "#FF8A65")
         self._card_self_ctrl = MetricCard("Self-control", "#4DD0E1")
         self._card_anger = MetricCard("Anger", "#E57373")
         self._card_concentration = MetricCard("Concentration", "#FFD54F")
-        sec_grid.addWidget(self._card_chill, 0, 0)
-        sec_grid.addWidget(self._card_stress, 0, 1)
-        sec_grid.addWidget(self._card_self_ctrl, 0, 2)
-        sec_grid.addWidget(self._card_anger, 1, 0)
-        sec_grid.addWidget(self._card_concentration, 1, 1)
-        layout.addWidget(sec_group)
+        details_grid.addWidget(self._card_chill, 0, 0)
+        details_grid.addWidget(self._card_stress, 0, 1)
+        details_grid.addWidget(self._card_self_ctrl, 0, 2)
+        details_grid.addWidget(self._card_anger, 1, 0)
+        details_grid.addWidget(self._card_concentration, 1, 1)
+        layout.addLayout(details_grid)
 
         # ── Fatigue panel ─────────────────────────────────────────────
         self._fatigue_panel = FatiguePanel()
         layout.addWidget(self._fatigue_panel)
 
-        # ── Heart rate ────────────────────────────────────────────────
-        hr_group = QGroupBox("Heart Rate")
-        hr_layout = QHBoxLayout(hr_group)
-        self._hr_label = QLabel("-- bpm")
-        self._hr_label.setStyleSheet("font-size: 28px; font-weight: bold; color: #EF5350;")
-        self._hr_label.setAlignment(Qt.AlignCenter)
-        hr_layout.addWidget(self._hr_label)
-        self._stress_idx_label = QLabel("Stress Index: --")
-        self._stress_idx_label.setStyleSheet("font-size: 13px; color: #aaa;")
-        self._stress_idx_label.setAlignment(Qt.AlignCenter)
-        hr_layout.addWidget(self._stress_idx_label)
-        layout.addWidget(hr_group)
+        # ── Heart rate card ───────────────────────────────────────────
+        hr_card = QWidget()
+        hr_card.setStyleSheet(
+            f"background: {BG_CARD}; border: 1px solid {BORDER_SUBTLE}; border-radius: 12px;"
+        )
+        hr_layout = QHBoxLayout(hr_card)
+        hr_layout.setContentsMargins(16, 12, 16, 12)
 
+        hr_icon = QLabel("♥")
+        hr_icon.setStyleSheet(
+            f"font-size: 28px; color: {ACCENT_RED}; background: transparent; border: none;"
+        )
+        hr_layout.addWidget(hr_icon)
+
+        hr_text_col = QVBoxLayout()
+        hr_text_col.setSpacing(2)
+        self._hr_label = QLabel("-- bpm")
+        self._hr_label.setStyleSheet(
+            f"font-size: 24px; font-weight: bold; color: {ACCENT_RED}; "
+            f"background: transparent; border: none;"
+        )
+        self._stress_idx_label = QLabel("Stress Index: --")
+        self._stress_idx_label.setStyleSheet(
+            f"font-size: 12px; color: {TEXT_SECONDARY}; background: transparent; border: none;"
+        )
+        hr_text_col.addWidget(self._hr_label)
+        hr_text_col.addWidget(self._stress_idx_label)
+        hr_layout.addLayout(hr_text_col)
+        hr_layout.addStretch()
+        layout.addWidget(hr_card)
+
+        # ── Save CSV row ──────────────────────────────────────────────
+        save_row = QHBoxLayout()
+        save_row.setContentsMargins(0, 4, 0, 0)
+
+        self._save_info = QLabel("💾 Session data is auto-saved as CSV")
+        self._save_info.setStyleSheet(
+            f"font-size: 11px; color: {TEXT_SECONDARY}; background: transparent;"
+        )
+        save_row.addWidget(self._save_info, stretch=1)
+
+        self._open_folder_btn = QPushButton("📂 Open Sessions Folder")
+        self._open_folder_btn.setCursor(Qt.PointingHandCursor)
+        self._open_folder_btn.setStyleSheet(
+            "QPushButton { background: #1E3A2F; color: #69F0AE; border: 1px solid #69F0AE;"
+            " border-radius: 8px; padding: 6px 14px; font-size: 12px; font-weight: bold; }"
+            "QPushButton:hover { background: #264D3B; }"
+            "QPushButton:pressed { background: #1A2E25; }"
+        )
+        self._open_folder_btn.clicked.connect(self._open_sessions_folder)
+        save_row.addWidget(self._open_folder_btn)
+
+        layout.addLayout(save_row)
         layout.addStretch()
 
         scroll.setWidget(container)
@@ -145,16 +194,14 @@ class DashboardScreen(QWidget):
         """Receive PhysiologicalStates probabilities – use to enrich cards."""
         self._latest_physio = data
 
-    # ── Graph updates ─────────────────────────────────────────────────
-    def start_graph(self):
-        self._graph.clear()
-        self._graph_timer.start()
+    # ── Session file info ─────────────────────────────────────────────
+    def set_session_file(self, path: str):
+        """Called by MainWindow when a session CSV file is opened."""
+        self._session_file = path
+        fname = os.path.basename(path) if path else ""
+        self._save_info.setText(f"💾 Saving: {fname}")
 
-    def stop_graph(self):
-        self._graph_timer.stop()
+    def _open_sessions_folder(self):
+        os.makedirs(SESSION_DIR, exist_ok=True)
+        os.startfile(SESSION_DIR)
 
-    def _push_graph_data(self):
-        focus = self._latest_emotions.get("focus", 0)
-        cognitive = self._latest_productivity.get("productivityScore", 0)
-        relaxation = self._latest_productivity.get("relaxationScore", 0)
-        self._graph.add_data(focus, cognitive, relaxation)

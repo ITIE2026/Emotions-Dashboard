@@ -8,7 +8,6 @@ Screen indices:
   0 = ConnectionScreen
   1 = CalibrationScreen
   2 = DashboardScreen
-  3 = TrackingScreen
 """
 import logging
 from PySide6.QtWidgets import (
@@ -37,14 +36,12 @@ from gui.widgets.nav_bar import NavBar
 from gui.connection_screen import ConnectionScreen
 from gui.calibration_screen import CalibrationScreen
 from gui.dashboard_screen import DashboardScreen
-from gui.tracking_screen import TrackingScreen
 
 log = logging.getLogger(__name__)
 
 PAGE_CONNECTION = 0
 PAGE_CALIBRATION = 1
 PAGE_DASHBOARD = 2
-PAGE_TRACKING = 3
 
 
 class MainWindow(QMainWindow):
@@ -71,7 +68,12 @@ class MainWindow(QMainWindow):
         self._classifiers_created = False
         self._streaming = False
 
-        # ── GUI ───────────────────────────────────────────────────────
+        # Debounce for transient disconnect events from SDK
+        # (Capsule fires connection_changed(0) briefly during cal→stream transition)
+        self._disconnect_timer = QTimer(self)
+        self._disconnect_timer.setSingleShot(True)
+        self._disconnect_timer.setInterval(5000)   # 5 s grace window
+        self._disconnect_timer.timeout.connect(self._confirm_disconnected)
         self._build_ui()
         self._connect_device_signals()
 
@@ -104,12 +106,10 @@ class MainWindow(QMainWindow):
         self._conn_screen = ConnectionScreen(self._dm)
         self._cal_screen = CalibrationScreen()
         self._dash_screen = DashboardScreen()
-        self._track_screen = TrackingScreen()
 
         self._stack.addWidget(self._conn_screen)     # 0
         self._stack.addWidget(self._cal_screen)      # 1
         self._stack.addWidget(self._dash_screen)      # 2
-        self._stack.addWidget(self._track_screen)     # 3
         root.addWidget(self._stack, stretch=1)
 
         # Navigation bar (bottom)
@@ -138,6 +138,8 @@ class MainWindow(QMainWindow):
 
         if status == 1:
             log.info("Device connected – serial %s", self._dm.device_serial)
+            # Cancel any pending disconnect
+            self._disconnect_timer.stop()
             self._status_bar.set_connected(True, self._dm.device_serial or "")
 
             if not self._classifiers_created:
@@ -148,7 +150,16 @@ class MainWindow(QMainWindow):
             if self._cal_mgr and self._cal_mgr.can_import(serial):
                 self._conn_screen.show_skip_button(True)
         elif status == 0:
-            log.info("Device disconnected")
+            log.info("Device disconnected signal – starting debounce timer")
+            # Don't react immediately: start a timer, confirm after grace period
+            if not self._disconnect_timer.isActive():
+                self._disconnect_timer.start()
+
+    def _confirm_disconnected(self):
+        """Called ~5 s after a connection_changed(0) event.
+        Only treat as real disconnect if the device is still unreachable."""
+        if not self._dm.is_connected():
+            log.info("Device confirmed disconnected")
             self._status_bar.set_connected(False)
             self._streaming = False
             self._stop_session()
@@ -252,8 +263,9 @@ class MainWindow(QMainWindow):
 
         # Start subsystems
         self._csv.start_session()
-        self._dash_screen.start_graph()
-        self._track_screen.start_session()
+        # Inform dashboard of the active CSV file path
+        if self._csv.file_path:
+            self._dash_screen.set_session_file(self._csv.file_path)
         self._log_timer.start()
 
         if self._status_mon:
@@ -276,7 +288,6 @@ class MainWindow(QMainWindow):
         log.info("Session stopped")
         self._log_timer.stop()
         self._csv.stop_session()
-        self._dash_screen.stop_graph()
         if self._status_mon:
             self._status_mon.stop()
 
@@ -286,21 +297,17 @@ class MainWindow(QMainWindow):
     def _on_emotions(self, data: dict):
         self._latest_emo = data
         self._dash_screen.on_emotions(data)
-        self._track_screen.update_data(emotions=data)
 
     def _on_productivity(self, data: dict):
         self._latest_prod = data
         self._dash_screen.on_productivity(data)
-        self._track_screen.update_data(productivity=data)
 
     def _on_cardio(self, data: dict):
         self._latest_cardio = data
         self._dash_screen.on_cardio(data)
-        self._track_screen.update_data(cardio=data)
 
     def _on_physio_states(self, data: dict):
         self._dash_screen.on_physio_states(data)
-        self._track_screen.update_data(physio=data)
 
     def _log_tick(self):
         """Called every 1 s to push a row into the CSV logger."""
@@ -336,13 +343,11 @@ class MainWindow(QMainWindow):
     #  Navigation
     # ==================================================================
     def _on_tab(self, idx: int):
-        """NavBar tabs: 0=Home/Connection, 1=Monitoring, 2=Training(=Monitoring), 3=Tracking."""
+        """NavBar tabs: 0=Home/Connection, 1=Monitoring."""
         if idx == 0:
             self._stack.setCurrentIndex(PAGE_CONNECTION)
-        elif idx in (1, 2):
+        elif idx == 1:
             self._stack.setCurrentIndex(PAGE_DASHBOARD)
-        elif idx == 3:
-            self._stack.setCurrentIndex(PAGE_TRACKING)
 
     # ==================================================================
     #  Error handling

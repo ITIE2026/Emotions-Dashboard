@@ -24,3 +24,58 @@
 [2026-03-05 15:18:43.564] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
 [2026-03-05 15:43:16.664] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
 [2026-03-05 15:57:23.417] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-05 16:26:13.127] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-05 16:26:53.941] [Device] [warning] Device is not connected!
+[2026-03-05 16:27:02.870] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-05 16:28:57.954] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-05 16:29:47.424] [Device] [warning] Device is not connected!
+[2026-03-05 16:30:26.038] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-05 16:43:50.747] [Device] [error] Failed to create BLEDevice: Can not read Model number ErrorCore: 0
+[2026-03-05 16:44:37.895] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-05 16:45:14.146] [Device] [warning] Device is not connected!
+[2026-03-05 16:45:24.336] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-05 16:46:12.580] [Device] [warning] Device is not connected!
+[2026-03-05 16:47:39.702] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-05 16:48:37.109] [Device] [warning] Device is not connected!
+[2026-03-05 16:48:56.446] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 10:46:57.726] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:03:20.620] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:04:17.368] [Device] [warning] Device is not connected!
+[2026-03-06 11:04:37.363] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:05:15.801] [Device] [warning] Device is not connected!
+[2026-03-06 11:06:37.545] [Device] [critical] Execute command 25 failed: Device error: [ERR_DATA_SEND]
+[2026-03-06 11:06:44.834] [Device] [critical] Execute command 23 failed: Device error: [ERR_DATA_SEND]
+[2026-03-06 11:06:49.740] [Device] [warning] Device is not connected!
+[2026-03-06 11:07:04.729] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:07:51.149] [Device] [warning] Device is not connected!
+[2026-03-06 11:08:24.053] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:09:13.919] [Device] [warning] Device is not connected!
+[2026-03-06 11:09:41.336] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:10:40.798] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:11:26.475] [Device] [warning] Device is not connected!
+[2026-03-06 11:14:08.108] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:14:48.919] [Device] [warning] Device is not connected!
+[2026-03-06 11:15:09.250] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:16:03.890] [Device] [warning] Device is not connected!
+[2026-03-06 11:21:17.394] [Device] [warning] Device is not connected!
+[2026-03-06 11:21:39.209] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:22:42.813] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:23:36.301] [Device] [warning] Device is not connected!
+[2026-03-06 11:24:04.335] [Device] [warning] Device is not connected!
+[2026-03-06 11:26:01.781] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:30:14.632] [Device] [warning] Device is not connected!
+[2026-03-06 11:32:32.159] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:40:14.976] [Device] [warning] Device is not connected!
+[2026-03-06 11:45:37.337] [Device] [error] NT exception [BLE adapter not found or disabled][0]
+[2026-03-06 11:46:13.736] [Device] [error] NT exception [BLE adapter not found or disabled][0]
+[2026-03-06 11:47:24.539] [Device] [error] NT exception [BLE adapter not found or disabled][0]
+[2026-03-06 11:48:31.188] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:49:20.837] [Device] [warning] Device is not connected!
+[2026-03-06 11:49:39.647] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:50:55.489] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:58:14.347] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 11:59:00.068] [Device] [warning] Device is not connected!
+[2026-03-06 11:59:10.388] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 12:07:10.085] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
+[2026-03-06 12:08:43.167] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-06 12:25:54.796] [Device] [warning] Device is not connected!

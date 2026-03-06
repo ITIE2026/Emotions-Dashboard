@@ -1,6 +1,7 @@
 """
 ElectrodeDiagram – custom QWidget that draws a head outline
 with 4 coloured dots representing electrode contact quality.
+Dark-themed to match Mind Tracker BCI style.
 """
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, QRectF, QPointF
@@ -12,8 +13,6 @@ from utils.helpers import resist_color
 class ElectrodeDiagram(QWidget):
     """Shows a schematic headband on a head with 4 electrode indicators."""
 
-    # Electrode positions expressed as fractions (x, y) of the widget size.
-    # Layout:  T3 ... O1 ... O2 ... T4  (left→right across headband)
     _POSITIONS = {
         "T3": (0.22, 0.45),
         "O1": (0.40, 0.38),
@@ -24,7 +23,6 @@ class ElectrodeDiagram(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(280, 240)
-        # {channel: ohms}
         self._values: dict[str, float] = {}
 
     def set_values(self, data: dict[str, float]):
@@ -36,8 +34,8 @@ class ElectrodeDiagram(QWidget):
         p.setRenderHint(QPainter.Antialiasing, True)
         w, h = self.width(), self.height()
 
-        # ── Head outline (oval) ───────────────────────────────────────
-        head_pen = QPen(QColor("#888888"), 2)
+        # ── Head outline (oval) – muted colour for dark bg ────────────
+        head_pen = QPen(QColor("#444444"), 2)
         p.setPen(head_pen)
         p.setBrush(Qt.NoBrush)
         cx, cy = w * 0.5, h * 0.48
@@ -45,13 +43,13 @@ class ElectrodeDiagram(QWidget):
         p.drawEllipse(QPointF(cx, cy), rx, ry)
 
         # ── Headband arc ──────────────────────────────────────────────
-        band_pen = QPen(QColor("#555555"), 4)
+        band_pen = QPen(QColor("#3a3a3a"), 4)
         p.setPen(band_pen)
         band_rect = QRectF(cx - rx * 1.08, cy - ry * 0.55, rx * 2.16, ry * 1.1)
-        p.drawArc(band_rect, 30 * 16, 120 * 16)  # top arc
+        p.drawArc(band_rect, 30 * 16, 120 * 16)
 
         # ── Ears ──────────────────────────────────────────────────────
-        ear_pen = QPen(QColor("#888888"), 2)
+        ear_pen = QPen(QColor("#444444"), 2)
         p.setPen(ear_pen)
         ear_w, ear_h = w * 0.04, h * 0.10
         p.drawEllipse(QPointF(cx - rx - ear_w, cy), ear_w, ear_h)
@@ -72,8 +70,8 @@ class ElectrodeDiagram(QWidget):
             p.setBrush(QBrush(QColor(colour)))
             p.drawEllipse(QPointF(x, y), dot_r, dot_r)
 
-            # Label below dot
-            p.setPen(QColor("#cccccc"))
+            # Label below dot – light text for dark background
+            p.setPen(QColor("#aaaaaa"))
             label = f"{name}"
             if ohms < float("inf"):
                 label += f"\n{ohms / 1000:.0f}kΩ"
@@ -81,3 +79,4 @@ class ElectrodeDiagram(QWidget):
             p.drawText(text_rect, Qt.AlignHCenter | Qt.AlignTop, label)
 
         p.end()
+

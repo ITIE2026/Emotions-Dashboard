@@ -8,6 +8,7 @@ Signals:
   calibration_progress – 0.0 → 1.0
 """
 import sys
+import logging
 from PySide6.QtCore import QObject, Signal
 
 from utils.config import CAPSULE_SDK_DIR
@@ -21,6 +22,22 @@ from Productivity import (       # noqa: E402
     Productivity_Indexes,
     Productivity_Baselines,
 )
+
+log = logging.getLogger(__name__)
+
+# EMA smoothing factor (0 = no smoothing, 1 = no memory)
+_ALPHA = 0.25
+
+
+def _ema(prev: float, raw: float, alpha: float = _ALPHA) -> float:
+    """Exponential moving average."""
+    if prev is None:
+        return raw
+    return prev + alpha * (raw - prev)
+
+
+def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
+    return max(lo, min(hi, v))
 
 
 class ProductivityHandler(QObject):
@@ -42,6 +59,12 @@ class ProductivityHandler(QObject):
         self._prod.set_on_calibration_progress(self._on_progress)
         self._prod.set_on_individual_nfb(self._on_nfb)
 
+        # EMA state (None = first sample)
+        self._ema_cognitive = None
+        self._ema_relax = None
+        self._ema_conc = None
+        self._ema_fatigue = None
+
     # ── Public ────────────────────────────────────────────────────────
     def start_baseline_calibration(self):
         self._prod.calibrate_baselines()
@@ -55,33 +78,73 @@ class ProductivityHandler(QObject):
     # ── Capsule callbacks ─────────────────────────────────────────────
     def _on_metrics(self, prod_obj, m: Productivity_Metrics):
         try:
-            self.metrics_updated.emit({
-                "fatigueScore": float(m.fatigueScore),
-                "reverseFatigueScore": float(m.reverseFatigueScore),
-                "gravityScore": float(m.gravityScore),
-                "relaxationScore": float(m.relaxationScore),
-                "concentrationScore": float(m.concentrationScore),
-                "productivityScore": float(m.productivityScore),
-                "currentValue": float(m.currentValue),
-                "alpha": float(m.alpha),
-                "productivityBaseline": float(m.productivityBaseline),
-                "accumulatedFatigue": float(m.accumulatedFatigue),
-                "fatigueGrowthRate": m.fatigueGrowthRate.value,
-                "timestamp": int(m.timestampMilli),
-            })
-        except Exception:
-            pass
+            # Extract growth rate safely (it's a ctypes enum)
+            try:
+                gr = m.fatigueGrowthRate
+                growth = int(gr.value) if hasattr(gr, "value") else int(gr)
+            except Exception:
+                growth = 0
+
+            # ── Scaling ───────────────────────────────────────────────
+            # currentValue is the NORMALISED productivity score [0,1] → *100
+            cognitive_raw = _clamp(float(m.currentValue) * 100.0)
+
+            # relaxation, concentration & fatigue are already in 0-100 range
+            # (reference mainn.py stores them as-is with no scaling)
+            relax_raw = _clamp(float(m.relaxationScore))
+            conc_raw  = _clamp(float(m.concentrationScore))
+            fatigue_raw = _clamp(float(m.fatigueScore))
+
+            # ── EMA smoothing ─────────────────────────────────────────
+            self._ema_cognitive = _ema(self._ema_cognitive, cognitive_raw)
+            self._ema_relax     = _ema(self._ema_relax,     relax_raw)
+            self._ema_conc      = _ema(self._ema_conc,      conc_raw)
+            self._ema_fatigue   = _ema(self._ema_fatigue,   fatigue_raw)
+
+            data = {
+                "productivityScore":   round(self._ema_cognitive, 1),
+                "relaxationScore":     round(self._ema_relax, 1),
+                "concentrationScore":  round(self._ema_conc, 1),
+                "fatigueScore":        round(self._ema_fatigue, 1),
+                "reverseFatigueScore": _clamp(float(m.reverseFatigueScore)),
+                "gravityScore":        float(m.gravityScore),
+                "currentValue":        float(m.currentValue),
+                "alpha":               float(m.alpha),
+                "productivityBaseline":float(m.productivityBaseline),
+                "accumulatedFatigue":  float(m.accumulatedFatigue),
+                "fatigueGrowthRate":   growth,
+                "timestamp":           int(m.timestampMilli),
+            }
+            log.debug(
+                "Productivity → cognitive=%.1f%% relax=%.1f%% conc=%.1f%% fatigue=%.1f%%",
+                data["productivityScore"], data["relaxationScore"],
+                data["concentrationScore"], data["fatigueScore"],
+            )
+            self.metrics_updated.emit(data)
+        except Exception as e:
+            log.error("ProductivityHandler._on_metrics error: %s", e)
 
     def _on_indexes(self, prod_obj, idx: Productivity_Indexes):
         try:
+            try:
+                rel_raw = idx.relaxation
+                rel = int(rel_raw.value) if hasattr(rel_raw, "value") else int(rel_raw)
+            except Exception:
+                rel = 0
+            try:
+                stress_raw = idx.stress
+                stress = int(stress_raw.value) if hasattr(stress_raw, "value") else int(stress_raw)
+            except Exception:
+                stress = 0
+
             self.indexes_updated.emit({
-                "relaxation_recommendation": idx.relaxation.value,
-                "stress_level": idx.stress.value,
+                "relaxation_recommendation": rel,
+                "stress_level": stress,
                 "hasArtifacts": bool(idx.hasArtifacts),
                 "timestamp": int(idx.timestampMilli),
             })
-        except Exception:
-            pass
+        except Exception as e:
+            log.error("ProductivityHandler._on_indexes error: %s", e)
 
     def _on_baselines(self, prod_obj, bl: Productivity_Baselines):
         self.baselines_updated.emit(bl)
@@ -91,3 +154,4 @@ class ProductivityHandler(QObject):
 
     def _on_nfb(self, prod_obj):
         self.nfb_updated.emit()
+

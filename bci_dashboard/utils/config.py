@@ -44,6 +44,20 @@ COLOR_FOCUS = "#B388FF"           # purple
 COLOR_COGNITIVE = "#64B5F6"       # blue
 COLOR_RELAXATION = "#69F0AE"      # green
 
+# ── Dark-theme palette ────────────────────────────────────────────────
+BG_PRIMARY = "#0D0D0D"           # main background (pure black)
+BG_CARD = "#1A1A1A"              # card / panel surfaces
+BG_CARD_HOVER = "#222222"        # card hover state
+BG_NAV = "#111111"               # bottom nav bar
+BG_INPUT = "#1E1E1E"             # text input / list backgrounds
+BORDER_SUBTLE = "#2A2A2A"        # subtle borders
+TEXT_PRIMARY = "#FFFFFF"          # primary text
+TEXT_SECONDARY = "#AAAAAA"       # secondary / muted text
+TEXT_DISABLED = "#555555"         # disabled text
+ACCENT_GREEN = "#69F0AE"         # accents / success
+ACCENT_RED = "#EF5350"           # danger / heart rate
+ACCENT_YELLOW = "#FFC107"        # warnings
+
 # ── CSV ────────────────────────────────────────────────────────────────
 CSV_COLUMNS = [
     "time",
