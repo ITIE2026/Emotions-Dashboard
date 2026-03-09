@@ -1,8 +1,12 @@
 """
-Utility helpers: formatting, colour mapping, clamping.
+Utility helpers: formatting, colour mapping, clamping, EEG band power.
 """
+import numpy as np
 from datetime import datetime
-from utils.config import RESIST_GOOD_THRESHOLD, RESIST_WARN_THRESHOLD
+from utils.config import (
+    RESIST_GOOD_THRESHOLD, RESIST_WARN_THRESHOLD,
+    BAND_DELTA, BAND_THETA, BAND_ALPHA, BAND_SMR, BAND_BETA,
+)
 
 
 def timestamp_now() -> str:
@@ -58,3 +62,53 @@ def recommendation_label(rec_value: int) -> str:
 def stress_label(stress_value: int) -> str:
     labels = {0: "No Stress", 1: "Anxiety", 2: "Stress"}
     return labels.get(stress_value, "Unknown")
+
+
+# ── EEG band-power helpers ────────────────────────────────────────────
+
+def compute_band_powers(freqs, psd_values):
+    """Compute average power in each EEG band from PSD data.
+
+    Args:
+        freqs: 1-D array of frequency bin centres (Hz).
+        psd_values: 1-D array of power values (µV²) matching *freqs*.
+
+    Returns:
+        dict with keys 'delta', 'theta', 'alpha', 'smr', 'beta' → float.
+    """
+    freqs = np.asarray(freqs, dtype=float)
+    psd_values = np.asarray(psd_values, dtype=float)
+    bands = {
+        "delta": BAND_DELTA,
+        "theta": BAND_THETA,
+        "alpha": BAND_ALPHA,
+        "smr":   BAND_SMR,
+        "beta":  BAND_BETA,
+    }
+    result = {}
+    for name, (lo, hi) in bands.items():
+        mask = (freqs >= lo) & (freqs < hi)
+        result[name] = float(np.mean(psd_values[mask])) if mask.any() else 0.0
+    return result
+
+
+def compute_peak_frequencies(freqs, psd_values):
+    """Find peak frequency in Alpha, Beta, and Theta bands.
+
+    Returns:
+        dict with keys 'alpha_peak', 'beta_peak', 'theta_peak' → float Hz.
+    """
+    freqs = np.asarray(freqs, dtype=float)
+    psd_values = np.asarray(psd_values, dtype=float)
+    peaks = {}
+    for name, (lo, hi) in [("alpha_peak", BAND_ALPHA),
+                             ("beta_peak", BAND_BETA),
+                             ("theta_peak", BAND_THETA)]:
+        mask = (freqs >= lo) & (freqs < hi)
+        if mask.any():
+            sub_psd = psd_values[mask]
+            sub_freq = freqs[mask]
+            peaks[name] = float(sub_freq[np.argmax(sub_psd)])
+        else:
+            peaks[name] = 0.0
+    return peaks

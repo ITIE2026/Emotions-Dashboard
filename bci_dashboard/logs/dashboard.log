@@ -548,3 +548,42 @@ ValueError: invalid literal for int() with base 10: b'\xa0\x00\xd6\xf8'
 2026-03-06 12:25:54,795 [INFO] gui.main_window: Application closing
 2026-03-06 12:25:54,795 [INFO] gui.main_window: Session stopped
 2026-03-06 12:25:54,795 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-09 15:15:43,005 [INFO] main: Starting BCI Dashboard
+2026-03-09 15:15:51,540 [INFO] main: Entering event loop
+2026-03-09 15:16:39,338 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-09 15:20:25,694 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+                  ^^^^^^^^^^^^^^^^^^^
+ValueError: invalid literal for int() with base 10: b'\x00\x90N\xfe'
+
+2026-03-09 15:22:17,179 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-09 15:22:22,173 [INFO] gui.main_window: Device confirmed disconnected
+2026-03-09 15:22:22,173 [INFO] gui.main_window: Session stopped
+2026-03-09 15:22:44,593 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-09 15:23:59,694 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+                  ^^^^^^^^^^^^^^^^^^^
+ValueError: invalid literal for int() with base 10: b'\x00\x90N\xfe'
+
+2026-03-09 15:27:41,690 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-09 15:27:43,778 [INFO] gui.main_window: Application closing
+2026-03-09 15:27:43,778 [INFO] gui.main_window: Session stopped
+2026-03-09 15:27:43,778 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
