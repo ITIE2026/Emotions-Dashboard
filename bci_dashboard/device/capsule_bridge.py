@@ -81,5 +81,5 @@ class CapsuleBridge(QObject):
         """Called every CAPSULE_UPDATE_INTERVAL_MS to drive callbacks."""
         try:
             self._locator.update()
-        except Exception as exc:
+        except BaseException as exc:
             self.error_occurred.emit(str(exc))

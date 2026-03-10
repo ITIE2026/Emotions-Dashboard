@@ -104,3 +104,19 @@
 [2026-03-09 17:49:21.534] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
 [2026-03-10 10:52:43.501] [Device] [error] NT exception [BLE adapter not found or disabled][0]
 [2026-03-10 10:53:46.280] [Device] [error] NT exception [BLE adapter not found or disabled][0]
+[2026-03-10 11:35:12.164] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
+[2026-03-10 11:36:55.915] [Device] [error] NT exception [BLE adapter not found or disabled][0]
+[2026-03-10 11:40:06.382] [Device] [error] NT exception [BLE adapter not found or disabled][0]
+[2026-03-10 11:56:38.724] [Device] [error] NT exception [BLE adapter not found or disabled][0]
+[2026-03-10 11:57:35.375] [Device] [error] NT exception [BLE adapter not found or disabled][0]
+[2026-03-10 11:58:19.225] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
+[2026-03-10 11:58:55.016] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
+[2026-03-10 11:59:27.330] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
+[2026-03-10 12:00:54.303] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
+[2026-03-10 12:02:17.643] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
+[2026-03-10 12:03:49.231] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-10 12:08:31.484] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-10 12:08:37.123] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-10 12:11:17.693] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-10 12:12:03.175] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-10 12:34:49.026] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]

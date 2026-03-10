@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QGroupBox, QGridLayout,
     QMessageBox,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 
 from gui.widgets.electrode_diagram import ElectrodeDiagram
 from utils.helpers import resist_color, resist_label
@@ -47,6 +47,13 @@ class ConnectionScreen(QWidget):
         self._selected_serial = None
         self._build_ui()
         self._connect_signals()
+
+        # Connection timeout – resets the button if the SDK never fires the
+        # status=1 callback (e.g. device still paired in Windows BT stack)
+        self._conn_timer = QTimer(self)
+        self._conn_timer.setSingleShot(True)
+        self._conn_timer.setInterval(30_000)
+        self._conn_timer.timeout.connect(self._on_conn_timeout)
 
     # ── UI ────────────────────────────────────────────────────────────
     def _build_ui(self):
@@ -168,6 +175,7 @@ class ConnectionScreen(QWidget):
         self._dm.connection_changed.connect(self._on_conn_changed)
         self._dm.resistance_updated.connect(self._on_resistance)
         self._dm.battery_updated.connect(self._on_battery)
+        self._dm.scan_error.connect(self._on_scan_error)
 
     # ── Slots ─────────────────────────────────────────────────────────
     def _on_scan(self):
@@ -197,15 +205,18 @@ class ConnectionScreen(QWidget):
             return
         self._connect_btn.setEnabled(False)
         self._connect_btn.setText("Connecting…")
+        self._conn_timer.start()
         try:
             self._dm.connect_device(self._selected_serial)
         except Exception as exc:
+            self._conn_timer.stop()
             QMessageBox.critical(self, "Connection Error", str(exc))
             self._connect_btn.setEnabled(True)
             self._connect_btn.setText("Connect")
 
     def _on_conn_changed(self, status):
         if status == 1:  # Connected
+            self._conn_timer.stop()
             self._post_group.setVisible(True)
             self._connect_btn.setText("Connected ✓")
             self._scan_btn.setVisible(False)
@@ -233,7 +244,18 @@ class ConnectionScreen(QWidget):
 
     def _on_disconnect(self):
         self._dm.disconnect()
+    def _on_conn_timeout(self):
+        self._connect_btn.setEnabled(True)
+        self._connect_btn.setText("Connect")
+        QMessageBox.warning(
+            self,
+            "Connection Timed Out",
+            "Could not connect to the headband.\n"
+            "Try turning the headband off and on, then scan again.",
+        )
 
+    def _on_scan_error(self, msg: str):
+        QMessageBox.warning(self, "Scan Error", msg)
     # ── External access ───────────────────────────────────────────────
     @property
     def start_cal_button(self):

@@ -147,7 +147,7 @@ class Device:
 
     def disconnect(self):
         error = Error()
-        self._lib.clCDevice_Disconnect(self._pointer, error)
+        self._lib.clCDevice_Disconnect(self._pointer, ctypes.byref(error))
         if error.code is not Error_Code.OK:
             raise CapsuleException(error)
 
@@ -173,7 +173,7 @@ class Device:
             raise CapsuleException(error)
  
     def stop(self):
-        self._lib.clCDevice_Start.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.POINTER(Error)]
+        self._lib.clCDevice_Stop.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.POINTER(Error)]
         error = Error()
         self._lib.clCDevice_Stop(self._pointer, ctypes.byref(error))
         if error.code is not Error_Code.OK:

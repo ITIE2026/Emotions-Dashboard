@@ -34,9 +34,15 @@ def load_calibration(serial: str) -> dict | None:
 # ── Helpers to serialise ctypes structs ───────────────────────────────
 def nfb_to_dict(nfb) -> dict:
     """Convert IndividualNFBData to a plain dict."""
+    def _safe_int(v) -> int:
+        """ctypes enum fields are sometimes returned as raw bytes by the SDK."""
+        if isinstance(v, bytes):
+            return int.from_bytes(v, 'little')
+        return int(v)
+
     return {
         "timestampMilli": int(nfb.timestampMilli),
-        "failReason": int(nfb.failReason),
+        "failReason": _safe_int(nfb.failReason),
         "individualFrequency": float(nfb.individualFrequency),
         "individualPeakFrequency": float(nfb.individualPeakFrequency),
         "individualPeakFrequencyPower": float(nfb.individualPeakFrequencyPower),

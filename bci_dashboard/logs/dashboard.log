@@ -792,3 +792,73 @@ KeyboardInterrupt
 
 2026-03-10 11:26:20,590 [INFO] gui.main_window: Application closing
 2026-03-10 11:26:20,591 [INFO] gui.main_window: Session stopped
+2026-03-10 11:34:54,399 [INFO] main: Starting BCI Dashboard
+2026-03-10 11:34:57,882 [INFO] main: Entering event loop
+2026-03-10 11:38:27,159 [INFO] gui.main_window: Session started
+2026-03-10 11:38:27,173 [INFO] gui.main_window: Signal started by user
+2026-03-10 11:38:28,599 [INFO] gui.main_window: Session stopped
+2026-03-10 11:38:28,630 [INFO] gui.main_window: Signal stopped by user
+2026-03-10 11:38:33,356 [INFO] gui.main_window: Application closing
+2026-03-10 11:38:33,356 [INFO] gui.main_window: Session stopped
+2026-03-10 11:38:33,356 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-10 11:40:02,630 [INFO] main: Starting BCI Dashboard
+2026-03-10 11:40:03,960 [INFO] main: Entering event loop
+2026-03-10 11:40:15,455 [INFO] gui.main_window: Application closing
+2026-03-10 11:40:15,455 [INFO] gui.main_window: Session stopped
+2026-03-10 11:56:34,678 [INFO] main: Starting BCI Dashboard
+2026-03-10 11:56:36,027 [INFO] main: Entering event loop
+2026-03-10 11:57:24,877 [INFO] gui.main_window: Application closing
+2026-03-10 11:57:24,877 [INFO] gui.main_window: Session stopped
+2026-03-10 11:57:27,081 [INFO] main: Starting BCI Dashboard
+2026-03-10 11:57:28,480 [INFO] main: Entering event loop
+2026-03-10 11:58:00,818 [INFO] gui.main_window: Application closing
+2026-03-10 11:58:00,819 [INFO] gui.main_window: Session stopped
+2026-03-10 11:58:03,273 [INFO] main: Starting BCI Dashboard
+2026-03-10 11:58:04,598 [INFO] main: Entering event loop
+2026-03-10 11:58:40,668 [INFO] main: Starting BCI Dashboard
+2026-03-10 11:58:41,981 [INFO] main: Entering event loop
+2026-03-10 11:59:13,217 [INFO] main: Starting BCI Dashboard
+2026-03-10 11:59:14,517 [INFO] main: Entering event loop
+2026-03-10 12:00:34,801 [INFO] main: Starting BCI Dashboard
+2026-03-10 12:00:36,199 [INFO] main: Entering event loop
+2026-03-10 12:01:50,516 [INFO] main: Starting BCI Dashboard
+2026-03-10 12:01:51,833 [INFO] main: Entering event loop
+2026-03-10 12:01:56,373 [INFO] gui.main_window: Application closing
+2026-03-10 12:01:56,373 [INFO] gui.main_window: Session stopped
+2026-03-10 12:02:00,497 [INFO] main: Starting BCI Dashboard
+2026-03-10 12:02:01,803 [INFO] main: Entering event loop
+2026-03-10 12:03:11,656 [INFO] main: Starting BCI Dashboard
+2026-03-10 12:03:12,976 [INFO] main: Entering event loop
+2026-03-10 12:03:43,256 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-10 12:04:54,056 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 45, in nfb_to_dict
+    "failReason": _safe_int(nfb.failReason),
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 41, in _safe_int
+    return int(v)
+ValueError: invalid literal for int() with base 10: b'@\xb2\t\x07'
+
+2026-03-10 12:08:21,221 [INFO] gui.main_window: Session stopped
+2026-03-10 12:08:21,222 [INFO] gui.main_window: Signal stopped by user
+2026-03-10 12:08:31,090 [INFO] gui.main_window: Session started
+2026-03-10 12:08:31,091 [INFO] gui.main_window: Signal started by user
+2026-03-10 12:08:34,279 [INFO] gui.main_window: Session stopped
+2026-03-10 12:08:34,282 [INFO] gui.main_window: Signal stopped by user
+2026-03-10 12:08:36,740 [INFO] gui.main_window: Session started
+2026-03-10 12:08:36,741 [INFO] gui.main_window: Signal started by user
+2026-03-10 12:10:37,826 [INFO] gui.main_window: Session stopped
+2026-03-10 12:10:37,834 [INFO] gui.main_window: Signal stopped by user
+2026-03-10 12:11:17,317 [INFO] gui.main_window: Session started
+2026-03-10 12:11:17,318 [INFO] gui.main_window: Signal started by user
+2026-03-10 12:11:36,558 [INFO] gui.main_window: Session stopped
+2026-03-10 12:11:36,562 [INFO] gui.main_window: Signal stopped by user
+2026-03-10 12:12:02,897 [INFO] gui.main_window: Session started
+2026-03-10 12:12:02,898 [INFO] gui.main_window: Signal started by user
+2026-03-10 12:34:48,635 [INFO] gui.main_window: Session started
+2026-03-10 12:34:48,638 [INFO] gui.main_window: Signal started by user

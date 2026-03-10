@@ -27,6 +27,7 @@ class DeviceManager(QObject):
     psd_received = Signal(object)         # PSDData
     artifacts_received = Signal(object)   # EEGArtifacts
     error_occurred = Signal(str)
+    scan_error = Signal(str)             # emitted when BLE scan itself fails (e.g. Bluetooth disabled)
 
     def __init__(self, bridge, parent=None):
         super().__init__(parent)
@@ -48,6 +49,20 @@ class DeviceManager(QObject):
             info = device_info_list[i]
             results.append((info.get_name(), info.get_serial(), info.get_type()))
         self.devices_found.emit(results)
+        try:
+            reason_val = (
+                int.from_bytes(fail_reason[:4], 'little')
+                if isinstance(fail_reason, bytes)
+                else int(fail_reason)
+            )
+            if reason_val == 1:  # FailReason.BluetoothDisabled
+                self.scan_error.emit(
+                    "Bluetooth is disabled – please enable Bluetooth and try again"
+                )
+            elif reason_val == 2 and not results:  # FailReason.Unknown, no devices
+                self.scan_error.emit("Device scan failed (unknown error)")
+        except Exception:
+            pass
 
     # ── Connection ────────────────────────────────────────────────────
     def connect_device(self, serial: str, bipolar: bool = BIPOLAR_CHANNELS):
