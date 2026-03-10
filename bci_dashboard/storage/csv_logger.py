@@ -59,6 +59,8 @@ class CSVLogger:
         emotions: dict | None = None,
         productivity: dict | None = None,
         cardio: dict | None = None,
+        band_powers: dict | None = None,
+        peak_freqs: dict | None = None,
     ):
         if not self._started:
             return
@@ -67,6 +69,8 @@ class CSVLogger:
         e = emotions or {}
         p = productivity or {}
         c = cardio or {}
+        bp = band_powers or {}
+        pk = peak_freqs or {}
 
         row = {
             "time": now.strftime("%Y-%m-%d %H:%M"),
@@ -81,7 +85,16 @@ class CSVLogger:
             "fatigue score": p.get("fatigueScore", 0),
             "reverse fatigue": p.get("reverseFatigueScore", 0),
             "alpha gravity": p.get("gravityScore", 0),
+            "accumulated fatigue": p.get("accumulatedFatigue", 0),
             "heart rate": c.get("heartRate", 0),
+            "stress index": p.get("stressIndex", 0),
+            "alpha rhythm": bp.get("alpha", 0),
+            "beta rhythm": bp.get("beta", 0),
+            "theta rhythm": bp.get("theta", 0),
+            "smr rhythm": bp.get("smr", 0),
+            "alpha peak hz": pk.get("alpha_peak", 0),
+            "beta peak hz": pk.get("beta_peak", 0),
+            "theta peak hz": pk.get("theta_peak", 0),
         }
 
         if CSV_AGGREGATE_PER_MINUTE:

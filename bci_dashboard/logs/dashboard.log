@@ -587,3 +587,208 @@ ValueError: invalid literal for int() with base 10: b'\x00\x90N\xfe'
 2026-03-09 15:27:43,778 [INFO] gui.main_window: Application closing
 2026-03-09 15:27:43,778 [INFO] gui.main_window: Session stopped
 2026-03-09 15:27:43,778 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-09 16:10:26,569 [INFO] main: Starting BCI Dashboard
+2026-03-09 16:10:29,054 [INFO] main: Entering event loop
+2026-03-09 16:12:47,625 [INFO] gui.main_window: Application closing
+2026-03-09 16:12:47,625 [INFO] gui.main_window: Session stopped
+2026-03-09 16:13:06,632 [INFO] main: Starting BCI Dashboard
+2026-03-09 16:13:08,492 [INFO] main: Entering event loop
+2026-03-09 16:14:12,578 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-09 16:15:50,723 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+                  ^^^^^^^^^^^^^^^^^^^
+ValueError: invalid literal for int() with base 10: b'@\x8a\x1f\x06'
+
+2026-03-09 16:20:58,276 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-09 16:21:03,266 [INFO] gui.main_window: Device confirmed disconnected
+2026-03-09 16:21:03,267 [INFO] gui.main_window: Session stopped
+2026-03-09 16:21:29,023 [INFO] gui.main_window: Session started
+2026-03-09 16:21:29,024 [INFO] gui.main_window: Signal started by user
+2026-03-09 16:21:29,927 [INFO] gui.main_window: Application closing
+2026-03-09 16:21:29,927 [INFO] gui.main_window: Session stopped
+2026-03-09 16:21:29,928 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-09 16:21:47,861 [INFO] main: Starting BCI Dashboard
+2026-03-09 16:21:49,518 [INFO] main: Entering event loop
+2026-03-09 16:22:33,749 [INFO] main: Starting BCI Dashboard
+2026-03-09 16:22:35,279 [INFO] main: Entering event loop
+2026-03-09 16:23:11,139 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-09 16:24:20,753 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+                  ^^^^^^^^^^^^^^^^^^^
+ValueError: invalid literal for int() with base 10: b'\xe0\x1c\xba\x9d'
+
+2026-03-09 16:29:23,801 [INFO] gui.main_window: Session stopped
+2026-03-09 16:29:23,802 [INFO] gui.main_window: Signal stopped by user
+2026-03-09 16:30:30,479 [INFO] gui.main_window: Session started
+2026-03-09 16:30:30,481 [INFO] gui.main_window: Signal started by user
+2026-03-09 16:49:13,032 [INFO] main: Starting BCI Dashboard
+2026-03-09 16:49:14,645 [INFO] main: Entering event loop
+2026-03-09 16:49:45,820 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-09 16:52:15,745 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+                  ^^^^^^^^^^^^^^^^^^^
+ValueError: invalid literal for int() with base 10: b'\x00E\xb9\x86'
+
+2026-03-09 16:54:29,918 [INFO] main: Starting BCI Dashboard
+2026-03-09 16:54:31,576 [INFO] main: Entering event loop
+2026-03-09 16:55:25,710 [INFO] main: Starting BCI Dashboard
+2026-03-09 16:55:27,333 [INFO] main: Entering event loop
+2026-03-09 16:56:11,168 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-09 16:58:57,191 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+                  ^^^^^^^^^^^^^^^^^^^
+ValueError: invalid literal for int() with base 10: b'\x80:^-'
+
+2026-03-09 16:59:44,350 [INFO] main: Starting BCI Dashboard
+2026-03-09 16:59:45,898 [INFO] main: Entering event loop
+2026-03-09 17:00:07,814 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-09 17:00:13,338 [INFO] gui.main_window: Session started
+2026-03-09 17:00:13,360 [INFO] gui.main_window: Signal started by user
+2026-03-09 17:02:38,726 [INFO] main: Starting BCI Dashboard
+2026-03-09 17:02:40,284 [INFO] main: Entering event loop
+2026-03-09 17:03:13,610 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-09 17:11:09,680 [INFO] main: Starting BCI Dashboard
+2026-03-09 17:11:11,248 [INFO] main: Entering event loop
+2026-03-09 17:12:43,622 [INFO] main: Starting BCI Dashboard
+2026-03-09 17:12:45,326 [INFO] main: Entering event loop
+2026-03-09 17:13:21,963 [INFO] gui.main_window: Session started
+2026-03-09 17:13:21,979 [INFO] gui.main_window: Signal started by user
+2026-03-09 17:13:24,179 [INFO] gui.main_window: Session stopped
+2026-03-09 17:13:24,184 [INFO] gui.main_window: Signal stopped by user
+2026-03-09 17:13:28,782 [INFO] gui.main_window: Application closing
+2026-03-09 17:13:28,782 [INFO] gui.main_window: Session stopped
+2026-03-09 17:13:28,783 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-09 17:13:38,241 [INFO] main: Starting BCI Dashboard
+2026-03-09 17:13:39,827 [INFO] main: Entering event loop
+2026-03-09 17:14:04,857 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-09 17:16:37,547 [INFO] gui.main_window: Session started
+2026-03-09 17:16:37,550 [INFO] gui.main_window: Signal started by user
+2026-03-09 17:19:18,586 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+                  ^^^^^^^^^^^^^^^^^^^
+ValueError: invalid literal for int() with base 10: b'\x000\xffh'
+
+2026-03-09 17:24:05,942 [INFO] main: Starting BCI Dashboard
+2026-03-09 17:24:07,471 [INFO] main: Entering event loop
+2026-03-09 17:24:48,766 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-09 17:26:38,468 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+                  ^^^^^^^^^^^^^^^^^^^
+ValueError: invalid literal for int() with base 10: b'\xc0T?\xe2'
+
+2026-03-09 17:31:17,159 [INFO] gui.main_window: Application closing
+2026-03-09 17:31:17,159 [INFO] gui.main_window: Session stopped
+2026-03-09 17:31:17,160 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-09 17:44:23,179 [INFO] main: Starting BCI Dashboard
+2026-03-09 17:44:24,828 [INFO] main: Entering event loop
+2026-03-09 17:44:30,861 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-09 17:51:20,252 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 39, in nfb_to_dict
+    "failReason": int(nfb.failReason),
+                  ^^^^^^^^^^^^^^^^^^^
+ValueError: invalid literal for int() with base 10: b'\x00\xc5_\x91'
+
+2026-03-09 18:02:45,154 [INFO] gui.main_window: Application closing
+2026-03-09 18:02:45,154 [INFO] gui.main_window: Session stopped
+2026-03-09 18:02:45,154 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-10 10:35:11,456 [INFO] main: Starting BCI Dashboard
+2026-03-10 10:35:13,759 [INFO] main: Entering event loop
+2026-03-10 10:52:11,353 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\device\capsule_bridge.py", line 80, in _pump
+    def _pump(self):
+    
+KeyboardInterrupt
+
+2026-03-10 10:52:14,662 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\gui\dashboard_screen.py", line 569, in _update_duration
+    def _update_duration(self):
+    
+KeyboardInterrupt
+
+2026-03-10 10:52:40,788 [INFO] main: Starting BCI Dashboard
+2026-03-10 10:52:42,237 [INFO] main: Entering event loop
+2026-03-10 10:53:32,472 [INFO] gui.main_window: Session started
+2026-03-10 10:53:32,495 [INFO] gui.main_window: Signal started by user
+2026-03-10 10:53:34,024 [INFO] gui.main_window: Session stopped
+2026-03-10 10:53:34,047 [INFO] gui.main_window: Signal stopped by user
+2026-03-10 10:53:36,387 [INFO] gui.main_window: Application closing
+2026-03-10 10:53:36,387 [INFO] gui.main_window: Session stopped
+2026-03-10 10:53:39,943 [INFO] main: Starting BCI Dashboard
+2026-03-10 10:53:41,495 [INFO] main: Entering event loop
+2026-03-10 10:54:02,463 [INFO] gui.main_window: Application closing
+2026-03-10 10:54:02,464 [INFO] gui.main_window: Session stopped
+2026-03-10 11:24:34,727 [INFO] main: Starting BCI Dashboard
+2026-03-10 11:24:48,959 [INFO] main: Entering event loop
+2026-03-10 11:26:09,162 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\SGC USER\Desktop\ITIE\Dashboard\Emotions-Dashboard\bci_dashboard\device\capsule_bridge.py", line 80, in _pump
+    def _pump(self):
+    
+KeyboardInterrupt
+
+2026-03-10 11:26:20,590 [INFO] gui.main_window: Application closing
+2026-03-10 11:26:20,591 [INFO] gui.main_window: Session stopped

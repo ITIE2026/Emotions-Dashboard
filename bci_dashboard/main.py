@@ -65,7 +65,7 @@ def main():
 
     # ── Global dark stylesheet ────────────────────────────────────────
     from utils.config import (
-        BG_PRIMARY, BG_CARD, BG_INPUT, BORDER_SUBTLE,
+        BG_PRIMARY, BG_CARD, BG_INPUT, BG_NAV, BORDER_SUBTLE,
         TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_GREEN,
     )
 
@@ -87,12 +87,25 @@ def main():
             border: none;
         }}
         QScrollBar::handle:vertical {{
-            background: #333;
+            background: #444;
             border-radius: 3px;
             min-height: 20px;
         }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
             height: 0px;
+        }}
+        QScrollBar:horizontal {{
+            background: {BG_PRIMARY};
+            height: 6px;
+            border: none;
+        }}
+        QScrollBar::handle:horizontal {{
+            background: #444;
+            border-radius: 3px;
+            min-width: 20px;
+        }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+            width: 0px;
         }}
         QGroupBox {{
             background: {BG_CARD};
@@ -118,6 +131,10 @@ def main():
             color: {TEXT_PRIMARY};
             border: 1px solid {BORDER_SUBTLE};
             padding: 4px;
+        }}
+        QSplitter::handle {{
+            background: {BORDER_SUBTLE};
+            width: 2px;
         }}
     """)
 

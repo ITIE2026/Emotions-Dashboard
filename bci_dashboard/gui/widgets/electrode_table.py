@@ -107,19 +107,21 @@ class ElectrodeTable(QWidget):
             }
             layout.addWidget(row_widget)
 
+    _CH_NAMES = {0: "O1-T3", 1: "O2-T4"}
+
     def update_eeg(self, eeg_timed_data):
         """Compute average µV from latest EEG packet."""
         try:
             n_channels = eeg_timed_data.get_channels_count()
             n_samples = eeg_timed_data.get_samples_count()
             for ch_idx in range(n_channels):
-                ch_name = eeg_timed_data.get_channel_name(ch_idx)
+                ch_name = self._CH_NAMES.get(ch_idx)
                 if ch_name not in self._rows:
                     continue
                 vals = []
                 for s_idx in range(n_samples):
                     vals.append(abs(float(
-                        eeg_timed_data.get_processed_sample(ch_idx, s_idx)
+                        eeg_timed_data.get_raw_value(ch_idx, s_idx)
                     )))
                 if vals:
                     avg = float(np.mean(vals))
@@ -135,10 +137,10 @@ class ElectrodeTable(QWidget):
         try:
             n = artifacts.get_channels_count()
             for ch_idx in range(n):
-                ch_name = artifacts.get_channel_name(ch_idx)
+                ch_name = self._CH_NAMES.get(ch_idx)
                 if ch_name not in self._rows:
                     continue
-                has_art = bool(artifacts.get_artifact(ch_idx))
+                has_art = bool(artifacts.get_artifacts_by_channel(ch_idx))
                 self._has_artifacts[ch_name] = has_art
                 label = "Yes" if has_art else "No"
                 colour = "#EF5350" if has_art else "#69F0AE"

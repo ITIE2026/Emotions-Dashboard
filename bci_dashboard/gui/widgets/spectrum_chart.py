@@ -91,13 +91,17 @@ class SpectrumChart(QWidget):
             region.setZValue(-10)
             self._plot.addItem(region)
 
-        # Main spectrum curve with fill
+        # Main spectrum curve – created once and reused
         self._curve = self._plot.plot(
             pen=pg.mkPen(color="#64B5F6", width=2),
         )
+        # Zero baseline – also created once; we only call setData() on updates
+        self._zero_curve = self._plot.plot(
+            [0], [0], pen=pg.mkPen(None)
+        )
         self._fill = pg.FillBetweenItem(
             self._curve,
-            self._plot.plot([0], [0], pen=pg.mkPen(None)),
+            self._zero_curve,
             brush=pg.mkBrush(100, 181, 246, 40),
         )
         self._plot.addItem(self._fill)
@@ -123,15 +127,9 @@ class SpectrumChart(QWidget):
             return
 
         self._curve.setData(freqs, powers)
-        # Auto-scale Y to ~110% of max visible power
-        y_max = max(float(np.max(powers)) * 1.1, 1.0)
-        self._plot.setYRange(0, y_max, padding=0.02)
-
-        # Update fill
-        self._plot.removeItem(self._fill)
-        zero_curve = self._plot.plot(freqs, np.zeros_like(powers), pen=pg.mkPen(None))
-        self._fill = pg.FillBetweenItem(
-            self._curve, zero_curve,
-            brush=pg.mkBrush(100, 181, 246, 40),
-        )
-        self._plot.addItem(self._fill)
+        # Update zero baseline in-place (no new items created)
+        self._zero_curve.setData(freqs, np.zeros_like(powers))
+        # Auto-scale Y
+        y_max = float(np.max(powers)) * 1.15
+        if y_max > 0:
+            self._plot.setYRange(0, y_max, padding=0.02)

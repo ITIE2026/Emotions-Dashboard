@@ -101,11 +101,14 @@ class EEGWaveform(QWidget):
         for pw in self._plots.values():
             pw._time_axis.set_session_start(self._session_start)
 
+    # Map SDK channel index → bipolar channel name
+    _CH_NAMES = {0: "O1-T3", 1: "O2-T4"}
+
     def add_eeg_data(self, eeg_timed_data):
         """Process EEGTimedData from the SDK.
 
-        The SDK provides processed samples per channel.  For bipolar mode
-        the channel names are like 'O1-T3', 'O2-T4'.
+        For bipolar mode the SDK exposes 2 channels at indices 0 (O1-T3)
+        and 1 (O2-T4).  There is no get_channel_name() method.
         """
         try:
             now = time.time()
@@ -113,11 +116,11 @@ class EEGWaveform(QWidget):
             n_samples = eeg_timed_data.get_samples_count()
 
             for ch_idx in range(n_channels):
-                ch_name = eeg_timed_data.get_channel_name(ch_idx)
+                ch_name = self._CH_NAMES.get(ch_idx)
                 if ch_name not in self._buffers:
                     continue
                 for s_idx in range(n_samples):
-                    val = eeg_timed_data.get_processed_sample(ch_idx, s_idx)
+                    val = eeg_timed_data.get_raw_value(ch_idx, s_idx)
                     self._buffers[ch_name].append(float(val))
                     # Approximate timestamp from sample position
                     t = now - (n_samples - 1 - s_idx) / 250.0

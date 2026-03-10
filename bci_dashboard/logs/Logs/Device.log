@@ -81,3 +81,26 @@
 [2026-03-06 12:25:54.796] [Device] [warning] Device is not connected!
 [2026-03-09 15:16:59.231] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
 [2026-03-09 15:22:50.468] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 16:10:31.937] [Device] [error] NT exception [BLE adapter not found or disabled][0]
+[2026-03-09 16:14:20.582] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 16:21:29.023] [Device] [warning] Device is not connected!
+[2026-03-09 16:21:29.023] [Device] [warning] Device is not connected!
+[2026-03-09 16:21:29.928] [Device] [warning] Device is not connected!
+[2026-03-09 16:21:56.897] [Device] [error] Failed to create BLEDevice: Can not read Hardware Revision ErrorCore: 0
+[2026-03-09 16:23:15.268] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 16:27:33.896] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 16:30:30.775] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 16:49:53.748] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 16:54:39.029] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
+[2026-03-09 16:56:14.686] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 17:00:14.173] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 17:03:18.342] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 17:11:24.132] [Device] [error] No devices with ID 820628 were found
+[2026-03-09 17:13:00.293] [Device] [error] Failed to create BLEDevice: Can not read Hardware Revision ErrorCore: 0
+[2026-03-09 17:14:09.338] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 17:16:38.076] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 17:24:53.013] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 17:44:37.735] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-09 17:49:21.534] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-10 10:52:43.501] [Device] [error] NT exception [BLE adapter not found or disabled][0]
+[2026-03-10 10:53:46.280] [Device] [error] NT exception [BLE adapter not found or disabled][0]
