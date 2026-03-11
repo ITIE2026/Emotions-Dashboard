@@ -1,5 +1,5 @@
 """
-MainWindow – central orchestrator.
+MainWindow - central orchestrator.
 
 Owns every backend object, wires signals, and manages screen navigation.
 Uses a top QMenuBar (matching Capsule reference app) instead of a bottom NavBar.
@@ -8,7 +8,8 @@ Screen indices:
   0 = ConnectionScreen
   1 = CalibrationScreen
   2 = DashboardScreen
-  3 = SessionsScreen
+  3 = TrainingScreen
+  4 = SessionsScreen
 """
 import logging
 from PySide6.QtWidgets import (
@@ -40,6 +41,7 @@ from storage.csv_logger import CSVLogger
 from gui.connection_screen import ConnectionScreen
 from gui.calibration_screen import CalibrationScreen
 from gui.dashboard_screen import DashboardScreen
+from gui.training_screen import TrainingScreen
 from gui.sessions_screen import SessionsScreen
 
 log = logging.getLogger(__name__)
@@ -47,7 +49,8 @@ log = logging.getLogger(__name__)
 PAGE_CONNECTION = 0
 PAGE_CALIBRATION = 1
 PAGE_DASHBOARD = 2
-PAGE_SESSIONS = 3
+PAGE_TRAINING = 3
+PAGE_SESSIONS = 4
 
 
 class MainWindow(QMainWindow):
@@ -140,12 +143,14 @@ class MainWindow(QMainWindow):
         self._conn_screen = ConnectionScreen(self._dm)
         self._cal_screen = CalibrationScreen()
         self._dash_screen = DashboardScreen()
+        self._training_screen = TrainingScreen()
         self._sessions_screen = SessionsScreen()
 
         self._stack.addWidget(self._conn_screen)      # 0
         self._stack.addWidget(self._cal_screen)       # 1
         self._stack.addWidget(self._dash_screen)      # 2
-        self._stack.addWidget(self._sessions_screen)  # 3
+        self._stack.addWidget(self._training_screen)  # 3
+        self._stack.addWidget(self._sessions_screen)  # 4
         root.addWidget(self._stack, stretch=1)
 
         # Wire connection-screen buttons
@@ -167,6 +172,9 @@ class MainWindow(QMainWindow):
 
         # ── File ─────────────────────────────────────────────────────
         file_menu = mb.addMenu("File")
+        training_act = QAction("Training Lab", self)
+        training_act.triggered.connect(lambda: self._stack.setCurrentIndex(PAGE_TRAINING))
+        file_menu.addAction(training_act)
         sessions_act = QAction("Sessions Data", self)
         sessions_act.triggered.connect(lambda: self._stack.setCurrentIndex(PAGE_SESSIONS))
         file_menu.addAction(sessions_act)
@@ -203,6 +211,11 @@ class MainWindow(QMainWindow):
         cog_act = QAction("Cognitive States", self)
         cog_act.triggered.connect(lambda: self._show_dashboard("Emotions"))
         emo_menu.addAction(cog_act)
+
+        training_menu = mb.addMenu("Training")
+        training_lab_act = QAction("Training Lab", self)
+        training_lab_act.triggered.connect(lambda: self._stack.setCurrentIndex(PAGE_TRAINING))
+        training_menu.addAction(training_lab_act)
 
         # ── Settings ─────────────────────────────────────────────────
         settings_menu = mb.addMenu("Settings")
@@ -425,17 +438,21 @@ class MainWindow(QMainWindow):
     def _on_emotions(self, data: dict):
         self._latest_emo = data
         self._dash_screen.on_emotions(data)
+        self._training_screen.on_emotions(data)
 
     def _on_productivity(self, data: dict):
         self._latest_prod = data
         self._dash_screen.on_productivity(data)
+        self._training_screen.on_productivity(data)
 
     def _on_cardio(self, data: dict):
         self._latest_cardio = data
         self._dash_screen.on_cardio(data)
+        self._training_screen.on_cardio(data)
 
     def _on_physio_states(self, data: dict):
         self._dash_screen.on_physio_states(data)
+        self._training_screen.on_physio_states(data)
 
     def _log_tick(self):
         """Called every 1 s to push a row into the CSV logger."""
@@ -483,6 +500,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         log.info("Application closing")
         self._stop_session()
+        self._training_screen.stop_audio()
         self._dm.disconnect()
         self._streaming = False
         self._bridge.shutdown()

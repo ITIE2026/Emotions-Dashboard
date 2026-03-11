@@ -862,3 +862,68 @@ ValueError: invalid literal for int() with base 10: b'@\xb2\t\x07'
 2026-03-10 12:12:02,898 [INFO] gui.main_window: Signal started by user
 2026-03-10 12:34:48,635 [INFO] gui.main_window: Session started
 2026-03-10 12:34:48,638 [INFO] gui.main_window: Signal started by user
+2026-03-10 17:53:37,985 [INFO] main: Starting BCI Dashboard
+2026-03-10 17:53:59,209 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\main.py", line 152, in <module>
+    main()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\main.py", line 144, in main
+    window = MainWindow()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 87, in __init__
+    self._build_ui()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 146, in _build_ui
+    self._training_screen = TrainingScreen()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\gui\training_screen.py", line 68, in __init__
+    self._sound.setLoopCount(QSoundEffect.Infinite)
+TypeError: 'PySide6.QtMultimedia.QSoundEffect.setLoopCount' called with wrong argument types:
+  PySide6.QtMultimedia.QSoundEffect.setLoopCount(Loop)
+Supported signatures:
+  PySide6.QtMultimedia.QSoundEffect.setLoopCount(loopCount: int, /)
+
+2026-03-10 17:54:07,581 [INFO] main: Starting BCI Dashboard
+2026-03-10 17:54:11,530 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\main.py", line 152, in <module>
+    main()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\main.py", line 144, in main
+    window = MainWindow()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 87, in __init__
+    self._build_ui()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 146, in _build_ui
+    self._training_screen = TrainingScreen()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\gui\training_screen.py", line 68, in __init__
+    self._sound.setLoopCount(QSoundEffect.Infinite)
+TypeError: 'PySide6.QtMultimedia.QSoundEffect.setLoopCount' called with wrong argument types:
+  PySide6.QtMultimedia.QSoundEffect.setLoopCount(Loop)
+Supported signatures:
+  PySide6.QtMultimedia.QSoundEffect.setLoopCount(loopCount: int, /)
+
+2026-03-10 18:00:03,321 [INFO] main: Starting BCI Dashboard
+2026-03-10 18:00:07,839 [INFO] main: Entering event loop
+2026-03-10 18:11:45,832 [INFO] gui.main_window: Session started
+2026-03-10 18:11:45,858 [INFO] gui.main_window: Signal started by user
+2026-03-10 18:22:59,529 [INFO] gui.main_window: Application closing
+2026-03-10 18:22:59,529 [INFO] gui.main_window: Session stopped
+2026-03-10 18:23:04,966 [INFO] main: Starting BCI Dashboard
+2026-03-10 18:23:08,619 [INFO] main: Entering event loop
+2026-03-10 18:23:19,231 [INFO] gui.main_window: Device connected – serial 821112
+2026-03-10 18:24:26,691 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 45, in nfb_to_dict
+    "failReason": _safe_int(nfb.failReason),
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 41, in _safe_int
+    return int(v)
+ValueError: invalid literal for int() with base 10: b'\xd0\xdd\xec\x96'
+
+2026-03-10 18:34:29,770 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-10 18:34:34,769 [INFO] gui.main_window: Device confirmed disconnected
+2026-03-10 18:34:34,770 [INFO] gui.main_window: Session stopped
+2026-03-10 18:37:35,801 [INFO] gui.main_window: Application closing
+2026-03-10 18:37:35,801 [INFO] gui.main_window: Session stopped
+2026-03-10 18:37:35,802 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
