@@ -141,3 +141,8 @@
 [2026-03-11 15:51:23.303] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
 [2026-03-11 16:01:52.084] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
 [2026-03-11 16:09:11.592] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-13 15:22:10.157] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-13 16:13:40.902] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
+[2026-03-13 16:15:58.814] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-13 16:29:41.123] [Device] [warning] Device is not connected!
+[2026-03-14 13:08:40.689] [Device] [error] NT exception [BLE adapter not found or disabled][0]

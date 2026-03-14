@@ -10,6 +10,14 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import DefaultDict
 
+from gui.eeg_game_base import (
+    CalibrationSnapshot,
+    GameplaySnapshot,
+    LevelResult,
+    TrainingLevel,
+    TrainingRunResult,
+)
+
 
 Coord = tuple[int, int]
 
@@ -49,69 +57,17 @@ PHASE_LABELS = {
     "free": "Adaptive Turn",
 }
 
+MindMazeRunResult = TrainingRunResult
+
 
 @dataclass(frozen=True)
-class MazeLevel:
-    title: str
+class MazeLevel(TrainingLevel):
     width: int
     height: int
     active_cells: frozenset[Coord]
     passages: dict[Coord, frozenset[str]]
     start: Coord
     goal: Coord
-    target_seconds: int
-
-
-@dataclass(frozen=True)
-class CalibrationSnapshot:
-    progress: float
-    sample_count: int
-    samples_needed: int
-    ready_streak: int
-    conc_baseline: float | None
-    relax_baseline: float | None
-    ready_delta: float
-    complete: bool
-    status: str
-
-
-@dataclass(frozen=True)
-class GameplaySnapshot:
-    level_number: int
-    player: Coord
-    goal: Coord
-    phase: str
-    phase_label: str
-    recommended_direction: str | None
-    recommended_label: str
-    control_hint: str
-    direction: str | None
-    direction_label: str
-    moved: bool
-    blocked_reason: str
-    conc_delta: float
-    relax_delta: float
-    balance: float
-    level_completed: bool
-    run_completed: bool
-
-
-@dataclass(frozen=True)
-class LevelResult:
-    level_number: int
-    title: str
-    completed: bool
-    elapsed_seconds: int
-    target_seconds: int
-    score: int
-
-
-@dataclass(frozen=True)
-class MindMazeRunResult:
-    level_results: list[LevelResult]
-    final_score: int
-    completion_pct: int
-    total_seconds: int
 
 
 def _direction_between(src: Coord, dst: Coord) -> str:
@@ -260,6 +216,13 @@ class MindMazeController:
         self._last_phase: str | None = None
         self._results: list[LevelResult | None] = [None] * len(self._levels)
         self._finished = False
+        self._view_state = {
+            "level": self._levels[0],
+            "player": self._levels[0].start,
+            "goal": self._levels[0].goal,
+            "hint_direction": None,
+            "message": "",
+        }
 
     @property
     def current_level(self) -> MazeLevel:
@@ -276,6 +239,10 @@ class MindMazeController:
     @property
     def goal(self) -> Coord:
         return self.current_level.goal
+
+    @property
+    def view_state(self) -> dict:
+        return self._view_state
 
     @property
     def conc_baseline(self) -> float | None:
@@ -357,6 +324,13 @@ class MindMazeController:
         self._last_phase = None
         self._results = [None] * len(self._levels)
         self._finished = False
+        self._view_state = {
+            "level": self.current_level,
+            "player": self._player,
+            "goal": self.current_level.goal,
+            "hint_direction": None,
+            "message": "",
+        }
 
     def compute_intent(
         self,
@@ -469,10 +443,16 @@ class MindMazeController:
         if level_completed and not run_completed:
             phase, valid_exits, recommended_direction, control_hint = self.movement_policy()
 
+        view_state = {
+            "level": self.current_level,
+            "player": self._player,
+            "goal": self.current_level.goal,
+            "hint_direction": recommended_direction,
+            "message": blocked_reason,
+        }
+        self._view_state = view_state
         return GameplaySnapshot(
             level_number=self.current_level_number,
-            player=self._player,
-            goal=self.current_level.goal,
             phase=phase,
             phase_label=PHASE_LABELS[phase],
             recommended_direction=recommended_direction,
@@ -487,6 +467,7 @@ class MindMazeController:
             balance=balance,
             level_completed=level_completed,
             run_completed=run_completed,
+            view_state=view_state,
         )
 
     def finish_run(

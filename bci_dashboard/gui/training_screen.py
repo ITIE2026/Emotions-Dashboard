@@ -1,16 +1,14 @@
 """
-TrainingScreen - mobile-inspired training catalog with Mind Maze gameplay.
+TrainingScreen - shared EEG training suite with multiple neurofeedback games.
 """
 from __future__ import annotations
 
 import math
 import os
-import struct
 import tempfile
 import time
-import wave
 
-from PySide6.QtCore import QSettings, Qt, QTimer, QUrl
+from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -23,17 +21,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-try:
-    from PySide6.QtMultimedia import QSoundEffect
-except ImportError:  # pragma: no cover - depends on local Qt multimedia install
-    QSoundEffect = None
-
-from gui.mind_maze_controller import MindMazeController
+from gui.eeg_game_base import READY_STREAK_TARGET, TrainingGameSpec
+from gui.training_audio import AdaptiveMusicEngine
+from gui.training_games import TRAINING_SPECS, active_training_specs
 from gui.widgets.mind_maze_board import MindMazeBoard, MindMazeControlBar
+from gui.widgets.training_game_widgets import (
+    CalmCurrentWidget,
+    FullRebootWidget,
+    JumpBallWidget,
+    NeuroRacerWidget,
+    PatternRecallWidget,
+    SpaceShooterWidget,
+)
 from utils.config import ACCENT_GREEN, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY
-
-
-CALIBRATION_READY_STREAK = 3
 
 
 class TrainingCard(QFrame):
@@ -73,9 +73,7 @@ class TrainingCard(QFrame):
         eyebrow_lbl.setStyleSheet(f"font-size: 12px; color: {ACCENT_GREEN};")
         title_lbl = QLabel(title)
         title_lbl.setWordWrap(True)
-        title_lbl.setStyleSheet(
-            f"font-size: 20px; font-weight: bold; color: {TEXT_PRIMARY};"
-        )
+        title_lbl.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {TEXT_PRIMARY};")
         meta_lbl = QLabel(duration if enabled else f"{duration}   Coming soon")
         meta_lbl.setStyleSheet(f"font-size: 12px; color: {TEXT_SECONDARY};")
         description_lbl = QLabel(description)
@@ -185,6 +183,18 @@ class TrainingScreen(QWidget):
         },
     }
 
+    PREVIEW_CARDS = [
+        {
+            "section": "Improve concentration",
+            "eyebrow": "Skill builder",
+            "title": "Training skills",
+            "duration": "12 min",
+            "description": "A roadmap card for a future procedural-learning trainer.",
+            "preview_label": "FOCUS",
+            "colors": ("#61533f", "#c9aa7a"),
+        },
+    ]
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._latest_emotions: dict = {}
@@ -194,15 +204,13 @@ class TrainingScreen(QWidget):
         self._last_productivity_t = 0.0
         self._selected_soundtrack = "Kitten"
         self._level_started_at = 0.0
-        self._audio_dir = os.path.join(tempfile.gettempdir(), "bci_mind_maze_audio")
-        self._settings = QSettings("BCI Dashboard", "MindMaze")
-        self._controller = MindMazeController()
-
-        self._sound = None
-        if QSoundEffect is not None:
-            self._sound = QSoundEffect(self)
-            self._sound.setLoopCount(int(QSoundEffect.Loop.Infinite.value))
-            self._sound.setVolume(0.24)
+        self._audio_dir = os.path.join(tempfile.gettempdir(), "bci_training_audio")
+        self._settings = QSettings("BCI Dashboard", "EEGTrainingSuite")
+        self._game_specs = {spec.game_id: spec for spec in TRAINING_SPECS}
+        self._active_specs = active_training_specs()
+        self._current_game_id = "mind_maze"
+        self._controller = self._game_specs[self._current_game_id].controller_factory()
+        self._music_engine = AdaptiveMusicEngine(self, self._audio_dir, self.SOUNDTRACKS)
 
         self._calibration_timer = QTimer(self)
         self._calibration_timer.setInterval(250)
@@ -218,6 +226,10 @@ class TrainingScreen(QWidget):
         self._refresh_soundtrack_cards()
         self._refresh_live_labels()
         self._show_catalog()
+
+    @property
+    def _current_spec(self) -> TrainingGameSpec:
+        return self._game_specs[self._current_game_id]
 
     def _build_ui(self):
         self.setStyleSheet("background: #000000; color: #f8fafc;")
@@ -267,89 +279,45 @@ class TrainingScreen(QWidget):
         self._catalog_live_lbl.setStyleSheet(f"font-size: 14px; color: {TEXT_SECONDARY};")
         layout.addWidget(self._catalog_live_lbl)
 
-        layout.addWidget(self._section_header("Reduce stress and tension"))
-        layout.addWidget(
-            TrainingCard(
-                "Stress resistance",
-                "Course training for stress resistance",
-                "9 min",
-                "A long-form guided training card shown for visual parity with the reference app.",
-                "CALM",
-                ("#364b6a", "#8699b7"),
-                enabled=False,
-            )
-        )
-        layout.addWidget(
-            TrainingCard(
-                "Relax reset",
-                "A short training to relax and relieve stress",
-                "6 min",
-                "Preview card for future stress-reduction routines.",
-                "RESET",
-                ("#556b58", "#97c58e"),
-                enabled=False,
-            )
-        )
+        section_order = [
+            "Reduce stress and tension",
+            "Improve concentration",
+            "Arcade neurofeedback",
+            "Memory and cognitive control",
+            "Relax before sleep",
+        ]
+        for section in section_order:
+            cards = [spec for spec in self._active_specs if spec.section == section]
+            previews = [card for card in self.PREVIEW_CARDS if card["section"] == section]
+            if not cards and not previews:
+                continue
+            layout.addWidget(self._section_header(section))
+            for spec in cards:
+                layout.addWidget(
+                    TrainingCard(
+                        spec.eyebrow,
+                        spec.card_title,
+                        spec.duration,
+                        spec.description,
+                        spec.preview_label,
+                        spec.colors,
+                        enabled=True,
+                        callback=lambda game_id=spec.game_id: self._show_detail(game_id),
+                    )
+                )
+            for preview in previews:
+                layout.addWidget(
+                    TrainingCard(
+                        preview["eyebrow"],
+                        preview["title"],
+                        preview["duration"],
+                        preview["description"],
+                        preview["preview_label"],
+                        preview["colors"],
+                        enabled=False,
+                    )
+                )
 
-        layout.addWidget(self._section_header("Relax before sleep"))
-        layout.addWidget(
-            TrainingCard(
-                "Deep wind-down",
-                "Full reboot",
-                "25 min",
-                "A quiet bedtime training preview, included so the desktop catalog mirrors the original app structure.",
-                "SLEEP",
-                ("#5f463d", "#c19d82"),
-                enabled=False,
-            )
-        )
-
-        layout.addWidget(self._section_header("Improve concentration"))
-        layout.addWidget(
-            TrainingCard(
-                "Custom training",
-                "Custom training",
-                "25 min",
-                "A future live-feedback training card. The layout is present, but the gameplay flow is not enabled in this pass.",
-                "FOCUS",
-                ("#43536a", "#8ea7c7"),
-                enabled=False,
-            )
-        )
-        layout.addWidget(
-            TrainingCard(
-                "Mind Maze",
-                "A maze game for concentration",
-                "10 min",
-                "Navigate the maze by changing concentration and relaxation in real time. Concentrate to climb, relax to descend, and combine both states to unlock lateral movement.",
-                "MAZE",
-                ("#7b2d1d", "#db9054"),
-                enabled=True,
-                callback=self._show_detail,
-            )
-        )
-        layout.addWidget(
-            TrainingCard(
-                "Skill builder",
-                "Training for concentration",
-                "10 min",
-                "Another concentration card preview to keep the training page visually aligned with the screenshots.",
-                "TRAIN",
-                ("#6f5640", "#cfb38d"),
-                enabled=False,
-            )
-        )
-        layout.addWidget(
-            TrainingCard(
-                "Procedural memory",
-                "Training skills",
-                "25 min",
-                "A future training card for memory-linked practice and habit routines.",
-                "SKILL",
-                ("#5b514a", "#bba18d"),
-                enabled=False,
-            )
-        )
         layout.addStretch()
         outer.addWidget(panel, alignment=Qt.AlignHCenter)
         scroll.setWidget(container)
@@ -362,38 +330,30 @@ class TrainingScreen(QWidget):
         layout.setSpacing(18)
 
         layout.addWidget(self._device_badge())
-        hero = QLabel("MIND MAZE")
-        hero.setAlignment(Qt.AlignCenter)
-        hero.setFixedHeight(220)
-        hero.setStyleSheet(
-            "QLabel { border-radius: 36px; font-size: 44px; font-weight: bold; color: #fff8f0; "
-            "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #7f2f1c, stop:1 #1d0a08); }"
-        )
-        layout.addWidget(hero)
+        self._detail_hero = QLabel("MIND MAZE")
+        self._detail_hero.setAlignment(Qt.AlignCenter)
+        self._detail_hero.setFixedHeight(220)
+        layout.addWidget(self._detail_hero)
 
-        meta = QLabel("10 min   Live neurofeedback")
-        meta.setStyleSheet(f"font-size: 14px; color: {ACCENT_GREEN};")
-        layout.addWidget(meta)
+        self._detail_meta_lbl = QLabel("")
+        self._detail_meta_lbl.setStyleSheet(f"font-size: 14px; color: {ACCENT_GREEN};")
+        layout.addWidget(self._detail_meta_lbl)
 
-        title = QLabel("A maze game for concentration")
-        title.setWordWrap(True)
-        title.setStyleSheet("font-size: 46px; font-weight: bold; color: #f8fafc;")
-        layout.addWidget(title)
+        self._detail_title_lbl = QLabel("")
+        self._detail_title_lbl.setWordWrap(True)
+        self._detail_title_lbl.setStyleSheet("font-size: 46px; font-weight: bold; color: #f8fafc;")
+        layout.addWidget(self._detail_title_lbl)
 
-        body = QLabel(
-            "Concentration training strengthens the ability to maintain focus on a single task while relaxing away distracting thoughts and external noise.\n\n"
-            "Navigate the maze. Concentrate to move upward, relax to move downward, and combine the two states to unlock lateral movement."
-        )
-        body.setWordWrap(True)
-        body.setStyleSheet(f"font-size: 15px; color: {TEXT_SECONDARY};")
-        layout.addWidget(body)
+        self._detail_body_lbl = QLabel("")
+        self._detail_body_lbl.setWordWrap(True)
+        self._detail_body_lbl.setStyleSheet(f"font-size: 15px; color: {TEXT_SECONDARY};")
+        layout.addWidget(self._detail_body_lbl)
+
         layout.addWidget(self._section_header("Instruction"))
-        instruction = QLabel(
-            "Start calibration first. The game samples your concentration and relaxation baselines, then moves one maze tile every time you sustain a valid control state across two clean updates."
-        )
-        instruction.setWordWrap(True)
-        instruction.setStyleSheet(f"font-size: 14px; color: {TEXT_SECONDARY};")
-        layout.addWidget(instruction)
+        self._detail_instruction_lbl = QLabel("")
+        self._detail_instruction_lbl.setWordWrap(True)
+        self._detail_instruction_lbl.setStyleSheet(f"font-size: 14px; color: {TEXT_SECONDARY};")
+        layout.addWidget(self._detail_instruction_lbl)
 
         metrics_row = QHBoxLayout()
         metrics_row.setSpacing(12)
@@ -404,17 +364,20 @@ class TrainingScreen(QWidget):
         metrics_row.addStretch()
         layout.addLayout(metrics_row)
 
+        self._detail_availability_lbl = QLabel("")
+        self._detail_availability_lbl.setStyleSheet(f"font-size: 13px; color: {TEXT_SECONDARY};")
+        layout.addWidget(self._detail_availability_lbl)
+
         buttons = QHBoxLayout()
         buttons.setSpacing(12)
-        settings_btn = self._pill_button("Settings", filled=False)
-        settings_btn.clicked.connect(self._show_settings)
-        start_btn = self._pill_button("Start", filled=True)
-        start_btn.clicked.connect(self._begin_calibration_flow)
-        self._detail_start_btn = start_btn
+        self._detail_settings_btn = self._pill_button("Settings", filled=False)
+        self._detail_settings_btn.clicked.connect(self._show_settings)
+        self._detail_start_btn = self._pill_button("Start", filled=True)
+        self._detail_start_btn.clicked.connect(self._begin_calibration_flow)
         back_btn = self._pill_button("Back", filled=False)
         back_btn.clicked.connect(self._show_catalog)
-        buttons.addWidget(settings_btn)
-        buttons.addWidget(start_btn)
+        buttons.addWidget(self._detail_settings_btn)
+        buttons.addWidget(self._detail_start_btn)
         buttons.addWidget(back_btn)
         layout.addLayout(buttons)
         layout.addStretch()
@@ -429,10 +392,10 @@ class TrainingScreen(QWidget):
         layout.addWidget(self._device_badge())
         title = QLabel("Settings")
         title.setStyleSheet("font-size: 46px; font-weight: bold; color: #f8fafc;")
-        subtitle = QLabel("A maze game for concentration")
-        subtitle.setStyleSheet(f"font-size: 16px; color: {TEXT_SECONDARY};")
+        self._settings_subtitle_lbl = QLabel("")
+        self._settings_subtitle_lbl.setStyleSheet(f"font-size: 16px; color: {TEXT_SECONDARY};")
         layout.addWidget(title)
-        layout.addWidget(subtitle)
+        layout.addWidget(self._settings_subtitle_lbl)
 
         card = QFrame()
         card.setStyleSheet(
@@ -443,13 +406,11 @@ class TrainingScreen(QWidget):
         card_layout.setSpacing(18)
         heading = QLabel("Choose a soundtrack")
         heading.setStyleSheet("font-size: 28px; font-weight: bold; color: #f8fafc;")
-        copy = QLabel(
-            "Select the ambient soundtrack used during calibration and Mind Maze gameplay. The app keeps the chosen preset between runs."
-        )
-        copy.setWordWrap(True)
-        copy.setStyleSheet(f"font-size: 14px; color: {TEXT_SECONDARY};")
+        self._settings_copy_lbl = QLabel("")
+        self._settings_copy_lbl.setWordWrap(True)
+        self._settings_copy_lbl.setStyleSheet(f"font-size: 14px; color: {TEXT_SECONDARY};")
         card_layout.addWidget(heading)
-        card_layout.addWidget(copy)
+        card_layout.addWidget(self._settings_copy_lbl)
 
         self._soundtrack_cards = []
         for name, spec in self.SOUNDTRACKS.items():
@@ -461,7 +422,7 @@ class TrainingScreen(QWidget):
         buttons = QHBoxLayout()
         buttons.setSpacing(12)
         back_btn = self._pill_button("Back", filled=False)
-        back_btn.clicked.connect(self._show_detail)
+        back_btn.clicked.connect(lambda: self._show_detail(self._current_game_id))
         save_btn = self._pill_button("Save", filled=True)
         save_btn.clicked.connect(self._save_settings)
         buttons.addWidget(back_btn)
@@ -478,13 +439,13 @@ class TrainingScreen(QWidget):
         layout.setSpacing(18)
 
         layout.addWidget(self._device_badge())
-        title = QLabel("Calibration...")
-        title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("font-size: 42px; font-weight: bold; color: #f8fafc;")
-        subtitle = QLabel("Relax and hold the indicator in the ready zone to begin training.")
-        subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setWordWrap(True)
-        subtitle.setStyleSheet(f"font-size: 16px; color: {TEXT_SECONDARY};")
+        self._calibration_title_lbl = QLabel("Calibration...")
+        self._calibration_title_lbl.setAlignment(Qt.AlignCenter)
+        self._calibration_title_lbl.setStyleSheet("font-size: 42px; font-weight: bold; color: #f8fafc;")
+        self._calibration_subtitle_lbl = QLabel("")
+        self._calibration_subtitle_lbl.setAlignment(Qt.AlignCenter)
+        self._calibration_subtitle_lbl.setWordWrap(True)
+        self._calibration_subtitle_lbl.setStyleSheet(f"font-size: 16px; color: {TEXT_SECONDARY};")
         self._calibration_counter_lbl = QLabel("00:05")
         self._calibration_counter_lbl.setAlignment(Qt.AlignCenter)
         self._calibration_counter_lbl.setStyleSheet("font-size: 34px; font-weight: bold; color: #f8fafc;")
@@ -497,8 +458,8 @@ class TrainingScreen(QWidget):
         self._calibration_status_lbl.setWordWrap(True)
         self._calibration_status_lbl.setStyleSheet(f"font-size: 14px; color: {TEXT_SECONDARY};")
 
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
+        layout.addWidget(self._calibration_title_lbl)
+        layout.addWidget(self._calibration_subtitle_lbl)
         layout.addStretch()
         layout.addWidget(self._calibration_counter_lbl)
         layout.addWidget(self._calibration_value_lbl)
@@ -527,13 +488,31 @@ class TrainingScreen(QWidget):
         layout.addWidget(self._game_level_lbl)
         layout.addWidget(self._game_time_lbl)
 
+        self._game_views = QStackedWidget()
         self._maze_board = MindMazeBoard()
-        self._maze_board.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(self._maze_board, stretch=1)
+        self._current_widget = CalmCurrentWidget()
+        self._full_reboot_widget = FullRebootWidget()
+        self._space_shooter_widget = SpaceShooterWidget()
+        self._jump_ball_widget = JumpBallWidget()
+        self._neuro_racer_widget = NeuroRacerWidget()
+        self._pattern_widget = PatternRecallWidget()
+        self._game_widget_map = {
+            "mind_maze": self._maze_board,
+            "calm_current": self._current_widget,
+            "full_reboot": self._full_reboot_widget,
+            "space_shooter": self._space_shooter_widget,
+            "jump_ball": self._jump_ball_widget,
+            "neuro_racer": self._neuro_racer_widget,
+            "pattern_recall": self._pattern_widget,
+        }
+        for widget in self._game_widget_map.values():
+            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self._game_views.addWidget(widget)
+        layout.addWidget(self._game_views, stretch=1)
 
         self._game_bar = MindMazeControlBar()
         layout.addWidget(self._game_bar)
-        self._game_status_lbl = QLabel("Concentrate to move upward, relax to move downward.")
+        self._game_status_lbl = QLabel("Waiting for gameplay.")
         self._game_status_lbl.setAlignment(Qt.AlignCenter)
         self._game_status_lbl.setWordWrap(True)
         self._game_status_lbl.setStyleSheet(f"font-size: 15px; color: {TEXT_SECONDARY};")
@@ -658,7 +637,7 @@ class TrainingScreen(QWidget):
 
     def _save_settings(self):
         self._settings.setValue("soundtrack", self._selected_soundtrack)
-        self._show_detail()
+        self._show_detail(self._current_game_id)
 
     def _select_soundtrack(self, name: str):
         self._selected_soundtrack = name
@@ -677,29 +656,57 @@ class TrainingScreen(QWidget):
             if fresh
             else "Waiting for concentration and relaxation metrics."
         )
-        if hasattr(self, "_catalog_live_lbl"):
-            self._catalog_live_lbl.setText(live_text)
-        if hasattr(self, "_detail_conc_lbl"):
-            self._detail_conc_lbl.setText(f"Concentration: {concentration:.1f}")
-        if hasattr(self, "_detail_relax_lbl"):
-            self._detail_relax_lbl.setText(f"Relaxation: {relaxation:.1f}")
-        if hasattr(self, "_detail_start_btn"):
-            self._detail_start_btn.setEnabled(fresh)
+        self._catalog_live_lbl.setText(live_text)
+        self._detail_conc_lbl.setText(f"Concentration: {concentration:.1f}")
+        self._detail_relax_lbl.setText(f"Relaxation: {relaxation:.1f}")
+        self._detail_start_btn.setEnabled(fresh)
+        self._detail_availability_lbl.setText(
+            "Live metrics detected. Start is ready."
+            if fresh
+            else "Waiting for clean live metrics before training can start."
+        )
+
+    def _select_game(self, game_id: str):
+        if self._current_game_id == game_id:
+            return
+        self._current_game_id = game_id
+        self._controller = self._game_specs[game_id].controller_factory()
 
     def _show_catalog(self):
         self._stop_runtime_loops()
         self._stack.setCurrentWidget(self._catalog_page)
         self._refresh_live_labels()
 
-    def _show_detail(self):
+    def _show_detail(self, game_id: str | None = None):
         self._stop_runtime_loops()
+        if game_id is not None:
+            self._select_game(game_id)
+        self._update_detail_content()
         self._stack.setCurrentWidget(self._detail_page)
         self._refresh_live_labels()
 
     def _show_settings(self):
         self._stop_runtime_loops()
+        self._settings_subtitle_lbl.setText(self._current_spec.detail_title)
+        self._settings_copy_lbl.setText(
+            f"Select the adaptive soundtrack used during calibration and {self._current_spec.card_title} gameplay. "
+            "The chosen preset is saved between runs, and its layers respond live to your EEG state."
+        )
         self._stack.setCurrentWidget(self._settings_page)
         self._refresh_soundtrack_cards()
+
+    def _update_detail_content(self):
+        spec = self._current_spec
+        self._detail_hero.setText(spec.preview_label)
+        self._detail_hero.setStyleSheet(
+            "QLabel { border-radius: 36px; font-size: 44px; font-weight: bold; color: #fff8f0; "
+            f"background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {spec.colors[0]}, stop:1 {spec.colors[1]}); }}"
+        )
+        self._detail_meta_lbl.setText(f"{spec.duration}   Live neurofeedback")
+        self._detail_title_lbl.setText(spec.detail_title)
+        self._detail_body_lbl.setText(spec.detail_body)
+        self._detail_instruction_lbl.setText(spec.instructions)
+        self._detail_settings_btn.setEnabled(spec.soundtrack_enabled)
 
     def _begin_calibration_flow(self):
         if not self._has_fresh_metrics():
@@ -707,14 +714,16 @@ class TrainingScreen(QWidget):
             return
         self._controller.reset_run()
         self._controller.begin_calibration()
+        self._calibration_title_lbl.setText(f"{self._current_spec.card_title} Calibration")
+        self._calibration_subtitle_lbl.setText(self._current_spec.calibration_copy)
         self._update_calibration_ui(None)
-        self._play_selected_track()
+        self._music_engine.start(self._selected_soundtrack)
         self._stack.setCurrentWidget(self._calibration_page)
         self._calibration_timer.start()
 
     def _cancel_calibration(self):
         self._stop_runtime_loops()
-        self._show_detail()
+        self._show_detail(self._current_game_id)
 
     def _cancel_gameplay(self):
         elapsed = self._current_level_elapsed()
@@ -724,20 +733,27 @@ class TrainingScreen(QWidget):
     def _show_result(self, result):
         self._result_score_lbl.setText(f"{result.final_score}%")
         self._result_completion_lbl.setText(
-            f"{result.completion_pct}% complete   Total time {self._format_seconds(result.total_seconds)}"
+            f"{self._current_spec.card_title}   {result.completion_pct}% complete   Total time {self._format_seconds(result.total_seconds)}"
         )
-        for index, level_result in enumerate(result.level_results):
-            name_lbl, score_lbl, time_lbl, target_lbl = self._result_cards[index]
-            name_lbl.setText(level_result.title)
-            score_lbl.setText(f"{level_result.score}%")
-            time_lbl.setText(
-                f"Time {self._format_seconds(level_result.elapsed_seconds)}"
-                if level_result.elapsed_seconds
-                else "Time --"
-            )
-            target_lbl.setText(
-                f"Target {level_result.target_seconds}s   {'Complete' if level_result.completed else 'Incomplete'}"
-            )
+        for index, card in enumerate(self._result_cards):
+            name_lbl, score_lbl, time_lbl, target_lbl = card
+            if index < len(result.level_results):
+                level_result = result.level_results[index]
+                name_lbl.setText(level_result.title)
+                score_lbl.setText(f"{level_result.score}%")
+                time_lbl.setText(
+                    f"Time {self._format_seconds(level_result.elapsed_seconds)}"
+                    if level_result.elapsed_seconds
+                    else "Time --"
+                )
+                target_lbl.setText(
+                    f"Target {level_result.target_seconds}s   {'Complete' if level_result.completed else 'Incomplete'}"
+                )
+            else:
+                name_lbl.setText(f"Stage {index + 1}")
+                score_lbl.setText("--")
+                time_lbl.setText("Time --")
+                target_lbl.setText("--")
         self._stack.setCurrentWidget(self._result_page)
 
     def _tick_calibration(self):
@@ -750,6 +766,7 @@ class TrainingScreen(QWidget):
             self._calibration_timer.stop()
             self._controller.start_game()
             self._level_started_at = time.monotonic()
+            self._switch_game_widget()
             self._update_gameplay_labels()
             self._stack.setCurrentWidget(self._gameplay_page)
             self._gameplay_timer.start()
@@ -785,16 +802,17 @@ class TrainingScreen(QWidget):
                 0.0,
                 0.0,
                 "Relax to enter the ready zone",
-                "Collecting baseline samples...",
+                self._current_spec.calibration_copy,
                 muted=not self._has_fresh_metrics(),
             )
+            self._update_audio_mix(0.0, 0.0, {"music_scene": "calibration", "serenity": 50.0, "restlessness": 18.0})
             return
 
         if snapshot.conc_baseline is None:
             remaining_samples = max(0, snapshot.samples_needed - snapshot.sample_count)
             seconds_left = math.ceil(remaining_samples / 4)
         else:
-            seconds_left = max(0, CALIBRATION_READY_STREAK - snapshot.ready_streak)
+            seconds_left = max(0, READY_STREAK_TARGET - snapshot.ready_streak)
         self._calibration_counter_lbl.setText(f"00:{seconds_left:02d}")
         self._calibration_value_lbl.setText(f"Ready delta: {snapshot.ready_delta:+.1f}")
         self._calibration_status_lbl.setText(snapshot.status)
@@ -804,94 +822,60 @@ class TrainingScreen(QWidget):
             concentration - relaxation,
             conc_delta,
             relax_delta,
-            f"Ready hold {snapshot.ready_streak}/{CALIBRATION_READY_STREAK}",
+            f"Ready hold {snapshot.ready_streak}/{READY_STREAK_TARGET}",
             snapshot.status,
             muted=(not self._has_fresh_metrics() or self._has_artifacts()),
         )
+        self._update_audio_mix(conc_delta, relax_delta, {"music_scene": "calibration", "serenity": 50.0, "restlessness": 18.0})
+
+    def _switch_game_widget(self):
+        self._game_views.setCurrentWidget(self._game_widget_map[self._current_game_id])
+
+    def _apply_view_state(self, view_state: dict):
+        widget = self._game_widget_map[self._current_game_id]
+        if hasattr(widget, "set_view_state"):
+            widget.set_view_state(view_state)
+        else:
+            widget.set_state(view_state)
 
     def _update_gameplay_labels(self, snapshot=None):
-        level = self._controller.current_level
-        self._game_level_lbl.setText(level.title)
+        self._switch_game_widget()
+        self._game_level_lbl.setText(self._controller.current_level.title)
         self._game_time_lbl.setText(self._format_seconds(self._current_level_elapsed()))
-        message = ""
-        status = "Concentrate to move upward, relax to move downward."
         intent_label = "Hold steady"
+        status = self._current_spec.instructions
         muted = False
         conc_delta = 0.0
         relax_delta = 0.0
         balance = 0.0
-        hint_direction = None
+        view_state = getattr(self._controller, "view_state", {})
         if snapshot is not None:
-            message = snapshot.blocked_reason
-            if snapshot.level_completed:
-                message = "Level cleared. Preparing the next maze."
-            status = snapshot.blocked_reason or (
-                snapshot.control_hint
-            )
             intent_label = (
                 f"{snapshot.phase_label} • {snapshot.recommended_label}"
-                if snapshot.recommended_direction
+                if snapshot.recommended_label
                 else snapshot.phase_label
             )
+            status = snapshot.blocked_reason or snapshot.control_hint
             muted = bool(snapshot.blocked_reason and not snapshot.direction)
             conc_delta = snapshot.conc_delta
             relax_delta = snapshot.relax_delta
             balance = snapshot.balance
-            hint_direction = snapshot.recommended_direction
-        self._maze_board.set_state(
-            level,
-            self._controller.player,
-            self._controller.goal,
-            message,
-            hint_direction=hint_direction,
-        )
+            view_state = snapshot.view_state
+        self._apply_view_state(view_state)
         self._game_bar.set_state(balance, conc_delta, relax_delta, intent_label, status, muted)
-        self._game_status_lbl.setText(
-            status
-            if snapshot is not None
-            else "Concentrate to move upward, relax to move downward, and combine both states to shift across the maze."
-        )
+        self._game_status_lbl.setText(status)
+        self._update_audio_mix(conc_delta, relax_delta, view_state)
 
     def _ensure_audio_assets(self):
-        os.makedirs(self._audio_dir, exist_ok=True)
-        for name, spec in self.SOUNDTRACKS.items():
-            path = self._soundtrack_path(name)
-            if not os.path.exists(path):
-                carrier, accent, depth = spec["tone"]
-                self._write_tone(path, carrier, accent, depth)
+        self._music_engine.ensure_assets()
 
-    def _soundtrack_path(self, name: str):
-        return os.path.join(self._audio_dir, f"{name.lower().replace(' ', '_')}.wav")
-
-    def _write_tone(self, path: str, carrier: float, accent: float, depth: float):
-        sample_rate = 22050
-        duration = 4
-        frames = bytearray()
-        for index in range(sample_rate * duration):
-            t = index / sample_rate
-            envelope = 0.58 + 0.42 * math.sin(2 * math.pi * depth * t)
-            sample = (
-                0.34 * math.sin(2 * math.pi * carrier * t)
-                + 0.18 * math.sin(2 * math.pi * accent * t)
-                + 0.12 * math.sin(2 * math.pi * (carrier / 2.0) * t)
-            ) * envelope
-            sample = max(-1.0, min(1.0, sample))
-            frames.extend(struct.pack("<h", int(sample * 32767)))
-        with wave.open(path, "wb") as wav_file:
-            wav_file.setnchannels(1)
-            wav_file.setsampwidth(2)
-            wav_file.setframerate(sample_rate)
-            wav_file.writeframes(bytes(frames))
-
-    def _play_selected_track(self):
-        if self._sound is None:
-            return
-        path = self._soundtrack_path(self._selected_soundtrack)
-        if not os.path.exists(path):
-            return
-        self._sound.stop()
-        self._sound.setSource(QUrl.fromLocalFile(path))
-        self._sound.play()
+    def _update_audio_mix(self, conc_delta: float, relax_delta: float, view_state: dict | None):
+        self._music_engine.update_mix(
+            self._current_spec.music_profile,
+            conc_delta,
+            relax_delta,
+            view_state or {},
+        )
 
     def _stop_runtime_loops(self):
         self._calibration_timer.stop()
@@ -930,5 +914,4 @@ class TrainingScreen(QWidget):
         self._latest_physio = data or {}
 
     def stop_audio(self):
-        if self._sound is not None:
-            self._sound.stop()
+        self._music_engine.stop()

@@ -29,6 +29,16 @@ class MindMazeBoard(QWidget):
         self._hint_direction = hint_direction
         self.update()
 
+    def set_view_state(self, view_state: dict):
+        state = view_state or {}
+        self.set_state(
+            state.get("level"),
+            state.get("player", (0, 0)),
+            state.get("goal", (0, 0)),
+            state.get("message", ""),
+            hint_direction=state.get("hint_direction"),
+        )
+
     def paintEvent(self, event):  # noqa: N802 - Qt API
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
