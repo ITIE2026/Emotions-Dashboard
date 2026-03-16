@@ -18,12 +18,15 @@ class CardioHandler(QObject):
     """Create **after** Device, **before** device.start()."""
 
     cardio_updated = Signal(dict)
+    ppg_updated = Signal(object)
     calibrated = Signal()
 
     def __init__(self, device, lib, parent=None):
         super().__init__(parent)
         self._cardio = Cardio(device, lib)
+        self._is_calibrated = False
         self._cardio.set_on_indexes_update(self._on_data)
+        self._cardio.set_on_ppg(self._on_ppg)
         self._cardio.set_on_calibrated(self._on_calibrated)
 
     # ── Capsule callbacks ─────────────────────────────────────────────
@@ -38,9 +41,17 @@ class CardioHandler(QObject):
                 "motionArtifacts": bool(data.motionArtifacts),
                 "metricsAvailable": bool(data.metricsAvailable),
                 "timestamp": int(data.timestampMilli),
+                "isCalibrated": bool(self._is_calibrated),
             })
         except Exception:
             pass
 
+    def _on_ppg(self, cardio_obj, ppg_timed_data):
+        try:
+            self.ppg_updated.emit(ppg_timed_data)
+        except Exception:
+            pass
+
     def _on_calibrated(self, cardio_obj):
+        self._is_calibrated = True
         self.calibrated.emit()

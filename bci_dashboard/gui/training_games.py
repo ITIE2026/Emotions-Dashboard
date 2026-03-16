@@ -557,54 +557,77 @@ class ArcadeTrainingController(BaseTrainingController):
 
 class SpaceShooterController(ArcadeTrainingController):
     LEVELS = [
-        TrainingLevel("Sector 1", 50),
-        TrainingLevel("Sector 2", 60),
-        TrainingLevel("Sector 3", 70),
+        TrainingLevel("Sector 1", 52),
+        TrainingLevel("Sector 2", 62),
+        TrainingLevel("Sector 3", 72),
     ]
     CONFIGS = [
-        {"track_length": 96.0, "enemies": [(16.0, 1), (30.0, 0), (44.0, 2), (58.0, 1), (72.0, 0), (86.0, 2)]},
         {
-            "track_length": 118.0,
-            "enemies": [(14.0, 1), (26.0, 2), (38.0, 0), (50.0, 1), (64.0, 2), (78.0, 0), (92.0, 1), (108.0, 2)],
+            "star_thresholds": [280, 520, 760],
+            "wave_speed": 6.4,
+            "waves": [
+                [(1, -4.0, 1, None, 60), (3, -18.0, 1, None, 60), (5, -32.0, 1, "repair", 70)],
+                [(2, -8.0, 1, None, 70), (4, -20.0, 1, "weapon", 80), (2, -34.0, 1, None, 70), (4, -46.0, 1, None, 70)],
+                [(1, -10.0, 2, None, 120), (3, -22.0, 1, None, 80), (5, -34.0, 2, None, 120)],
+            ],
         },
         {
-            "track_length": 138.0,
-            "enemies": [
-                (12.0, 1),
-                (24.0, 0),
-                (34.0, 2),
-                (46.0, 1),
-                (58.0, 0),
-                (70.0, 2),
-                (82.0, 1),
-                (94.0, 0),
-                (108.0, 2),
-                (124.0, 1),
+            "star_thresholds": [360, 640, 920],
+            "wave_speed": 7.2,
+            "waves": [
+                [(0, -6.0, 1, None, 70), (3, -20.0, 1, None, 70), (6, -34.0, 1, None, 70), (3, -48.0, 2, "weapon", 120)],
+                [(1, -8.0, 1, None, 80), (2, -18.0, 1, None, 80), (4, -28.0, 1, None, 80), (5, -38.0, 1, "repair", 90), (3, -54.0, 2, None, 130)],
+                [(2, -10.0, 2, None, 140), (3, -26.0, 3, None, 180), (4, -42.0, 2, None, 140)],
+            ],
+        },
+        {
+            "star_thresholds": [440, 760, 1080],
+            "wave_speed": 8.0,
+            "waves": [
+                [(1, -4.0, 1, None, 80), (3, -16.0, 1, None, 80), (5, -28.0, 1, None, 80), (3, -40.0, 2, None, 130)],
+                [(0, -8.0, 1, None, 90), (2, -20.0, 2, None, 120), (4, -32.0, 2, "weapon", 120), (6, -44.0, 1, None, 90)],
+                [(1, -10.0, 2, None, 140), (3, -24.0, 3, "repair", 200), (5, -38.0, 2, None, 140), (3, -56.0, 3, None, 220)],
             ],
         },
     ]
+    FIELD_WIDTH = 7
+    FIELD_HEIGHT = 120.0
+    SHIP_Y = 104.0
 
     def __init__(self):
         super().__init__(self.LEVELS)
 
     def _reset_level_state(self) -> None:
         config = self.CONFIGS[self._level_index]
-        self._track_length = config["track_length"]
-        self._progress = 0.0
-        self._ship_lane = 1
-        self._charge = 26.0
-        self._shield = 12.0
-        self._integrity = 100.0
+        self._star_thresholds = list(config["star_thresholds"])
+        self._wave_speed = float(config["wave_speed"])
+        self._wave_scripts = config["waves"]
+        self._wave_index = 0
+        self._wave_count = len(self._wave_scripts)
+        self._ship_slot = self.FIELD_WIDTH // 2
+        self._weapon_level = 1
+        self._burst_ticks = 0
+        self._hull = 4
+        self._score = 0
+        self._score_popups: list[dict] = []
         self._shots_fired = 0
         self._destroyed = 0
-        self._blocked = 0
-        self._damage_taken = 0
+        self._pickups_collected = 0
+        self._hits_taken = 0
+        self._wave_score = 0
         self._streak = 0
         self._best_streak = 0
-        self._enemies = [
-            {"progress_mark": mark, "lane": lane, "status": "active"}
-            for mark, lane in config["enemies"]
-        ]
+        self._overlay_kind: str | None = None
+        self._overlay_title = ""
+        self._overlay_subtitle = ""
+        self._overlay_timer = 0
+        self._pending_outcome: str | None = None
+        self._message = "Glide the ship, keep the burst ready, and clear every wave."
+        self._enemies: list[dict] = []
+        self._projectiles: list[dict] = []
+        self._pickups: list[dict] = []
+        self._explosions: list[dict] = []
+        self._spawn_wave(self._wave_index)
         self._view_state = self._space_view_state()
 
     def update_gameplay(
@@ -622,60 +645,46 @@ class SpaceShooterController(ArcadeTrainingController):
         moved = False
         level_completed = False
         run_completed = False
-        control_hint = (
-            "Concentrate to climb and charge, relax to descend and build shield, and hold steady to fire when an enemy lines up."
-        )
+        control_hint = "Concentrate to drift right, relax to drift left, and hold steady to trigger a burst volley."
 
-        if stale:
-            blocked_reason = "Metrics are stale. Shooter paused."
+        if self._overlay_kind is not None:
+            level_completed, run_completed = self._tick_overlay(elapsed_seconds)
+        elif stale:
+            blocked_reason = "Metrics are stale. Space Shooter paused."
         elif not valid:
-            blocked_reason = "Artifacts detected. Shooter paused."
+            blocked_reason = "Artifacts detected. Space Shooter paused."
         else:
             intent = self._arcade_intent(conc_delta, relax_delta)
             if intent == "focus":
-                self._progress += 4.4
                 if self._stabilize_intent(intent):
-                    self._ship_lane = max(0, self._ship_lane - 1)
-                    self._charge = min(100.0, self._charge + 24.0)
-                    self._shield = max(0.0, self._shield - 6.0)
-                    action = "boost"
+                    self._ship_slot = min(self.FIELD_WIDTH - 1, self._ship_slot + 1)
+                    self._message = "Shifted into the right corridor."
+                    action = "right"
                     moved = True
             elif intent == "relax":
-                self._progress += 3.7
                 if self._stabilize_intent(intent):
-                    self._ship_lane = min(2, self._ship_lane + 1)
-                    self._shield = min(100.0, self._shield + 22.0)
-                    self._charge = max(0.0, self._charge - 4.0)
-                    action = "shield"
+                    self._ship_slot = max(0, self._ship_slot - 1)
+                    self._message = "Drifted back toward the left."
+                    action = "left"
                     moved = True
             elif intent == "steady":
                 if self._stabilize_intent(intent):
+                    self._burst_ticks = max(self._burst_ticks, 4)
+                    self._message = "Burst cannons engaged."
                     action = "fire"
                     moved = True
-                    self._fire_if_aligned()
-                self._progress += 3.9
-                self._charge = max(0.0, self._charge - 1.5)
-                self._shield = max(0.0, self._shield - 1.0)
             else:
                 self._stabilize_intent(None)
-                self._progress += 3.2
-                self._charge = max(0.0, self._charge - 0.7)
-                self._shield = max(0.0, self._shield - 0.6)
 
-            self._resolve_passed_enemies()
-            self._progress = min(self._track_length, self._progress)
-
-            if self._progress >= self._track_length:
-                total_enemies = max(1, len(self._enemies))
-                combat_ratio = (self._destroyed + (self._blocked * 0.7)) / total_enemies
-                integrity_bonus = self._integrity * 0.22
-                streak_bonus = min(18.0, self._best_streak * 2.4)
-                damage_penalty = self._damage_taken * 2.0
-                time_penalty = max(0, elapsed_seconds - self.current_level.target_seconds)
-                score = 40 + (combat_ratio * 35.0) + integrity_bonus + streak_bonus - damage_penalty - time_penalty
-                self._record_level_result(True, elapsed_seconds, score_override=score)
-                level_completed = True
-                run_completed = self._advance_level()
+            self._spawn_auto_fire()
+            self._advance_projectiles()
+            self._advance_pickups()
+            self._advance_enemies()
+            self._tick_effects()
+            if self._hull <= 0 and self._overlay_kind is None:
+                self._start_failure_overlay("Hull breached before the next wave.")
+            elif not self._enemies and self._overlay_kind is None:
+                self._start_wave_overlay()
 
         self._view_state = self._space_view_state(message=blocked_reason, music_bias=relax_delta - conc_delta)
         recommended_label = self._space_recommendation(action)
@@ -693,86 +702,240 @@ class SpaceShooterController(ArcadeTrainingController):
             recommended_label=recommended_label,
         )
 
-    def _fire_if_aligned(self) -> None:
-        self._shots_fired += 1
-        if self._charge < 18.0:
-            self._streak = 0
+    def _spawn_wave(self, wave_index: int) -> None:
+        self._enemies = []
+        for slot, y_pos, hp, drop, score in self._wave_scripts[wave_index]:
+            self._enemies.append(
+                {
+                    "slot": slot,
+                    "y": y_pos,
+                    "hp": hp,
+                    "max_hp": hp,
+                    "drop": drop,
+                    "score": score,
+                    "speed": self._wave_speed + (0.35 * max(0, hp - 1)),
+                }
+            )
+        self._projectiles = []
+        self._pickups = []
+        self._explosions = []
+        self._wave_score = 0
+
+    def _tick_overlay(self, elapsed_seconds: float) -> tuple[bool, bool]:
+        self._tick_effects()
+        if self._overlay_timer > 0:
+            self._overlay_timer -= 1
+        if self._overlay_timer > 0:
+            return False, False
+
+        outcome = self._pending_outcome
+        self._overlay_kind = None
+        self._overlay_title = ""
+        self._overlay_subtitle = ""
+        self._pending_outcome = None
+        if outcome == "wave":
+            self._wave_index += 1
+            self._message = f"Wave {self._wave_index + 1} incoming."
+            self._spawn_wave(self._wave_index)
+            return False, False
+        if outcome == "failure":
+            self._record_level_result(False, elapsed_seconds, score_override=0)
+            self._finished = True
+            return False, True
+        if outcome == "level_complete":
+            time_penalty = max(0, elapsed_seconds - self.current_level.target_seconds)
+            score = (
+                46
+                + min(32.0, self._score / 28.0)
+                + (self._hull * 6.0)
+                + min(16.0, self._best_streak * 2.0)
+                - (self._hits_taken * 5.0)
+                - time_penalty
+            )
+            self._record_level_result(True, elapsed_seconds, score_override=score)
+            level_completed = True
+            run_completed = self._advance_level()
+            return level_completed, run_completed
+        return False, False
+
+    def _spawn_auto_fire(self) -> None:
+        slots = {self._ship_slot}
+        if self._weapon_level >= 2:
+            slots.add(max(0, self._ship_slot - 1))
+        if self._weapon_level >= 3:
+            slots.add(min(self.FIELD_WIDTH - 1, self._ship_slot + 1))
+        if self._burst_ticks > 0:
+            slots.add(max(0, self._ship_slot - 1))
+            slots.add(min(self.FIELD_WIDTH - 1, self._ship_slot + 1))
+            power = 2
+            self._burst_ticks -= 1
+        else:
+            power = 1
+        for slot in sorted(slots):
+            self._projectiles.append({"slot": slot, "y": self.SHIP_Y - 10.0, "power": power})
+            self._shots_fired += 1
+
+    def _advance_projectiles(self) -> None:
+        survivors = []
+        for projectile in self._projectiles:
+            projectile["y"] -= 15.0
+            target = None
+            for enemy in self._enemies:
+                if enemy["slot"] == projectile["slot"] and abs(enemy["y"] - projectile["y"]) <= 8.0:
+                    target = enemy
+                    break
+            if target is not None:
+                target["hp"] -= projectile["power"]
+                if target["hp"] <= 0:
+                    self._destroy_enemy(target)
+                continue
+            if projectile["y"] > -10.0:
+                survivors.append(projectile)
+        self._projectiles = survivors
+
+    def _destroy_enemy(self, enemy: dict) -> None:
+        if enemy not in self._enemies:
             return
+        self._enemies.remove(enemy)
+        self._destroyed += 1
+        self._wave_score += int(enemy["score"])
+        self._score += int(enemy["score"])
+        self._streak += 1
+        self._best_streak = max(self._best_streak, self._streak)
+        self._explosions.append({"slot": enemy["slot"], "y": enemy["y"], "ticks": 5})
+        self._score_popups.append({"slot": enemy["slot"], "y": enemy["y"], "text": f"+{int(enemy['score'])}", "ticks": 6})
+        if enemy["drop"] is not None:
+            self._pickups.append({"slot": enemy["slot"], "y": enemy["y"], "kind": enemy["drop"], "ticks": 18})
 
+    def _advance_pickups(self) -> None:
+        survivors = []
+        for pickup in self._pickups:
+            pickup["y"] += 7.0
+            pickup["ticks"] = max(0, pickup["ticks"] - 1)
+            if pickup["slot"] == self._ship_slot and abs(pickup["y"] - self.SHIP_Y) <= 9.0:
+                self._collect_pickup(pickup["kind"])
+                continue
+            if pickup["y"] <= self.FIELD_HEIGHT + 10.0 and pickup["ticks"] > 0:
+                survivors.append(pickup)
+        self._pickups = survivors
+
+    def _collect_pickup(self, kind: str) -> None:
+        self._pickups_collected += 1
+        self._score += 25
+        self._score_popups.append({"slot": self._ship_slot, "y": self.SHIP_Y - 12.0, "text": "+25", "ticks": 5})
+        if kind == "weapon":
+            self._weapon_level = min(3, self._weapon_level + 1)
+            self._message = "Weapon upgrade collected."
+        else:
+            self._hull = min(4, self._hull + 1)
+            self._message = "Hull repair collected."
+
+    def _advance_enemies(self) -> None:
+        survivors = []
         for enemy in self._enemies:
-            if enemy["status"] != "active":
-                continue
-            distance = enemy["progress_mark"] - self._progress
-            if 0.0 <= distance <= 8.0 and enemy["lane"] == self._ship_lane:
-                enemy["status"] = "destroyed"
-                self._charge = max(0.0, self._charge - 18.0)
-                self._destroyed += 1
-                self._streak += 1
-                self._best_streak = max(self._best_streak, self._streak)
-                return
-
-        self._streak = 0
-
-    def _resolve_passed_enemies(self) -> None:
-        for enemy in self._enemies:
-            if enemy["status"] != "active":
-                continue
-            if enemy["progress_mark"] > (self._progress - 4.0):
-                continue
-            if enemy["lane"] == self._ship_lane:
-                if self._shield >= 16.0:
-                    enemy["status"] = "blocked"
-                    self._shield = max(0.0, self._shield - 16.0)
-                    self._blocked += 1
-                else:
-                    enemy["status"] = "hit"
-                    self._integrity = max(0.0, self._integrity - 14.0)
-                    self._damage_taken += 1
+            enemy["y"] += enemy["speed"]
+            if enemy["y"] >= self.SHIP_Y - 4.0:
+                if enemy["slot"] == self._ship_slot:
+                    self._hull = max(0, self._hull - 1)
+                    self._hits_taken += 1
                     self._streak = 0
-            else:
-                enemy["status"] = "passed"
+                    self._explosions.append({"slot": enemy["slot"], "y": self.SHIP_Y - 8.0, "ticks": 6})
+                    self._message = "Incoming hit. Recover and clear the lane."
+                    continue
+                if enemy["y"] <= self.FIELD_HEIGHT + 10.0:
+                    continue
+            if enemy["y"] <= self.FIELD_HEIGHT + 8.0:
+                survivors.append(enemy)
+        self._enemies = survivors
+
+    def _tick_effects(self) -> None:
+        for group_name in ("_explosions", "_score_popups"):
+            trimmed = []
+            for item in getattr(self, group_name):
+                updated = dict(item)
+                updated["ticks"] = max(0, int(updated.get("ticks", 0)) - 1)
+                updated["y"] = float(updated.get("y", 0.0)) - 1.5
+                if updated["ticks"] > 0:
+                    trimmed.append(updated)
+            setattr(self, group_name, trimmed)
+
+    def _start_wave_overlay(self) -> None:
+        if self._wave_index < self._wave_count - 1:
+            self._overlay_kind = "wave_clear"
+            self._overlay_title = f"Wave {self._wave_index + 1} cleared"
+            self._overlay_subtitle = "Next formation sliding in."
+            self._overlay_timer = 5
+            self._pending_outcome = "wave"
+            self._message = self._overlay_title
+            return
+        self._overlay_kind = "level_complete"
+        self._overlay_title = "Sector cleared"
+        self._overlay_subtitle = "Star corridor secured."
+        self._overlay_timer = 7
+        self._pending_outcome = "level_complete"
+        self._message = self._overlay_title
+
+    def _start_failure_overlay(self, subtitle: str) -> None:
+        self._overlay_kind = "failure"
+        self._overlay_title = "Ship down"
+        self._overlay_subtitle = subtitle
+        self._overlay_timer = 7
+        self._pending_outcome = "failure"
+        self._message = subtitle
 
     def _space_recommendation(self, action: str | None) -> str:
-        if action == "boost":
-            return "Charge high lane"
-        if action == "shield":
-            return "Shield low lane"
+        if action == "right":
+            return "Slide right"
+        if action == "left":
+            return "Slide left"
         if action == "fire":
-            return "Fire window"
+            return "Burst volley"
         for enemy in self._enemies:
-            if enemy["status"] != "active":
-                continue
-            lane_diff = enemy["lane"] - self._ship_lane
-            distance = enemy["progress_mark"] - self._progress
-            if distance <= 12.0 and abs(lane_diff) <= 1:
-                if lane_diff < 0:
-                    return "Climb to target"
+            lane_diff = enemy["slot"] - self._ship_slot
+            if abs(lane_diff) <= 1:
                 if lane_diff > 0:
-                    return "Drop to shield"
-                return "Hold steady to fire"
-            break
-        return "Build charge"
+                    return "Track the right flank"
+                if lane_diff < 0:
+                    return "Drift left for cover"
+                return "Hold steady to burst"
+        return "Read the next wave"
 
     def _space_view_state(self, message: str = "", music_bias: float = 0.0) -> dict:
+        star_ceiling = max(1.0, float(self._star_thresholds[-1]))
         return {
             "mode": "space_shooter",
-            "ship_lane": self._ship_lane,
-            "charge": self._charge,
-            "shield": self._shield,
-            "integrity": self._integrity,
-            "progress": self._progress,
-            "track_length": self._track_length,
+            "corridor_width": self.FIELD_WIDTH,
+            "field_height": self.FIELD_HEIGHT,
+            "ship_slot": self._ship_slot,
+            "ship_y": self.SHIP_Y,
+            "weapon_level": self._weapon_level,
+            "burst_ticks": self._burst_ticks,
+            "hull": self._hull,
+            "score": self._score,
+            "star_progress": max(0.0, min(1.0, self._score / star_ceiling)),
+            "star_thresholds": list(self._star_thresholds),
             "streak": self._streak,
             "best_streak": self._best_streak,
             "shots_fired": self._shots_fired,
             "destroyed": self._destroyed,
-            "blocked": self._blocked,
-            "music_scene": "space_run",
+            "pickups_collected": self._pickups_collected,
+            "wave_index": self._wave_index,
+            "wave_count": self._wave_count,
+            "enemies": [dict(enemy) for enemy in self._enemies],
+            "projectiles": [dict(projectile) for projectile in self._projectiles],
+            "pickups": [dict(pickup) for pickup in self._pickups],
+            "explosions": [dict(explosion) for explosion in self._explosions],
+            "score_popups": [dict(popup) for popup in self._score_popups],
+            "overlay_kind": self._overlay_kind,
+            "overlay_title": self._overlay_title,
+            "overlay_subtitle": self._overlay_subtitle,
+            "overlay_timer": self._overlay_timer,
+            "menu_button_rect": [18, 18, 54, 42],
+            "music_scene": "space_arcade",
             "music_bias": music_bias,
-            "serenity": max(0.0, min(100.0, self._integrity - (self._damage_taken * 4.0))),
-            "restlessness": max(0.0, min(100.0, 24.0 + (self._damage_taken * 9.0))),
-            "enemies": [dict(enemy) for enemy in self._enemies if enemy["status"] == "active"],
-            "message": message,
+            "serenity": max(0.0, min(100.0, 56.0 + (self._hull * 8.0) + (self._best_streak * 2.0))),
+            "restlessness": max(0.0, min(100.0, 22.0 + (self._hits_taken * 16.0))),
+            "message": message or self._message,
         }
 
 
@@ -948,19 +1111,57 @@ class JumpBallController(ArcadeTrainingController):
 
 class NeuroRacerController(ArcadeTrainingController):
     LEVELS = [
-        TrainingLevel("Lap 1", 50),
-        TrainingLevel("Lap 2", 60),
-        TrainingLevel("Lap 3", 70),
+        TrainingLevel("Track 1", 54),
+        TrainingLevel("Track 2", 64),
+        TrainingLevel("Track 3", 74),
     ]
     CONFIGS = [
-        {"track_length": 104.0, "hazards": [(18.0, 1, 64.0), (36.0, 0, 72.0), (56.0, 2, 58.0), (80.0, 1, 66.0)]},
         {
-            "track_length": 122.0,
-            "hazards": [(16.0, 1, 62.0), (30.0, 0, 74.0), (46.0, 2, 60.0), (66.0, 1, 68.0), (90.0, 0, 76.0)],
+            "finish_distance": 980.0,
+            "base_speed": 60.0,
+            "star_thresholds": [260, 440, 620],
+            "traffic": [
+                (0.0, 1, 190.0, 54.0, 45),
+                (110.0, 2, 210.0, 56.0, 55),
+                (220.0, 0, 220.0, 53.0, 55),
+                (360.0, 1, 210.0, 57.0, 65),
+                (520.0, 2, 200.0, 58.0, 70),
+                (710.0, 0, 210.0, 55.0, 75),
+                (820.0, 1, 230.0, 52.0, 90),
+            ],
         },
         {
-            "track_length": 140.0,
-            "hazards": [(14.0, 1, 64.0), (28.0, 0, 76.0), (42.0, 2, 58.0), (58.0, 1, 70.0), (78.0, 0, 78.0), (104.0, 2, 62.0)],
+            "finish_distance": 1180.0,
+            "base_speed": 62.0,
+            "star_thresholds": [320, 560, 780],
+            "traffic": [
+                (0.0, 1, 190.0, 55.0, 50),
+                (90.0, 0, 205.0, 57.0, 55),
+                (190.0, 2, 215.0, 58.0, 60),
+                (300.0, 1, 225.0, 54.0, 70),
+                (410.0, 0, 215.0, 60.0, 80),
+                (540.0, 2, 210.0, 59.0, 80),
+                (710.0, 1, 225.0, 53.0, 95),
+                (860.0, 0, 220.0, 56.0, 95),
+                (980.0, 2, 230.0, 54.0, 110),
+            ],
+        },
+        {
+            "finish_distance": 1340.0,
+            "base_speed": 64.0,
+            "star_thresholds": [380, 660, 920],
+            "traffic": [
+                (0.0, 1, 185.0, 56.0, 55),
+                (80.0, 2, 198.0, 57.0, 60),
+                (165.0, 0, 205.0, 58.0, 65),
+                (250.0, 1, 215.0, 55.0, 75),
+                (360.0, 2, 205.0, 59.0, 85),
+                (500.0, 0, 215.0, 58.0, 85),
+                (680.0, 1, 225.0, 54.0, 100),
+                (830.0, 2, 214.0, 60.0, 105),
+                (980.0, 0, 218.0, 59.0, 105),
+                (1120.0, 1, 240.0, 55.0, 130),
+            ],
         },
     ]
 
@@ -969,19 +1170,39 @@ class NeuroRacerController(ArcadeTrainingController):
 
     def _reset_level_state(self) -> None:
         config = self.CONFIGS[self._level_index]
-        self._track_length = config["track_length"]
-        self._progress = 0.0
-        self._lane = 1
-        self._speed = 58.0
-        self._stability = 86.0
-        self._combo = 0
-        self._best_combo = 0
-        self._clears = 0
-        self._penalties = 0
-        self._hazards = [
-            {"progress_mark": mark, "lane": lane, "speed_limit": speed_limit, "status": "active"}
-            for mark, lane, speed_limit in config["hazards"]
+        self._finish_distance = float(config["finish_distance"])
+        self._base_speed = float(config["base_speed"])
+        self._star_thresholds = list(config["star_thresholds"])
+        self._traffic_schedule = [
+            {
+                "spawn_at": spawn_at,
+                "lane": lane,
+                "gap": gap,
+                "speed": speed,
+                "value": value,
+            }
+            for spawn_at, lane, gap, speed, value in config["traffic"]
         ]
+        self._traffic: list[dict] = []
+        self._distance = 0.0
+        self._lane = 1
+        self._speed = self._base_speed
+        self._stability = 100.0
+        self._nitro = 42.0
+        self._nitro_ticks = 0
+        self._line_lock_ticks = 0
+        self._score = 0
+        self._overtakes = 0
+        self._collisions = 0
+        self._streak = 0
+        self._best_streak = 0
+        self._effects: list[dict] = []
+        self._overlay_kind: str | None = None
+        self._overlay_title = ""
+        self._overlay_subtitle = ""
+        self._overlay_timer = 0
+        self._pending_outcome: str | None = None
+        self._message = "Thread the sky ramp, steer through traffic, and save nitro for clear runs."
         self._view_state = self._racer_view_state()
 
     def update_gameplay(
@@ -999,58 +1220,70 @@ class NeuroRacerController(ArcadeTrainingController):
         moved = False
         level_completed = False
         run_completed = False
-        control_hint = (
-            "Concentrate to boost toward the fast line, relax to brake and recentre, and hold steady to keep the clean racing line."
-        )
+        control_hint = "Concentrate to steer right, relax to steer left, and hold steady to trigger nitro or lock the line."
 
-        if stale:
-            blocked_reason = "Metrics are stale. Race paused."
+        if self._overlay_kind is not None:
+            level_completed, run_completed = self._tick_overlay(elapsed_seconds)
+        elif stale:
+            blocked_reason = "Metrics are stale. Neuro Racer paused."
         elif not valid:
-            blocked_reason = "Artifacts detected. Race paused."
+            blocked_reason = "Artifacts detected. Neuro Racer paused."
         else:
+            self._spawn_traffic()
             intent = self._arcade_intent(conc_delta, relax_delta)
             if intent == "focus":
                 if self._stabilize_intent(intent):
-                    self._lane = max(0, self._lane - 1)
-                    self._speed = min(100.0, self._speed + 10.0)
-                    self._stability = max(0.0, self._stability - 2.0)
-                    action = "boost"
+                    self._lane = min(2, self._lane + 1)
+                    self._speed = min(96.0, self._speed + 3.5)
+                    self._message = "Cutting into the right lane."
+                    action = "right"
                     moved = True
             elif intent == "relax":
                 if self._stabilize_intent(intent):
-                    self._lane = min(2, self._lane + 1)
-                    self._speed = max(32.0, self._speed - 10.0)
-                    self._stability = min(100.0, self._stability + 6.0)
-                    action = "brake"
+                    self._lane = max(0, self._lane - 1)
+                    self._speed = max(38.0, self._speed - 4.5)
+                    self._stability = min(100.0, self._stability + 3.0)
+                    self._message = "Settled left to reset the line."
+                    action = "left"
                     moved = True
             elif intent == "steady":
                 if self._stabilize_intent(intent):
-                    self._speed = min(90.0, self._speed + 2.0)
-                    self._stability = min(100.0, self._stability + 2.0)
                     action = "steady"
                     moved = True
+                    if self._nitro >= 30.0:
+                        self._nitro = max(0.0, self._nitro - 30.0)
+                        self._nitro_ticks = 4
+                        self._speed = min(100.0, self._speed + 10.0)
+                        self._effects.append({"lane": self._lane, "gap": 32.0, "kind": "nitro", "ticks": 5})
+                        self._message = "Nitro engaged."
+                    else:
+                        self._line_lock_ticks = 3
+                        self._stability = min(100.0, self._stability + 4.0)
+                        self._message = "Stable racing line locked."
             else:
                 self._stabilize_intent(None)
-                if self._speed > 62.0:
-                    self._speed -= 2.5
-                elif self._speed < 56.0:
-                    self._speed += 1.5
 
-            self._progress += self._speed / 14.0
-            self._resolve_hazards()
-            self._progress = min(self._track_length, self._progress)
+            if self._nitro_ticks > 0:
+                self._speed = min(100.0, self._speed + 4.0)
+                self._nitro_ticks -= 1
+            elif self._line_lock_ticks > 0:
+                self._line_lock_ticks -= 1
+                self._speed = min(92.0, self._speed + 1.2)
+                self._stability = min(100.0, self._stability + 1.0)
+            elif self._speed > self._base_speed:
+                self._speed -= 1.6
+            elif self._speed < self._base_speed:
+                self._speed += 1.0
 
-            if self._progress >= self._track_length:
-                total_hazards = max(1, len(self._hazards))
-                clear_ratio = self._clears / total_hazards
-                stability_bonus = self._stability * 0.24
-                combo_bonus = min(18.0, self._best_combo * 2.2)
-                penalty_cost = self._penalties * 5.0
-                time_penalty = max(0, elapsed_seconds - self.current_level.target_seconds)
-                score = 42 + (clear_ratio * 34.0) + stability_bonus + combo_bonus - penalty_cost - time_penalty
-                self._record_level_result(True, elapsed_seconds, score_override=score)
-                level_completed = True
-                run_completed = self._advance_level()
+            self._nitro = min(100.0, self._nitro + 0.9 + min(1.2, self._best_streak * 0.08))
+            self._distance = min(self._finish_distance, self._distance + (self._speed * 2.15))
+            self._advance_traffic()
+            self._tick_effects()
+
+            if self._stability <= 0 and self._overlay_kind is None:
+                self._start_failure_overlay("The racer lost stability on the sky ramp.")
+            elif self._distance >= self._finish_distance and self._overlay_kind is None:
+                self._start_finish_overlay()
 
         self._view_state = self._racer_view_state(message=blocked_reason, music_bias=relax_delta - conc_delta)
         recommended_label = self._racer_recommendation(action)
@@ -1068,65 +1301,586 @@ class NeuroRacerController(ArcadeTrainingController):
             recommended_label=recommended_label,
         )
 
-    def _resolve_hazards(self) -> None:
-        for hazard in self._hazards:
-            if hazard["status"] != "active":
+    def _tick_overlay(self, elapsed_seconds: float) -> tuple[bool, bool]:
+        self._tick_effects()
+        if self._overlay_timer > 0:
+            self._overlay_timer -= 1
+        if self._overlay_timer > 0:
+            return False, False
+
+        outcome = self._pending_outcome
+        self._overlay_kind = None
+        self._overlay_title = ""
+        self._overlay_subtitle = ""
+        self._pending_outcome = None
+        if outcome == "failure":
+            self._record_level_result(False, elapsed_seconds, score_override=0)
+            self._finished = True
+            return False, True
+        if outcome == "level_complete":
+            time_penalty = max(0, elapsed_seconds - self.current_level.target_seconds)
+            score = (
+                48
+                + min(30.0, self._score / 20.0)
+                + min(16.0, self._best_streak * 2.2)
+                + (self._stability * 0.12)
+                - (self._collisions * 6.0)
+                - time_penalty
+            )
+            self._record_level_result(True, elapsed_seconds, score_override=score)
+            level_completed = True
+            run_completed = self._advance_level()
+            return level_completed, run_completed
+        return False, False
+
+    def _spawn_traffic(self) -> None:
+        while self._traffic_schedule and self._distance >= float(self._traffic_schedule[0]["spawn_at"]):
+            next_car = self._traffic_schedule.pop(0)
+            self._traffic.append(
+                {
+                    "lane": int(next_car["lane"]),
+                    "gap": float(next_car["gap"]),
+                    "speed": float(next_car["speed"]),
+                    "value": int(next_car["value"]),
+                }
+            )
+
+    def _advance_traffic(self) -> None:
+        survivors = []
+        for car in self._traffic:
+            car["gap"] -= max(9.0, ((self._speed - car["speed"]) * 0.38) + 10.0)
+            if car["gap"] <= 18.0:
+                if car["lane"] == self._lane:
+                    self._register_collision(car)
+                else:
+                    self._register_overtake(car)
                 continue
-            if hazard["progress_mark"] > self._progress:
-                continue
-            if self._lane == hazard["lane"] and self._speed > hazard["speed_limit"]:
-                hazard["status"] = "impact"
-                self._penalties += 1
-                self._stability = max(0.0, self._stability - 18.0)
-                self._speed = max(34.0, self._speed - 12.0)
-                self._combo = 0
-            else:
-                hazard["status"] = "clear"
-                self._clears += 1
-                self._combo += 1
-                self._best_combo = max(self._best_combo, self._combo)
-                self._stability = min(100.0, self._stability + 3.0)
+            survivors.append(car)
+        self._traffic = survivors
+        self._spawn_traffic()
+
+    def _register_overtake(self, car: dict) -> None:
+        self._overtakes += 1
+        self._streak += 1
+        self._best_streak = max(self._best_streak, self._streak)
+        self._nitro = min(100.0, self._nitro + 10.0)
+        gain = int(car["value"] + min(26, self._streak * 4))
+        self._score += gain
+        self._effects.append({"lane": car["lane"], "gap": 22.0, "kind": "spark", "ticks": 5})
+        self._message = "Clean overtake. Keep the streak alive."
+
+    def _register_collision(self, car: dict) -> None:
+        self._collisions += 1
+        self._stability = max(0.0, self._stability - 24.0)
+        self._speed = max(36.0, self._speed - 14.0)
+        self._nitro = max(0.0, self._nitro - 12.0)
+        self._streak = 0
+        self._effects.append({"lane": car["lane"], "gap": 18.0, "kind": "impact", "ticks": 6})
+        self._message = "Traffic contact. Recover before the next crest."
+
+    def _tick_effects(self) -> None:
+        trimmed = []
+        for effect in self._effects:
+            updated = dict(effect)
+            updated["ticks"] = max(0, int(updated.get("ticks", 0)) - 1)
+            updated["gap"] = max(0.0, float(updated.get("gap", 0.0)) - 4.0)
+            if updated["ticks"] > 0:
+                trimmed.append(updated)
+        self._effects = trimmed
+
+    def _start_finish_overlay(self) -> None:
+        self._overlay_kind = "finish"
+        self._overlay_title = "Finish line"
+        self._overlay_subtitle = f"{self._overtakes} overtakes on the sky ramp."
+        self._overlay_timer = 7
+        self._pending_outcome = "level_complete"
+        self._message = self._overlay_title
+
+    def _start_failure_overlay(self, subtitle: str) -> None:
+        self._overlay_kind = "crash"
+        self._overlay_title = "Race interrupted"
+        self._overlay_subtitle = subtitle
+        self._overlay_timer = 7
+        self._pending_outcome = "failure"
+        self._message = subtitle
 
     def _racer_recommendation(self, action: str | None) -> str:
-        if action == "boost":
-            return "Push the fast line"
-        if action == "brake":
-            return "Brake and recover"
+        if action == "right":
+            return "Move right"
+        if action == "left":
+            return "Move left"
         if action == "steady":
-            return "Hold the line"
-        for hazard in self._hazards:
-            if hazard["status"] != "active":
-                continue
-            distance = hazard["progress_mark"] - self._progress
-            if distance <= 18.0:
-                if self._lane == hazard["lane"] and self._speed > hazard["speed_limit"]:
-                    return "Brake now"
-                if self._lane > hazard["lane"]:
-                    return "Boost left lane"
-                if self._lane < hazard["lane"]:
-                    return "Relax to recover"
-                return "Hold centre"
-            break
-        return "Build pace"
+            return "Trigger nitro"
+        nearest = min(self._traffic, key=lambda car: car["gap"], default=None)
+        if nearest is not None and nearest["lane"] == self._lane:
+            if self._lane == 0:
+                return "Move right to pass"
+            if self._lane == 2:
+                return "Move left to pass"
+            return "Pick the clearer side"
+        if self._nitro >= 30.0:
+            return "Hold steady for nitro"
+        return "Build a clean overtake"
 
     def _racer_view_state(self, message: str = "", music_bias: float = 0.0) -> dict:
+        progress = max(0.0, min(1.0, self._distance / max(1.0, self._finish_distance)))
         return {
             "mode": "neuro_racer",
             "lane": self._lane,
             "speed": self._speed,
             "stability": self._stability,
-            "progress": self._progress,
-            "track_length": self._track_length,
+            "nitro": self._nitro,
+            "nitro_ticks": self._nitro_ticks,
+            "distance": self._distance,
+            "finish_distance": self._finish_distance,
+            "progress_ratio": progress,
+            "road_phase": "finish" if progress > 0.78 else ("crest" if progress > 0.42 else "climb"),
+            "score": self._score,
+            "star_progress": max(0.0, min(1.0, self._score / max(1, self._star_thresholds[-1]))),
+            "star_thresholds": list(self._star_thresholds),
+            "overtakes": self._overtakes,
+            "collisions": self._collisions,
+            "streak": self._streak,
+            "best_streak": self._best_streak,
+            "traffic": [dict(car) for car in self._traffic],
+            "effects": [dict(effect) for effect in self._effects],
+            "overlay_kind": self._overlay_kind,
+            "overlay_title": self._overlay_title,
+            "overlay_subtitle": self._overlay_subtitle,
+            "overlay_timer": self._overlay_timer,
+            "menu_button_rect": [18, 18, 54, 42],
+            "music_scene": "sky_racer",
+            "music_bias": music_bias,
+            "serenity": max(0.0, min(100.0, self._stability + (self._best_streak * 2.0))),
+            "restlessness": max(0.0, min(100.0, 18.0 + (self._collisions * 18.0))),
+            "message": message or self._message,
+        }
+
+
+class BubbleBurstController(ArcadeTrainingController):
+    LEVELS = [
+        TrainingLevel("Wave 1", 60),
+        TrainingLevel("Wave 2", 75),
+        TrainingLevel("Wave 3", 90),
+    ]
+    CONFIGS = [
+        {
+            "columns": 6,
+            "palette": ["red", "green"],
+            "shots_left": 20,
+            "star_thresholds": [2200, 3800, 5400],
+            "layout": [".GGGG.", "GGRRGG", ".RRRR.", "R.GG.R", ".G..G."],
+        },
+        {
+            "columns": 7,
+            "palette": ["red", "green", "yellow"],
+            "shots_left": 18,
+            "star_thresholds": [3200, 5100, 7200],
+            "layout": [".GGYGG.", "GGRRRGG", ".RRYRR.", "R.GYG.R", ".GGYGG.", "..Y.Y.."],
+        },
+        {
+            "columns": 8,
+            "palette": ["red", "green", "yellow", "blue"],
+            "shots_left": 17,
+            "star_thresholds": [4200, 6600, 9200],
+            "layout": [".GGYYGG.", "GGRRRRGG", ".RYYBBR.", "RRGBBGRR", ".GYYBBG.", "..G..G.."],
+        },
+    ]
+    TOKEN_MAP = {".": None, "R": "red", "G": "green", "Y": "yellow", "B": "blue"}
+    VISIBLE_ROWS = 10
+
+    def __init__(self):
+        super().__init__(self.LEVELS)
+
+    def _reset_level_state(self) -> None:
+        config = self.CONFIGS[self._level_index]
+        self._columns = config["columns"]
+        self._palette = list(config["palette"])
+        self._shots_left = int(config["shots_left"])
+        self._star_thresholds = list(config["star_thresholds"])
+        self._layout = list(config["layout"])
+        self._board: list[list[str | None]] = [
+            [None for _ in range(self._columns)] for _ in range(self.VISIBLE_ROWS)
+        ]
+        self._spawn_cursor = 0
+        self._ceiling_cursor = self._level_index * 5
+        self._danger_steps = 0
+        self._score = 0
+        self._combo = 0
+        self._best_combo = 0
+        self._score_popups: list[dict] = []
+        self._aim_slot = self._columns // 2
+        self._overlay_kind: str | None = None
+        self._overlay_title = ""
+        self._overlay_subtitle = ""
+        self._overlay_timer = 0
+        self._pending_outcome: str | None = None
+        self._launcher_zone_row = self.VISIBLE_ROWS - 2
+        self._message = "Clear the whole cluster before the launcher gets crowded."
+        self._seed_board()
+        self._current_bubble = self._next_spawn()
+        self._next_bubble = self._next_spawn()
+        self._view_state = self._bubble_view_state()
+
+    def update_gameplay(
+        self,
+        concentration: float,
+        relaxation: float,
+        valid: bool,
+        stale: bool,
+        elapsed_seconds: float,
+    ) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation - (self._relax_baseline or 0.0)
+        blocked_reason = ""
+        action = None
+        moved = False
+        level_completed = False
+        run_completed = False
+        control_hint = "Concentrate to nudge the aim right, relax to nudge it left, and hold steady to fire."
+
+        if self._overlay_kind is not None:
+            level_completed, run_completed = self._tick_overlay(elapsed_seconds)
+        elif stale:
+            blocked_reason = "Metrics are stale. Bubble Burst paused."
+        elif not valid:
+            blocked_reason = "Artifacts detected. Bubble Burst paused."
+        else:
+            self._tick_score_popups()
+            intent = self._arcade_intent(conc_delta, relax_delta)
+            if intent == "focus":
+                if self._stabilize_intent(intent):
+                    self._aim_slot = min(self._columns - 1, self._aim_slot + 1)
+                    self._message = "Aim shifted right."
+                    action = "right"
+                    moved = True
+            elif intent == "relax":
+                if self._stabilize_intent(intent):
+                    self._aim_slot = max(0, self._aim_slot - 1)
+                    self._message = "Aim shifted left."
+                    action = "left"
+                    moved = True
+            elif intent == "steady":
+                if self._stabilize_intent(intent):
+                    action = "fire"
+                    moved = True
+                    level_completed, run_completed = self._fire_bubble(elapsed_seconds)
+            else:
+                self._stabilize_intent(None)
+
+        message = blocked_reason or self._message
+        self._view_state = self._bubble_view_state(
+            message=message,
+            music_bias=relax_delta - conc_delta,
+        )
+        recommended_label = self._bubble_recommendation(action)
+        return self._arcade_snapshot(
+            phase="bubble_burst",
+            phase_label="Bubble Burst",
+            direction=action,
+            blocked_reason=blocked_reason,
+            control_hint=control_hint,
+            conc_delta=conc_delta,
+            relax_delta=relax_delta,
+            moved=moved,
+            level_completed=level_completed,
+            run_completed=run_completed,
+            recommended_label=recommended_label,
+        )
+
+    def _seed_board(self) -> None:
+        for row_index, row_pattern in enumerate(self._layout):
+            for col_index, char in enumerate(row_pattern):
+                self._board[row_index][col_index] = self.TOKEN_MAP[char]
+
+    def _next_spawn(self) -> str:
+        color = self._palette[(self._spawn_cursor + self._level_index) % len(self._palette)]
+        self._spawn_cursor += 1
+        return color
+
+    def _fire_bubble(self, elapsed_seconds: float) -> tuple[bool, bool]:
+        self._shots_left = max(0, self._shots_left - 1)
+        placed = self._place_current_bubble()
+        if placed is None:
+            self._message = "No landing slot. The ceiling drops."
+            self._drop_ceiling_row()
+            self._cycle_bubble_queue()
+            if self._launcher_zone_reached():
+                self._start_failure_overlay("Bubbles reached the launcher.")
+                return False, False
+            if self._shots_left == 0:
+                self._start_failure_overlay("Out of shots before the board cleared.")
+                return False, False
+            return False, False
+
+        row, col = placed
+        popped_cells = self._resolve_burst(row, col)
+        self._cycle_bubble_queue()
+
+        if popped_cells:
+            self._combo += 1
+            self._best_combo = max(self._best_combo, self._combo)
+            burst_score = (len(popped_cells) * 300) + max(0, (self._combo - 1) * 90)
+            self._score += burst_score
+            self._score_popups.append(
+                {"row": row, "col": col, "text": str(burst_score), "ticks": 7}
+            )
+            self._message = f"Burst {len(popped_cells)} bubbles."
+        else:
+            self._combo = 0
+            self._message = "No match. The ceiling drops."
+            self._drop_ceiling_row()
+            if self._launcher_zone_reached():
+                self._start_failure_overlay("Bubbles reached the launcher.")
+                return False, False
+
+        if self._board_empty():
+            self._start_success_overlay()
+            return False, False
+        if self._shots_left == 0:
+            self._start_failure_overlay("Out of shots before the board cleared.")
+            return False, False
+        return False, False
+
+    def _place_current_bubble(self) -> tuple[int, int] | None:
+        for col in self._column_scan_order(self._aim_slot):
+            row = self._landing_row(col)
+            if row is not None:
+                self._board[row][col] = self._current_bubble
+                return row, col
+        return None
+
+    def _column_scan_order(self, center: int) -> list[int]:
+        order = [center]
+        for distance in range(1, self._columns):
+            left = center - distance
+            right = center + distance
+            if left >= 0:
+                order.append(left)
+            if right < self._columns:
+                order.append(right)
+        return order
+
+    def _landing_row(self, col: int) -> int | None:
+        for row in range(self.VISIBLE_ROWS):
+            if self._board[row][col] is None:
+                return row
+        return None
+
+    def _resolve_burst(self, row: int, col: int) -> set[tuple[int, int]]:
+        cluster = self._color_cluster(row, col)
+        if len(cluster) < 3:
+            return set()
+
+        removed = set(cluster)
+        self._clear_cells(cluster)
+        floating = self._floating_cells()
+        if floating:
+            removed.update(floating)
+            self._clear_cells(floating)
+        return removed
+
+    def _color_cluster(self, row: int, col: int) -> set[tuple[int, int]]:
+        color = self._board[row][col]
+        if color is None:
+            return set()
+        cluster = set()
+        stack = [(row, col)]
+        while stack:
+            cell = stack.pop()
+            if cell in cluster:
+                continue
+            r, c = cell
+            if self._board[r][c] != color:
+                continue
+            cluster.add(cell)
+            for neighbor in self._neighbors(r, c):
+                if neighbor not in cluster:
+                    stack.append(neighbor)
+        return cluster
+
+    def _floating_cells(self) -> set[tuple[int, int]]:
+        anchored = set()
+        stack = [(0, col) for col in range(self._columns) if self._board[0][col] is not None]
+        while stack:
+            cell = stack.pop()
+            if cell in anchored:
+                continue
+            anchored.add(cell)
+            r, c = cell
+            for neighbor in self._neighbors(r, c):
+                nr, nc = neighbor
+                if self._board[nr][nc] is not None and neighbor not in anchored:
+                    stack.append(neighbor)
+
+        floating = set()
+        for row in range(self.VISIBLE_ROWS):
+            for col in range(self._columns):
+                if self._board[row][col] is not None and (row, col) not in anchored:
+                    floating.add((row, col))
+        return floating
+
+    def _neighbors(self, row: int, col: int) -> list[tuple[int, int]]:
+        if row % 2 == 0:
+            offsets = [(0, -1), (0, 1), (-1, -1), (-1, 0), (1, -1), (1, 0)]
+        else:
+            offsets = [(0, -1), (0, 1), (-1, 0), (-1, 1), (1, 0), (1, 1)]
+
+        neighbors = []
+        for row_delta, col_delta in offsets:
+            next_row = row + row_delta
+            next_col = col + col_delta
+            if 0 <= next_row < self.VISIBLE_ROWS and 0 <= next_col < self._columns:
+                neighbors.append((next_row, next_col))
+        return neighbors
+
+    def _clear_cells(self, cells: set[tuple[int, int]]) -> None:
+        for row, col in cells:
+            self._board[row][col] = None
+
+    def _cycle_bubble_queue(self) -> None:
+        self._current_bubble = self._next_bubble
+        self._next_bubble = self._next_spawn()
+
+    def _drop_ceiling_row(self) -> None:
+        self._danger_steps += 1
+        new_row = [
+            (
+                None
+                if self._columns >= 7 and ((self._ceiling_cursor + col) % 5 == 0)
+                else self._palette[(self._ceiling_cursor + col + self._level_index) % len(self._palette)]
+            )
+            for col in range(self._columns)
+        ]
+        self._ceiling_cursor += 1
+        self._board = [new_row] + [row[:] for row in self._board[:-1]]
+
+    def _board_empty(self) -> bool:
+        return all(cell is None for row in self._board for cell in row)
+
+    def _launcher_zone_reached(self) -> bool:
+        for row in range(self._launcher_zone_row, self.VISIBLE_ROWS):
+            if any(cell is not None for cell in self._board[row]):
+                return True
+        return False
+
+    def _tick_score_popups(self) -> None:
+        trimmed = []
+        for popup in self._score_popups:
+            updated = dict(popup)
+            updated["ticks"] = max(0, int(updated.get("ticks", 0)) - 1)
+            updated["row"] = max(0.0, float(updated.get("row", 0.0)) - 0.12)
+            if updated["ticks"] > 0:
+                trimmed.append(updated)
+        self._score_popups = trimmed
+
+    def swap_bubbles(self) -> bool:
+        if self._overlay_kind is not None:
+            return False
+        self._current_bubble, self._next_bubble = self._next_bubble, self._current_bubble
+        self._message = "Bubble queue swapped."
+        self._view_state = self._bubble_view_state()
+        return True
+
+    def _start_success_overlay(self) -> None:
+        self._overlay_kind = "board_clear"
+        self._overlay_title = "You popped all bubbles"
+        self._overlay_subtitle = "Level completed!"
+        self._overlay_timer = 7
+        self._pending_outcome = "level_complete"
+        self._message = self._overlay_title
+
+    def _start_failure_overlay(self, subtitle: str) -> None:
+        self._overlay_kind = "failure"
+        self._overlay_title = "Bubble run over"
+        self._overlay_subtitle = subtitle
+        self._overlay_timer = 7
+        self._pending_outcome = "failure"
+        self._message = subtitle
+
+    def _tick_overlay(self, elapsed_seconds: float) -> tuple[bool, bool]:
+        self._tick_score_popups()
+        if self._overlay_timer > 0:
+            self._overlay_timer -= 1
+        if self._overlay_timer > 0:
+            return False, False
+
+        outcome = self._pending_outcome
+        self._overlay_kind = None
+        self._overlay_title = ""
+        self._overlay_subtitle = ""
+        self._pending_outcome = None
+        if outcome == "failure":
+            self._record_level_result(False, elapsed_seconds, score_override=0)
+            self._finished = True
+            return False, True
+        if outcome == "level_complete":
+            time_penalty = max(0, elapsed_seconds - self.current_level.target_seconds)
+            score = (
+                50
+                + min(34.0, self._score / 180.0)
+                + min(12.0, self._shots_left * 1.2)
+                + min(12.0, self._best_combo * 2.0)
+                - time_penalty
+            )
+            self._record_level_result(True, elapsed_seconds, score_override=score)
+            level_completed = True
+            run_completed = self._advance_level()
+            return level_completed, run_completed
+        return False, False
+
+    def _bubble_recommendation(self, action: str | None) -> str:
+        if action == "right":
+            return "Track right"
+        if action == "left":
+            return "Track left"
+        if action == "fire":
+            return "Burst cluster"
+        if self._nearest_reachable_match() == self._current_bubble:
+            return "Build the center cluster"
+        return "Stabilize the shot"
+
+    def _nearest_reachable_match(self) -> str | None:
+        for col in self._column_scan_order(self._aim_slot):
+            row = self._landing_row(col)
+            if row is None:
+                continue
+            for neighbor in self._neighbors(row, col):
+                nr, nc = neighbor
+                if self._board[nr][nc] is not None:
+                    return self._board[nr][nc]
+        return None
+
+    def _bubble_view_state(self, message: str = "", music_bias: float = 0.0) -> dict:
+        return {
+            "mode": "bubble_burst",
+            "columns": self._columns,
+            "visible_rows": self.VISIBLE_ROWS,
+            "board": [list(row) for row in self._board],
+            "aim_slot": self._aim_slot,
+            "current_bubble": self._current_bubble,
+            "next_bubble": self._next_bubble,
+            "shots_left": self._shots_left,
+            "score": self._score,
             "combo": self._combo,
             "best_combo": self._best_combo,
-            "clears": self._clears,
-            "penalties": self._penalties,
-            "music_scene": "arcade_race",
+            "danger_steps": self._danger_steps,
+            "launcher_zone_row": self._launcher_zone_row,
+            "score_popups": [dict(popup) for popup in self._score_popups],
+            "swap_enabled": self._overlay_kind is None,
+            "star_progress": max(0.0, min(1.0, self._score / max(1, self._star_thresholds[-1]))),
+            "star_thresholds": list(self._star_thresholds),
+            "overlay_kind": self._overlay_kind,
+            "overlay_title": self._overlay_title,
+            "overlay_subtitle": self._overlay_subtitle,
+            "overlay_timer": self._overlay_timer,
+            "menu_button_rect": [18, 18, 54, 42],
+            "swap_button_rect": [0, 0, 0, 0],
+            "music_scene": "bubble_arcade",
             "music_bias": music_bias,
-            "serenity": max(0.0, min(100.0, self._stability)),
-            "restlessness": max(0.0, min(100.0, 20.0 + (self._penalties * 12.0))),
-            "hazards": [dict(hazard) for hazard in self._hazards if hazard["status"] == "active"],
-            "message": message,
+            "serenity": max(0.0, min(100.0, 60.0 + (self._shots_left * 1.5) + (self._best_combo * 4.0))),
+            "restlessness": max(0.0, min(100.0, 16.0 + (self._danger_steps * 12.0))),
+            "message": message or self._message,
         }
 
 
@@ -1336,6 +2090,420 @@ class PatternRecallController(MemoryGameController):
         }
 
 
+class CandyCascadeController(MemoryGameController):
+    LEVELS = [
+        TrainingLevel("Board 1", 65),
+        TrainingLevel("Board 2", 80),
+        TrainingLevel("Board 3", 95),
+    ]
+    CONFIGS = [
+        {"grid_size": 5, "color_count": 4, "target_score": 180, "blockers": []},
+        {
+            "grid_size": 6,
+            "color_count": 5,
+            "target_score": 240,
+            "blockers": [(1, 1), (1, 4), (2, 2), (2, 3), (3, 2), (3, 3), (4, 1), (4, 4)],
+        },
+        {
+            "grid_size": 6,
+            "color_count": 5,
+            "target_score": 300,
+            "blockers": [
+                (1, 1),
+                (1, 4),
+                (2, 1),
+                (2, 4),
+                (3, 1),
+                (3, 4),
+                (4, 1),
+                (4, 4),
+                (2, 2),
+                (3, 3),
+            ],
+        },
+    ]
+    PALETTE = ["berry", "lemon", "mint", "sky", "peach"]
+
+    def __init__(self):
+        super().__init__(self.LEVELS)
+
+    def _reset_level_state(self) -> None:
+        config = self.CONFIGS[self._level_index]
+        self._grid_size = config["grid_size"]
+        self._color_count = config["color_count"]
+        self._target_score = config["target_score"]
+        self._palette = self.PALETTE[: self._color_count]
+        self._board = self._generate_seed_board()
+        self._blockers = {(row * self._grid_size) + col for row, col in config["blockers"]}
+        self._specials: dict[int, str] = {}
+        self._score = 0
+        self._cascade_depth = 0
+        self._phase = "swap_select"
+        self._message = "Swap for cascades and clear the blockers."
+        self._reshuffles = 0
+        self._refill_cursor = self._level_index * 5
+        self._legal_swaps = self._compute_legal_swaps(self._board)
+        if not self._legal_swaps:
+            self._reshuffle_until_playable()
+            self._legal_swaps = self._compute_legal_swaps(self._board)
+        self._swap_index = 0
+        self._view_state = self._cascade_view_state()
+
+    def update_gameplay(
+        self,
+        concentration: float,
+        relaxation: float,
+        valid: bool,
+        stale: bool,
+        elapsed_seconds: float,
+    ) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation - (self._relax_baseline or 0.0)
+        blocked_reason = ""
+        direction = None
+        moved = False
+        level_completed = False
+        run_completed = False
+        self._phase = "swap_select"
+        self._cascade_depth = 0
+        control_hint = (
+            "Concentrate to cycle forward, relax to cycle backward, and hold balanced to confirm the highlighted swap."
+        )
+
+        if stale:
+            blocked_reason = "Metrics are stale. Candy Cascade paused."
+        elif not valid:
+            blocked_reason = "Artifacts detected. Candy Cascade paused."
+        else:
+            if not self._legal_swaps:
+                self._reshuffle_until_playable()
+                self._legal_swaps = self._compute_legal_swaps(self._board)
+            direction = self._memory_intent(conc_delta, relax_delta)
+            if direction == "right":
+                if self._stabilize_intent(direction):
+                    if self._legal_swaps:
+                        self._swap_index = (self._swap_index + 1) % len(self._legal_swaps)
+                    self._message = "Highlighted the next swap."
+                    moved = True
+            elif direction == "left":
+                if self._stabilize_intent(direction):
+                    if self._legal_swaps:
+                        self._swap_index = (self._swap_index - 1) % len(self._legal_swaps)
+                    self._message = "Highlighted the previous swap."
+                    moved = True
+            elif direction == "confirm":
+                if self._stabilize_intent(direction):
+                    moved = True
+                    level_completed, run_completed = self._confirm_swap(elapsed_seconds)
+            else:
+                self._stabilize_intent(None)
+
+        message = blocked_reason or self._message
+        self._view_state = self._cascade_view_state(
+            message=message,
+            music_bias=conc_delta - relax_delta,
+        )
+        recommended_label = self._cascade_recommendation(direction)
+        return self._base_memory_snapshot(
+            phase=self._phase,
+            phase_label="Candy Cascade",
+            direction=direction,
+            blocked_reason=blocked_reason,
+            control_hint=control_hint,
+            conc_delta=conc_delta,
+            relax_delta=relax_delta,
+            moved=moved,
+            level_completed=level_completed,
+            run_completed=run_completed,
+            recommended_label=recommended_label,
+        )
+
+    def _generate_seed_board(self) -> list[str]:
+        cell_count = self._grid_size ** 2
+        for attempt in range(cell_count + self._color_count):
+            board: list[str] = []
+            for index in range(cell_count):
+                start = index + self._level_index + attempt
+                color = self._seed_color_for_cell(board, index, start)
+                board.append(color)
+            if not self._find_match_groups(board) and self._compute_legal_swaps(board):
+                return board
+        return [self._palette[(index + self._level_index) % self._color_count] for index in range(cell_count)]
+
+    def _seed_color_for_cell(self, board: list[str], index: int, start: int) -> str:
+        for offset in range(self._color_count):
+            color = self._palette[(start + offset) % self._color_count]
+            if not self._creates_immediate_match(board, index, color):
+                return color
+        return self._palette[start % self._color_count]
+
+    def _creates_immediate_match(self, board: list[str], index: int, color: str) -> bool:
+        row, col = divmod(index, self._grid_size)
+        if col >= 2 and board[index - 1] == color and board[index - 2] == color:
+            return True
+        if row >= 2:
+            above = index - self._grid_size
+            above_twice = index - (self._grid_size * 2)
+            if board[above] == color and board[above_twice] == color:
+                return True
+        return False
+
+    def _compute_legal_swaps(self, board: list[str]) -> list[tuple[int, int]]:
+        swaps = []
+        cell_count = self._grid_size ** 2
+        for index in range(cell_count):
+            row, col = divmod(index, self._grid_size)
+            if col < self._grid_size - 1 and self._swap_creates_match(board, index, index + 1):
+                swaps.append((index, index + 1))
+            if row < self._grid_size - 1 and self._swap_creates_match(board, index, index + self._grid_size):
+                swaps.append((index, index + self._grid_size))
+        return swaps
+
+    def _swap_creates_match(self, board: list[str], left: int, right: int) -> bool:
+        if board[left] == board[right]:
+            return False
+        trial = list(board)
+        trial[left], trial[right] = trial[right], trial[left]
+        return bool(self._find_match_groups(trial))
+
+    def _find_match_groups(self, board: list[str]) -> list[tuple[str, list[int]]]:
+        groups: list[tuple[str, list[int]]] = []
+        for row in range(self._grid_size):
+            run_color = None
+            run_indices: list[int] = []
+            for col in range(self._grid_size):
+                index = (row * self._grid_size) + col
+                color = board[index]
+                if color == run_color:
+                    run_indices.append(index)
+                else:
+                    if run_color is not None and len(run_indices) >= 3:
+                        groups.append(("row", list(run_indices)))
+                    run_color = color
+                    run_indices = [index]
+            if run_color is not None and len(run_indices) >= 3:
+                groups.append(("row", list(run_indices)))
+
+        for col in range(self._grid_size):
+            run_color = None
+            run_indices = []
+            for row in range(self._grid_size):
+                index = (row * self._grid_size) + col
+                color = board[index]
+                if color == run_color:
+                    run_indices.append(index)
+                else:
+                    if run_color is not None and len(run_indices) >= 3:
+                        groups.append(("column", list(run_indices)))
+                    run_color = color
+                    run_indices = [index]
+            if run_color is not None and len(run_indices) >= 3:
+                groups.append(("column", list(run_indices)))
+        return groups
+
+    def _confirm_swap(self, elapsed_seconds: float) -> tuple[bool, bool]:
+        if not self._legal_swaps:
+            self._message = "No legal swaps. Rebalancing the board."
+            self._reshuffle_until_playable()
+            self._legal_swaps = self._compute_legal_swaps(self._board)
+            return False, False
+
+        pair = self._legal_swaps[self._swap_index]
+        if pair not in self._compute_legal_swaps(self._board):
+            self._legal_swaps = self._compute_legal_swaps(self._board)
+            self._swap_index = 0
+            self._message = "The highlighted move changed. Try again."
+            return False, False
+
+        self._swap_cells(pair[0], pair[1])
+        cleared = self._resolve_board(pair[1])
+        self._legal_swaps = self._compute_legal_swaps(self._board)
+        if not self._legal_swaps:
+            self._reshuffle_until_playable()
+            self._legal_swaps = self._compute_legal_swaps(self._board)
+        if self._legal_swaps:
+            self._swap_index %= len(self._legal_swaps)
+        else:
+            self._swap_index = 0
+
+        if cleared:
+            self._message = (
+                f"Cascade x{self._cascade_depth}."
+                if self._cascade_depth > 1
+                else "Swap confirmed."
+            )
+        else:
+            self._message = "Swap resolved with no clear."
+
+        if self._score >= self._target_score and not self._blockers:
+            time_penalty = max(0, elapsed_seconds - self.current_level.target_seconds)
+            score = 52 + min(36.0, self._score / 8.0) + max(0.0, 12.0 - (self._reshuffles * 2.0)) - time_penalty
+            self._record_level_result(True, elapsed_seconds, score_override=score)
+            level_completed = True
+            run_completed = self._advance_level()
+            return level_completed, run_completed
+        return False, False
+
+    def _swap_cells(self, left: int, right: int) -> None:
+        self._board[left], self._board[right] = self._board[right], self._board[left]
+        left_special = self._specials.pop(left, None)
+        right_special = self._specials.pop(right, None)
+        if left_special is not None:
+            self._specials[right] = left_special
+        if right_special is not None:
+            self._specials[left] = right_special
+
+    def _resolve_board(self, spawn_index: int) -> bool:
+        cleared_any = False
+        while True:
+            groups = self._find_match_groups(self._board)
+            if not groups:
+                break
+            cleared_any = True
+            self._phase = "cascade"
+            self._cascade_depth += 1
+            clear_indices = set()
+            special_kind = None
+            for axis, group in groups:
+                clear_indices.update(group)
+                if special_kind is None and len(group) == 4:
+                    special_kind = "row" if axis == "row" else "column"
+
+            if special_kind is not None:
+                clear_indices.discard(spawn_index)
+                self._specials.pop(spawn_index, None)
+                self._specials[spawn_index] = special_kind
+                self._blockers.discard(spawn_index)
+
+            expanded_clear = set(clear_indices)
+            pending = [index for index in list(expanded_clear) if index in self._specials]
+            triggered = set()
+            while pending:
+                current = pending.pop()
+                if current in triggered:
+                    continue
+                triggered.add(current)
+                for index in self._special_clear_indices(current, self._specials[current]):
+                    if index not in expanded_clear:
+                        expanded_clear.add(index)
+                        if index in self._specials:
+                            pending.append(index)
+
+            blockers_removed = len(self._blockers & expanded_clear)
+            self._blockers.difference_update(expanded_clear)
+            for index in expanded_clear:
+                self._board[index] = None
+                self._specials.pop(index, None)
+
+            self._score += len(expanded_clear) * 20
+            self._score += blockers_removed * 25
+            self._score += max(0, self._cascade_depth - 1) * 10
+            self._apply_gravity_and_refill()
+
+        return cleared_any
+
+    def _special_clear_indices(self, index: int, kind: str) -> set[int]:
+        row, col = divmod(index, self._grid_size)
+        if kind == "row":
+            return {(row * self._grid_size) + target_col for target_col in range(self._grid_size)}
+        return {(target_row * self._grid_size) + col for target_row in range(self._grid_size)}
+
+    def _apply_gravity_and_refill(self) -> None:
+        new_board: list[str | None] = [None] * (self._grid_size ** 2)
+        new_specials: dict[int, str] = {}
+        for col in range(self._grid_size):
+            column_items = []
+            for row in range(self._grid_size - 1, -1, -1):
+                index = (row * self._grid_size) + col
+                if self._board[index] is not None:
+                    column_items.append((self._board[index], self._specials.get(index)))
+
+            write_row = self._grid_size - 1
+            for color, special in column_items:
+                index = (write_row * self._grid_size) + col
+                new_board[index] = color
+                if special is not None:
+                    new_specials[index] = special
+                write_row -= 1
+
+            while write_row >= 0:
+                index = (write_row * self._grid_size) + col
+                new_board[index] = self._next_refill_color()
+                write_row -= 1
+
+        self._board = [cell for cell in new_board if cell is not None]
+        self._specials = new_specials
+
+    def _next_refill_color(self) -> str:
+        color = self._palette[(self._refill_cursor + self._level_index) % self._color_count]
+        self._refill_cursor += 1
+        return color
+
+    def _reshuffle_until_playable(self) -> None:
+        items = [(self._board[index], self._specials.get(index)) for index in range(len(self._board))]
+        item_count = len(items)
+        for shift in range(1, item_count + 1):
+            offset = (shift + self._reshuffles) % item_count
+            rotated = items[offset:] + items[:offset]
+            board = [color for color, _special in rotated]
+            specials = {
+                index: special
+                for index, (_color, special) in enumerate(rotated)
+                if special is not None
+            }
+            if not self._find_match_groups(board) and self._compute_legal_swaps(board):
+                self._board = board
+                self._specials = specials
+                self._reshuffles += 1
+                self._message = "Board reshuffled."
+                return
+
+        self._board = self._generate_seed_board()
+        self._specials = {}
+        self._reshuffles += 1
+        self._message = "Board reset into a fresh shuffle."
+
+    def _cascade_recommendation(self, direction: str | None) -> str:
+        if direction == "right":
+            return "Cycle forward"
+        if direction == "left":
+            return "Cycle backward"
+        if direction == "confirm":
+            return "Confirm swap"
+        if self._blockers:
+            return "Clear blockers first"
+        return "Chase the next cascade"
+
+    def _highlight_pair(self) -> list[int]:
+        if not self._legal_swaps:
+            return []
+        left, right = self._legal_swaps[self._swap_index]
+        return [left, right]
+
+    def _cascade_view_state(self, message: str = "", music_bias: float = 0.0) -> dict:
+        return {
+            "mode": "candy_cascade",
+            "grid_size": self._grid_size,
+            "candies": list(self._board),
+            "blocker_cells": sorted(self._blockers),
+            "highlight_pair": self._highlight_pair(),
+            "score": self._score,
+            "target_score": self._target_score,
+            "cascade_depth": self._cascade_depth,
+            "remaining_blockers": len(self._blockers),
+            "special_cells": dict(self._specials),
+            "legal_move_count": len(self._legal_swaps),
+            "swap_index": self._swap_index,
+            "music_scene": "candy_memory",
+            "music_bias": music_bias,
+            "serenity": max(0.0, min(100.0, 60.0 + (self._score / 8.0) - (len(self._blockers) * 4.0))),
+            "restlessness": max(0.0, min(100.0, 20.0 + (len(self._blockers) * 5.0) + (self._reshuffles * 6.0))),
+            "message": message,
+            "phase": self._phase,
+            "headline": "Candy Cascade",
+        }
+
+
 TRAINING_SPECS: list[TrainingGameSpec] = [
     TrainingGameSpec(
         game_id="calm_current",
@@ -1415,19 +2583,19 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         section="Arcade neurofeedback",
         eyebrow="Neuro arcade",
         card_title="Space Shooter",
-        detail_title="A lane shooter driven by focus, shield timing, and steady firing",
+        detail_title="A retro vertical shooter for lateral control, burst timing, and wave clears",
         duration="9 min",
-        description="Climb, descend, and time clean shots as waves of enemies cross your flight lane.",
+        description="Sweep a star corridor, burst through enemy waves, and grab key pickups before the sector closes.",
         detail_body=(
-            "Space Shooter is an EEG-assisted arcade run built around reliable neurofeedback actions. Concentration "
-            "pulls the ship upward and charges stronger shots, relaxation drops you lower and builds shield, and a "
-            "balanced steady state turns that setup into precise firing windows."
+            "Space Shooter now plays like a portrait arcade rush. Concentration slides the ship right, relaxation "
+            "slides it left, and a balanced steady hold triggers a short burst-fire window while the ship keeps "
+            "shooting automatically. Clear each descending wave, collect weapon and repair pickups, and protect your hull."
         ),
         instructions=(
-            "Concentrate to climb and charge. Relax to descend and build shield. When an enemy lines up in your lane, "
-            "hold a balanced steady state to fire cleanly."
+            "Concentrate to move right, relax to move left, and hold a balanced steady state to trigger burst fire. "
+            "Stay aligned with incoming formations, collect pickups, and clear all three waves in each sector."
         ),
-        calibration_copy="Settle into a stable baseline so lane changes, charge, and fire windows feel consistent.",
+        calibration_copy="Settle into a stable baseline so lateral movement and burst timing stay readable.",
         preview_label="SPACE",
         colors=("#10294e", "#57b8ff"),
         enabled=True,
@@ -1465,24 +2633,49 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         section="Arcade neurofeedback",
         eyebrow="Focus speedway",
         card_title="Neuro Racer",
-        detail_title="A lane racer for boost control, braking, and stable pacing",
+        detail_title="A sky-ramp racer for steering, nitro timing, and calm recovery",
         duration="10 min",
-        description="Push into the fast line with focus, recover with calm braking, and hold the clean racing line.",
+        description="Overtake traffic on a floating speedway, save nitro for clean stretches, and recover after impacts.",
         detail_body=(
-            "Neuro Racer uses EEG for speed management instead of twitch steering. Concentration boosts toward the fast "
-            "line, relaxation brakes and recentres the car, and balanced control helps the player hold efficient pace "
-            "through traffic and hazard zones."
+            "Neuro Racer now presents a behind-the-car sky-ramp view. Concentration steers toward the right lane, "
+            "relaxation steers left into recovery space, and a balanced steady hold triggers nitro when charged or "
+            "locks the racing line when you need a calmer correction. The goal is to chain clean overtakes without losing stability."
         ),
         instructions=(
-            "Concentrate to boost into the fast lane, relax to brake and recover, and hold a balanced steady state to "
-            "keep the clean racing line through safer sections."
+            "Concentrate to steer right, relax to steer left, and hold a balanced steady state to activate nitro when "
+            "the meter is ready. Avoid traffic, protect stability, and reach the finish arch on every track."
         ),
-        calibration_copy="Build a stable baseline first so boost, brake, and line-holding cues stay readable.",
+        calibration_copy="Build a stable baseline first so steering and nitro cues stay readable.",
         preview_label="RACE",
         colors=("#27144b", "#f04868"),
         enabled=True,
         controller_factory=NeuroRacerController,
         widget_kind="neuro_racer",
+        music_profile="arcade",
+    ),
+    TrainingGameSpec(
+        game_id="bubble_burst",
+        section="Arcade neurofeedback",
+        eyebrow="Arcade puzzler",
+        card_title="Bubble Burst",
+        detail_title="A glossy bubble puzzler for shot timing, queue swaps, and full-board clears",
+        duration="9 min",
+        description="Clear the hanging cluster with a limited shot budget, swap the queue, and keep bubbles out of the launcher zone.",
+        detail_body=(
+            "Bubble Burst now follows a glossy mobile-style bubble shooter flow. Concentration nudges the launcher "
+            "right, relaxation nudges it left, and a balanced steady hold fires the current bubble. Optional queue swapping "
+            "helps rescue awkward shots, but the core goal is simple: clear every bubble before you run out of shots or crowd the launcher."
+        ),
+        instructions=(
+            "Concentrate to move the aim right, relax to move it left, and hold a balanced steady state to fire. "
+            "Match groups of three or more, use the swap button when needed, and clear the whole board before the shot budget runs out."
+        ),
+        calibration_copy="Settle into a stable baseline so aim movement and burst timing feel consistent.",
+        preview_label="BUBBLE",
+        colors=("#214f86", "#7de0ff"),
+        enabled=True,
+        controller_factory=BubbleBurstController,
+        widget_kind="bubble_burst",
         music_profile="arcade",
     ),
     TrainingGameSpec(
@@ -1507,6 +2700,30 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         enabled=True,
         controller_factory=PatternRecallController,
         widget_kind="memory",
+        music_profile="memory",
+    ),
+    TrainingGameSpec(
+        game_id="candy_cascade",
+        section="Memory and cognitive control",
+        eyebrow="Cascade logic",
+        card_title="Candy Cascade",
+        detail_title="A match-3 board for swap selection, cascades, and blocker clearing",
+        duration="10 min",
+        description="Cycle through legal swaps, lock in the best move, and clear blockers through cascading matches.",
+        detail_body=(
+            "Candy Cascade adapts match-3 play to EEG control. Concentration cycles forward through legal swaps, "
+            "relaxation cycles backward, and a balanced confirm hold commits the highlighted move and resolves the board."
+        ),
+        instructions=(
+            "Concentrate to cycle forward through legal swaps, relax to cycle backward, and hold a balanced steady "
+            "state to confirm the highlighted move. Clear blockers while building enough score to finish the board."
+        ),
+        calibration_copy="Build a neutral baseline first so swap cycling and confirm holds stay reliable.",
+        preview_label="MATCH",
+        colors=("#7a2f52", "#ffc978"),
+        enabled=True,
+        controller_factory=CandyCascadeController,
+        widget_kind="candy_cascade",
         music_profile="memory",
     ),
 ]

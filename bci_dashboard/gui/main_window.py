@@ -33,6 +33,7 @@ from classifiers.emotions_handler import EmotionsHandler
 from classifiers.productivity_handler import ProductivityHandler
 from classifiers.cardio_handler import CardioHandler
 from classifiers.physio_handler import PhysioHandler
+from classifiers.mems_handler import MemsHandler
 
 from calibration.calibration_manager import CalibrationManager
 from storage.csv_logger import CSVLogger
@@ -70,6 +71,7 @@ class MainWindow(QMainWindow):
         self._prod_h: ProductivityHandler | None = None
         self._cardio_h: CardioHandler | None = None
         self._physio_h: PhysioHandler | None = None
+        self._mems_h: MemsHandler | None = None
         self._cal_mgr: CalibrationManager | None = None
         self._status_mon: DeviceStatusMonitor | None = None
         self._csv = CSVLogger()
@@ -262,6 +264,7 @@ class MainWindow(QMainWindow):
         self._dm.connection_changed.connect(self._on_device_connected)
         self._dm.battery_updated.connect(self._on_battery_updated)
         self._dm.resistance_updated.connect(self._on_resistance_updated)
+        self._dm.mode_changed.connect(self._on_mode_updated)
         self._dm.error_occurred.connect(self._on_error)
 
     def _on_battery_updated(self, pct: int):
@@ -269,6 +272,18 @@ class MainWindow(QMainWindow):
 
     def _on_resistance_updated(self, data: dict):
         self._dash_screen.on_resistance(data)
+
+    def _on_mode_updated(self, mode: int):
+        mode_map = {
+            0: "Resistance",
+            1: "Signal",
+            2: "Signal+Resistance",
+            3: "MEMS",
+            4: "Stop MEMS",
+            5: "PPG",
+            6: "Stop PPG",
+        }
+        self._dash_screen.set_mode(mode_map.get(int(mode), "Unspecified"))
 
     def _on_device_connected(self, status: int):
         try:
@@ -317,6 +332,7 @@ class MainWindow(QMainWindow):
             self._prod_h = ProductivityHandler(dev, lib, parent=self)
             self._cardio_h = CardioHandler(dev, lib, parent=self)
             self._physio_h = PhysioHandler(dev, lib, parent=self)
+            self._mems_h = MemsHandler(dev, lib, parent=self)
         except Exception as exc:
             log.error("Failed to create classifiers: %s", _safe_str(exc))
             return
@@ -334,7 +350,10 @@ class MainWindow(QMainWindow):
         self._prod_h.metrics_updated.connect(self._on_productivity)
         self._prod_h.indexes_updated.connect(self._dash_screen.on_indexes)
         self._cardio_h.cardio_updated.connect(self._on_cardio)
+        self._cardio_h.ppg_updated.connect(self._dash_screen.on_ppg)
+        self._cardio_h.calibrated.connect(lambda: self._dash_screen.set_ppg_calibrated(True))
         self._physio_h.states_updated.connect(self._on_physio_states)
+        self._mems_h.mems_updated.connect(self._dash_screen.on_mems)
 
         # ── Connect raw signal → dashboard ───────────────────────────
         self._dm.psd_received.connect(self._dash_screen.on_psd)

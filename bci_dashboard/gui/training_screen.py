@@ -26,6 +26,8 @@ from gui.training_audio import AdaptiveMusicEngine
 from gui.training_games import TRAINING_SPECS, active_training_specs
 from gui.widgets.mind_maze_board import MindMazeBoard, MindMazeControlBar
 from gui.widgets.training_game_widgets import (
+    BubbleBurstWidget,
+    CandyCascadeWidget,
     CalmCurrentWidget,
     FullRebootWidget,
     JumpBallWidget,
@@ -165,6 +167,8 @@ class SoundtrackCard(QFrame):
 
 
 class TrainingScreen(QWidget):
+    IMMERSIVE_GAME_IDS = {"space_shooter", "neuro_racer", "bubble_burst"}
+
     SOUNDTRACKS = {
         "Central Park": {
             "description": "Wide, airy pads with a calm city-park pulse.",
@@ -478,7 +482,8 @@ class TrainingScreen(QWidget):
         layout.setContentsMargins(44, 28, 44, 36)
         layout.setSpacing(14)
 
-        layout.addWidget(self._device_badge())
+        self._game_device_badge = self._device_badge()
+        layout.addWidget(self._game_device_badge)
         self._game_level_lbl = QLabel("Level 1")
         self._game_level_lbl.setAlignment(Qt.AlignCenter)
         self._game_level_lbl.setStyleSheet("font-size: 38px; font-weight: bold; color: #f8fafc;")
@@ -495,7 +500,13 @@ class TrainingScreen(QWidget):
         self._space_shooter_widget = SpaceShooterWidget()
         self._jump_ball_widget = JumpBallWidget()
         self._neuro_racer_widget = NeuroRacerWidget()
+        self._bubble_burst_widget = BubbleBurstWidget()
         self._pattern_widget = PatternRecallWidget()
+        self._candy_cascade_widget = CandyCascadeWidget()
+        self._space_shooter_widget.set_menu_callback(self._cancel_gameplay)
+        self._neuro_racer_widget.set_menu_callback(self._cancel_gameplay)
+        self._bubble_burst_widget.set_menu_callback(self._cancel_gameplay)
+        self._bubble_burst_widget.set_swap_callback(self._swap_bubble_queue)
         self._game_widget_map = {
             "mind_maze": self._maze_board,
             "calm_current": self._current_widget,
@@ -503,7 +514,9 @@ class TrainingScreen(QWidget):
             "space_shooter": self._space_shooter_widget,
             "jump_ball": self._jump_ball_widget,
             "neuro_racer": self._neuro_racer_widget,
+            "bubble_burst": self._bubble_burst_widget,
             "pattern_recall": self._pattern_widget,
+            "candy_cascade": self._candy_cascade_widget,
         }
         for widget in self._game_widget_map.values():
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -518,9 +531,9 @@ class TrainingScreen(QWidget):
         self._game_status_lbl.setStyleSheet(f"font-size: 15px; color: {TEXT_SECONDARY};")
         layout.addWidget(self._game_status_lbl)
 
-        cancel_btn = self._pill_button("Cancel", filled=False, wide=True)
-        cancel_btn.clicked.connect(self._cancel_gameplay)
-        layout.addWidget(cancel_btn)
+        self._game_cancel_btn = self._pill_button("Cancel", filled=False, wide=True)
+        self._game_cancel_btn.clicked.connect(self._cancel_gameplay)
+        layout.addWidget(self._game_cancel_btn)
         return page
 
     def _build_result_page(self):
@@ -730,6 +743,12 @@ class TrainingScreen(QWidget):
         self._stop_runtime_loops()
         self._show_result(self._controller.finish_run(elapsed, aborted=True))
 
+    def _swap_bubble_queue(self):
+        if self._current_game_id != "bubble_burst":
+            return
+        if hasattr(self._controller, "swap_bubbles") and self._controller.swap_bubbles():
+            self._update_gameplay_labels()
+
     def _show_result(self, result):
         self._result_score_lbl.setText(f"{result.final_score}%")
         self._result_completion_lbl.setText(
@@ -794,6 +813,7 @@ class TrainingScreen(QWidget):
         concentration = float(self._latest_productivity.get("concentrationScore", 0.0))
         relaxation = float(self._latest_productivity.get("relaxationScore", 0.0))
         if snapshot is None:
+            seconds_left = 5
             self._calibration_counter_lbl.setText("00:05")
             self._calibration_value_lbl.setText("Ready delta: 0.0")
             self._calibration_status_lbl.setText("Collecting baseline samples...")
@@ -804,6 +824,8 @@ class TrainingScreen(QWidget):
                 "Relax to enter the ready zone",
                 self._current_spec.calibration_copy,
                 muted=not self._has_fresh_metrics(),
+                timer_text=f"00:{seconds_left:02d}",
+                countdown_ratio=1.0,
             )
             self._update_audio_mix(0.0, 0.0, {"music_scene": "calibration", "serenity": 50.0, "restlessness": 18.0})
             return
@@ -825,11 +847,14 @@ class TrainingScreen(QWidget):
             f"Ready hold {snapshot.ready_streak}/{READY_STREAK_TARGET}",
             snapshot.status,
             muted=(not self._has_fresh_metrics() or self._has_artifacts()),
+            timer_text=f"00:{seconds_left:02d}",
+            countdown_ratio=max(0.0, min(1.0, seconds_left / 5.0)),
         )
         self._update_audio_mix(conc_delta, relax_delta, {"music_scene": "calibration", "serenity": 50.0, "restlessness": 18.0})
 
     def _switch_game_widget(self):
         self._game_views.setCurrentWidget(self._game_widget_map[self._current_game_id])
+        self._update_gameplay_chrome(self._current_game_id in self.IMMERSIVE_GAME_IDS)
 
     def _apply_view_state(self, view_state: dict):
         widget = self._game_widget_map[self._current_game_id]
@@ -838,32 +863,81 @@ class TrainingScreen(QWidget):
         else:
             widget.set_state(view_state)
 
+    def _update_gameplay_chrome(self, immersive: bool):
+        visible = not immersive
+        self._game_device_badge.setVisible(visible)
+        self._game_level_lbl.setVisible(visible)
+        self._game_time_lbl.setVisible(False)
+        self._game_bar.setVisible(False)
+        self._game_status_lbl.setVisible(False)
+        self._game_cancel_btn.setVisible(visible)
+
+    def _build_gameplay_balance_panel(
+        self,
+        *,
+        phase_label: str,
+        recommended_label: str,
+        status: str,
+        muted: bool,
+        balance: float,
+        conc_delta: float,
+        relax_delta: float,
+        elapsed_seconds: float,
+    ) -> dict:
+        remaining = max(0, self._controller.current_level.target_seconds - int(round(elapsed_seconds)))
+        headline = f"{phase_label} • {recommended_label}" if recommended_label else phase_label
+        target_seconds = max(1, self._controller.current_level.target_seconds)
+        return {
+            "timer_text": self._format_seconds(remaining),
+            "balance": balance,
+            "conc_delta": conc_delta,
+            "relax_delta": relax_delta,
+            "headline": headline,
+            "status": status,
+            "muted": muted,
+            "countdown_ratio": remaining / target_seconds,
+        }
+
     def _update_gameplay_labels(self, snapshot=None):
         self._switch_game_widget()
+        immersive = self._current_game_id in self.IMMERSIVE_GAME_IDS
         self._game_level_lbl.setText(self._controller.current_level.title)
-        self._game_time_lbl.setText(self._format_seconds(self._current_level_elapsed()))
+        elapsed_seconds = self._current_level_elapsed()
+        self._game_time_lbl.setText(self._format_seconds(elapsed_seconds))
         intent_label = "Hold steady"
         status = self._current_spec.instructions
         muted = False
         conc_delta = 0.0
         relax_delta = 0.0
         balance = 0.0
-        view_state = getattr(self._controller, "view_state", {})
+        phase_label = self._current_spec.card_title
+        recommended_label = ""
+        view_state = dict(getattr(self._controller, "view_state", {}) or {})
         if snapshot is not None:
             intent_label = (
                 f"{snapshot.phase_label} • {snapshot.recommended_label}"
                 if snapshot.recommended_label
                 else snapshot.phase_label
             )
+            phase_label = snapshot.phase_label
+            recommended_label = snapshot.recommended_label
             status = snapshot.blocked_reason or snapshot.control_hint
             muted = bool(snapshot.blocked_reason and not snapshot.direction)
             conc_delta = snapshot.conc_delta
             relax_delta = snapshot.relax_delta
             balance = snapshot.balance
-            view_state = snapshot.view_state
+            view_state = dict(snapshot.view_state or {})
+        view_state["balance_panel"] = self._build_gameplay_balance_panel(
+            phase_label=phase_label,
+            recommended_label=recommended_label,
+            status=status,
+            muted=muted,
+            balance=balance,
+            conc_delta=conc_delta,
+            relax_delta=relax_delta,
+            elapsed_seconds=elapsed_seconds,
+        )
         self._apply_view_state(view_state)
-        self._game_bar.set_state(balance, conc_delta, relax_delta, intent_label, status, muted)
-        self._game_status_lbl.setText(status)
         self._update_audio_mix(conc_delta, relax_delta, view_state)
 
     def _ensure_audio_assets(self):

@@ -8,6 +8,91 @@ from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath
 from PySide6.QtWidgets import QWidget
 
 
+def draw_balance_panel(painter: QPainter, rect: QRectF, panel: dict | None) -> None:
+    if not panel:
+        return
+
+    muted = bool(panel.get("muted", False))
+    balance = float(panel.get("balance", 0.0))
+    conc_delta = float(panel.get("conc_delta", 0.0))
+    relax_delta = float(panel.get("relax_delta", 0.0))
+    timer_text = str(panel.get("timer_text", "00:00"))
+    headline = str(panel.get("headline", "Hold steady"))
+    status = str(panel.get("status", "Waiting for live concentration and relaxation."))
+    countdown_ratio = max(0.0, min(1.0, float(panel.get("countdown_ratio", 0.0))))
+
+    shell = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+    if muted:
+        shell.setColorAt(0.0, QColor(36, 40, 50, 235))
+        shell.setColorAt(1.0, QColor(24, 27, 35, 235))
+        border = QColor("#798292")
+    else:
+        shell.setColorAt(0.0, QColor(9, 12, 20, 228))
+        shell.setColorAt(1.0, QColor(6, 8, 14, 220))
+        border = QColor("#5c6886")
+
+    painter.setPen(QPen(border, 1.6))
+    painter.setBrush(shell)
+    painter.drawRoundedRect(rect, 24, 24)
+
+    time_rect = QRectF(rect.left() + 18, rect.top() + 10, rect.width() - 36, 30)
+    time_progress_rect = QRectF(rect.left() + 42, time_rect.bottom() + 2, rect.width() - 84, 4)
+    fill_width = time_progress_rect.width() * countdown_ratio
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QColor(255, 255, 255, 22))
+    painter.drawRoundedRect(time_progress_rect, 2, 2)
+    painter.setBrush(QColor("#f5f3b7") if not muted else QColor("#9ca3af"))
+    painter.drawRoundedRect(QRectF(time_progress_rect.left(), time_progress_rect.top(), fill_width, time_progress_rect.height()), 2, 2)
+
+    painter.setPen(QColor("#f8fafc"))
+    timer_font = QFont()
+    timer_font.setPointSize(18)
+    timer_font.setBold(True)
+    painter.setFont(timer_font)
+    painter.drawText(time_rect, Qt.AlignCenter, timer_text)
+
+    header_rect = QRectF(rect.left() + 16, rect.top() + 48, rect.width() - 32, 18)
+    painter.setPen(QColor("#b9c8e8") if not muted else QColor("#c0c7d2"))
+    header_font = QFont()
+    header_font.setPointSize(9)
+    painter.setFont(header_font)
+    painter.drawText(header_rect, Qt.AlignCenter, headline)
+
+    track_rect = QRectF(rect.left() + 18, rect.top() + 70, rect.width() - 36, 12)
+    gradient = QLinearGradient(track_rect.topLeft(), track_rect.topRight())
+    if muted:
+        gradient.setColorAt(0.0, QColor("#59616d"))
+        gradient.setColorAt(1.0, QColor("#59616d"))
+    else:
+        gradient.setColorAt(0.0, QColor("#9af7aa"))
+        gradient.setColorAt(0.5, QColor("#f5f3b7"))
+        gradient.setColorAt(1.0, QColor("#f76161"))
+
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(gradient)
+    painter.drawRoundedRect(track_rect, 6, 6)
+
+    center_x = track_rect.center().x()
+    painter.setPen(QPen(QColor("#d8dee9"), 2))
+    painter.drawLine(QPointF(center_x, track_rect.top() - 12), QPointF(center_x, track_rect.bottom() + 12))
+
+    marker_x = track_rect.left() + ((max(-25.0, min(25.0, balance)) + 25.0) / 50.0) * track_rect.width()
+    painter.setPen(QPen(QColor("#d7e4ff"), 1.8))
+    painter.setBrush(QColor("#e5f6d2") if not muted else QColor("#b0b7c2"))
+    painter.drawEllipse(QPointF(marker_x, track_rect.center().y()), 9, 9)
+
+    delta_rect = QRectF(rect.left() + 18, rect.top() + 90, rect.width() - 36, 16)
+    painter.setPen(QColor("#dbe7ff") if not muted else QColor("#c6ccd8"))
+    delta_font = QFont()
+    delta_font.setPointSize(9)
+    painter.setFont(delta_font)
+    painter.drawText(delta_rect, Qt.AlignCenter, f"Conc {conc_delta:+.1f}   Relax {relax_delta:+.1f}")
+
+    status_rect = QRectF(rect.left() + 20, rect.top() + 108, rect.width() - 40, rect.height() - 114)
+    painter.setPen(QColor("#cbd5e1") if not muted else QColor("#c2c7cf"))
+    painter.drawText(status_rect, Qt.AlignHCenter | Qt.AlignTop | Qt.TextWordWrap, status)
+
+
 class MindMazeBoard(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -16,17 +101,27 @@ class MindMazeBoard(QWidget):
         self._goal = (0, 0)
         self._message = ""
         self._hint_direction = None
+        self._balance_panel: dict | None = None
         self.setMinimumHeight(380)
 
     def sizeHint(self):
         return QSize(520, 460)
 
-    def set_state(self, level, player, goal, message: str = "", hint_direction: str | None = None):
+    def set_state(
+        self,
+        level,
+        player,
+        goal,
+        message: str = "",
+        hint_direction: str | None = None,
+        balance_panel: dict | None = None,
+    ):
         self._level = level
         self._player = player
         self._goal = goal
         self._message = message
         self._hint_direction = hint_direction
+        self._balance_panel = balance_panel
         self.update()
 
     def set_view_state(self, view_state: dict):
@@ -37,6 +132,7 @@ class MindMazeBoard(QWidget):
             state.get("goal", (0, 0)),
             state.get("message", ""),
             hint_direction=state.get("hint_direction"),
+            balance_panel=state.get("balance_panel"),
         )
 
     def paintEvent(self, event):  # noqa: N802 - Qt API
@@ -64,12 +160,15 @@ class MindMazeBoard(QWidget):
         grid_h = max_y - min_y + 1
 
         padding = 36
+        top_reserved = 158 if self._balance_panel else 28
+        bottom_reserved = 56 if self._message else 30
         cell_size = min(
             (self.width() - (padding * 2)) / max(grid_w, 1),
-            (self.height() - (padding * 2)) / max(grid_h, 1),
+            max(80.0, (self.height() - top_reserved - bottom_reserved)) / max(grid_h, 1),
         )
         board_left = (self.width() - (grid_w * cell_size)) / 2
-        board_top = (self.height() - (grid_h * cell_size)) / 2 - 8
+        usable_height = self.height() - top_reserved - bottom_reserved
+        board_top = top_reserved + ((usable_height - (grid_h * cell_size)) / 2) - 4
 
         wall_pen = QPen(QColor("#f5d1b0"), 5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
         shadow_pen = QPen(QColor(0, 0, 0, 90), 9, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
@@ -127,6 +226,13 @@ class MindMazeBoard(QWidget):
             text_rect = QRectF(20, self.height() - 42, self.width() - 40, 24)
             painter.drawText(text_rect, Qt.AlignCenter, self._message)
 
+        if self._balance_panel:
+            draw_balance_panel(
+                painter,
+                QRectF(max(24.0, self.width() * 0.16), 18, self.width() * 0.68, 132),
+                self._balance_panel,
+            )
+
     def _cell_rect(self, left, top, cell_size, min_x, min_y, cell):
         return QRectF(
             left + ((cell[0] - min_x) * cell_size),
@@ -173,10 +279,12 @@ class MindMazeControlBar(QWidget):
         self._intent_label = "Hold steady"
         self._status = "Waiting for live concentration and relaxation."
         self._muted = False
-        self.setMinimumHeight(120)
+        self._timer_text = "00:00"
+        self._countdown_ratio = 0.0
+        self.setMinimumHeight(140)
 
     def sizeHint(self):
-        return QSize(560, 120)
+        return QSize(560, 140)
 
     def set_state(
         self,
@@ -186,6 +294,8 @@ class MindMazeControlBar(QWidget):
         intent_label: str,
         status: str,
         muted: bool = False,
+        timer_text: str = "00:00",
+        countdown_ratio: float = 0.0,
     ):
         self._balance = balance
         self._conc_delta = conc_delta
@@ -193,49 +303,25 @@ class MindMazeControlBar(QWidget):
         self._intent_label = intent_label
         self._status = status
         self._muted = muted
+        self._timer_text = timer_text
+        self._countdown_ratio = countdown_ratio
         self.update()
 
     def paintEvent(self, event):  # noqa: N802 - Qt API
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.fillRect(self.rect(), Qt.transparent)
-
-        track_rect = QRectF(28, 28, self.width() - 56, 14)
-        gradient = QLinearGradient(track_rect.topLeft(), track_rect.topRight())
-        if self._muted:
-            gradient.setColorAt(0.0, QColor("#59616d"))
-            gradient.setColorAt(1.0, QColor("#59616d"))
-        else:
-            gradient.setColorAt(0.0, QColor("#9af7aa"))
-            gradient.setColorAt(0.5, QColor("#f5f3b7"))
-            gradient.setColorAt(1.0, QColor("#f76161"))
-
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(gradient)
-        painter.drawRoundedRect(track_rect, 7, 7)
-
-        center_x = track_rect.center().x()
-        painter.setPen(QPen(QColor("#d8dee9"), 2))
-        painter.drawLine(QPointF(center_x, track_rect.top() - 18), QPointF(center_x, track_rect.bottom() + 18))
-
-        marker_x = track_rect.left() + ((max(-25.0, min(25.0, self._balance)) + 25.0) / 50.0) * track_rect.width()
-        painter.setBrush(QColor("#e5f6d2") if not self._muted else QColor("#b0b7c2"))
-        painter.drawEllipse(QPointF(marker_x, track_rect.center().y()), 12, 12)
-
-        painter.setPen(QColor("#f8fafc"))
-        title_font = QFont()
-        title_font.setPointSize(12)
-        title_font.setBold(True)
-        painter.setFont(title_font)
-        painter.drawText(QRectF(0, 54, self.width(), 22), Qt.AlignCenter, self._intent_label)
-
-        body_font = QFont()
-        body_font.setPointSize(10)
-        painter.setFont(body_font)
-        painter.setPen(QColor("#cbd5e1"))
-        painter.drawText(
-            QRectF(0, 76, self.width(), 18),
-            Qt.AlignCenter,
-            f"Conc {self._conc_delta:+.1f}   Relax {self._relax_delta:+.1f}",
+        draw_balance_panel(
+            painter,
+            self.rect().adjusted(6, 4, -6, -4),
+            {
+                "timer_text": self._timer_text,
+                "balance": self._balance,
+                "conc_delta": self._conc_delta,
+                "relax_delta": self._relax_delta,
+                "headline": self._intent_label,
+                "status": self._status,
+                "muted": self._muted,
+                "countdown_ratio": self._countdown_ratio,
+            },
         )
-        painter.drawText(QRectF(0, 96, self.width(), 18), Qt.AlignCenter, self._status)
