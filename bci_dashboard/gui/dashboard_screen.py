@@ -18,7 +18,6 @@ from PySide6.QtCore import Qt, QTimer
 from gui.widgets.metric_card import MetricCard
 from gui.widgets.fatigue_panel import FatiguePanel
 from gui.widgets.spectrum_chart import SpectrumChart
-from gui.widgets.eeg_waveform import EEGWaveform
 from gui.widgets.electrode_table import ElectrodeTable
 from utils.config import (
     BG_CARD, BG_PRIMARY, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY,
@@ -65,7 +64,6 @@ class DashboardScreen(QWidget):
         self._latest_peaks = {}
         # Rate-limiting timestamps for high-frequency callbacks
         self._last_psd_t = 0.0
-        self._last_eeg_table_t = 0.0
         self._session_file: str | None = None
         self._session_id = str(uuid.uuid4())
         self._session_start = datetime.now()
@@ -77,10 +75,10 @@ class DashboardScreen(QWidget):
         self._dur_timer.timeout.connect(self._update_duration)
         self._dur_timer.start()
 
-        # 10-Hz timer for EEG waveform refresh
+        # 10-Hz timer for EEG trace refresh
         self._eeg_timer = QTimer(self)
         self._eeg_timer.setInterval(100)
-        self._eeg_timer.timeout.connect(self._eeg_waveform.refresh)
+        self._eeg_timer.timeout.connect(self._electrode_table.refresh)
 
     # ══════════════════════════════════════════════════════════════════
     #  UI construction
@@ -178,13 +176,9 @@ class DashboardScreen(QWidget):
         self._spectrum = SpectrumChart()
         left_layout.addWidget(self._spectrum, stretch=3)
 
-        # EEG Waveform traces
-        self._eeg_waveform = EEGWaveform()
-        left_layout.addWidget(self._eeg_waveform, stretch=2)
-
         # Electrode table
         self._electrode_table = ElectrodeTable()
-        left_layout.addWidget(self._electrode_table)
+        left_layout.addWidget(self._electrode_table, stretch=2)
 
         splitter.addWidget(left_widget)
 
@@ -509,15 +503,9 @@ class DashboardScreen(QWidget):
     def on_eeg(self, eeg_timed_data):
         """Receive EEG data from DeviceManager.
 
-        Buffer all samples for the waveform plot; only update the
-        electrode table at ≤10 Hz to avoid blocking the UI thread.
+        Buffer all samples for the live per-channel EEG traces.
         """
-        import time
-        self._eeg_waveform.add_eeg_data(eeg_timed_data)
-        now = time.monotonic()
-        if now - self._last_eeg_table_t >= 0.1:
-            self._last_eeg_table_t = now
-            self._electrode_table.update_eeg(eeg_timed_data)
+        self._electrode_table.add_eeg_data(eeg_timed_data)
 
     def on_artifacts(self, artifacts):
         """Receive artifact data from DeviceManager."""
@@ -556,8 +544,8 @@ class DashboardScreen(QWidget):
             f"Session Start: {self._session_start.strftime('%H:%M:%S')}"
         )
         self._id_label.setText(f"Session ID: {self._session_id}")
-        self._eeg_waveform.clear()
-        self._eeg_waveform.set_session_start()
+        self._electrode_table.set_session_start()
+        self._electrode_table.clear()
         self._eeg_timer.start()
 
     def set_session_file(self, path: str):
