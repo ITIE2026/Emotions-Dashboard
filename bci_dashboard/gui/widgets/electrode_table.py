@@ -10,6 +10,7 @@ import time
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
+<<<<<<< HEAD
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -17,6 +18,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+=======
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
 
 from utils.config import BG_CARD, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY
 
@@ -35,6 +39,32 @@ _MAX_SAMPLES = 1500
 _MIN_HALF_RANGE_UV = 15.0
 _HEADER_BG = "#5E70B7"
 _ROW_BG = "#2A2E48"
+
+
+class _SessionAxisItem(pg.AxisItem):
+    """Bottom axis showing elapsed session time."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._session_start = time.time()
+
+    def set_session_start(self, t: float):
+        self._session_start = t
+
+    def tickStrings(self, values, scale, spacing):
+        labels = []
+        for value in values:
+            elapsed = max(0.0, value - self._session_start)
+            hours, rem = divmod(int(elapsed), 3600)
+            minutes, seconds = divmod(rem, 60)
+            labels.append(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+        return labels
+
+_CHANNEL_NAMES = {0: "O1-T3", 1: "O2-T4"}
+_GRAPH_BG = "#131624"
+_WINDOW_SEC = 6.0
+_MAX_SAMPLES = 1500
+_MIN_HALF_RANGE_UV = 15.0
 
 
 class _SessionAxisItem(pg.AxisItem):
@@ -89,6 +119,7 @@ class ElectrodeTable(QWidget):
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(0)
 
+<<<<<<< HEAD
         trace_header = QHBoxLayout()
         trace_header.setContentsMargins(0, 0, 0, 4)
         trace_header.setSpacing(0)
@@ -116,6 +147,11 @@ class ElectrodeTable(QWidget):
         header_inner = QHBoxLayout(header_widget)
         header_inner.setContentsMargins(6, 0, 6, 0)
         header_inner.setSpacing(4)
+=======
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 6)
+        header.setSpacing(4)
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
         for text, width in [
             ("Electrode", 90),
             ("Artifacts", 72),
@@ -147,8 +183,13 @@ class ElectrodeTable(QWidget):
             name_lbl = QLabel(ch_name)
             name_lbl.setFixedWidth(90)
             name_lbl.setStyleSheet(
+<<<<<<< HEAD
                 f"font-size: 12px; font-weight: bold; color: {TEXT_PRIMARY}; "
                 f"background: {_NAME_BG}; border: none; border-radius: 4px; "
+=======
+                f"font-size: 12px; font-weight: bold; color: {colour}; "
+                f"background: {BORDER_SUBTLE}; border: none; border-radius: 4px; "
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
                 f"padding: 4px 6px;"
             )
 
@@ -171,7 +212,10 @@ class ElectrodeTable(QWidget):
             plot = pg.PlotWidget(axisItems={"bottom": axis})
             plot.setBackground(_GRAPH_BG)
             plot.setFixedHeight(82 if ch_name == last_channel else 72)
+<<<<<<< HEAD
             plot.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+=======
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
             plot.getPlotItem().setMenuEnabled(False)
             plot.getViewBox().setMouseEnabled(x=False, y=False)
             plot.showGrid(x=True, y=True, alpha=0.12)
@@ -192,7 +236,11 @@ class ElectrodeTable(QWidget):
                 pen=pg.mkPen(color="#334055", width=1),
             )
             plot.addItem(baseline)
+<<<<<<< HEAD
             curve = plot.plot(pen=pg.mkPen(_TRACE_COLOR, width=1.4))
+=======
+            curve = plot.plot(pen=pg.mkPen(colour, width=1.4))
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
 
             row.addWidget(name_lbl)
             row.addWidget(art_lbl)
@@ -246,11 +294,26 @@ class ElectrodeTable(QWidget):
                 if ch_name not in self._rows:
                     continue
 
+<<<<<<< HEAD
                 for sample_idx in range(n_samples):
                     raw_value = float(eeg_timed_data.get_raw_value(ch_idx, sample_idx))
                     value_uv = raw_value * 1_000_000.0
                     self._buffers[ch_name].append(value_uv)
                     self._time_bufs[ch_name].append(mapped_times[sample_idx])
+=======
+                packet_uv = []
+                for sample_idx in range(n_samples):
+                    raw_value = float(eeg_timed_data.get_raw_value(ch_idx, sample_idx))
+                    value_uv = raw_value * 1_000_000.0
+                    packet_uv.append(value_uv)
+                    self._buffers[ch_name].append(value_uv)
+                    self._time_bufs[ch_name].append(mapped_times[sample_idx])
+
+                if packet_uv:
+                    avg_uv = float(np.mean(np.abs(packet_uv)))
+                    self._avg_uv[ch_name] = avg_uv
+                    self._rows[ch_name]["avg_lbl"].setText(f"{avg_uv:.3f}")
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
         except Exception:
             pass
 
@@ -258,9 +321,12 @@ class ElectrodeTable(QWidget):
         """Compatibility wrapper for older callers."""
         self.add_eeg_data(eeg_timed_data)
 
+<<<<<<< HEAD
     def has_data(self) -> bool:
         return any(bool(times) for times in self._time_bufs.values())
 
+=======
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
     def refresh(self):
         """Redraw both channel traces from the rolling buffers."""
         latest_times = [
@@ -287,6 +353,7 @@ class ElectrodeTable(QWidget):
 
             t = np.asarray(times, dtype=float)
             y = np.asarray(samples, dtype=float)
+<<<<<<< HEAD
             visible = y[t >= t_start]
             if visible.size == 0:
                 display = y
@@ -315,6 +382,19 @@ class ElectrodeTable(QWidget):
             row["plot"].setXRange(t_start, t_end, padding=0)
             self._avg_uv[ch_name] = avg_uv
             row["avg_lbl"].setText(f"{avg_uv:.3f}")
+=======
+            row["curve"].setData(t, y)
+            row["plot"].setXRange(t_start, t_end, padding=0)
+
+            visible = y[t >= t_start]
+            if visible.size == 0:
+                half_range = _MIN_HALF_RANGE_UV
+            else:
+                half_range = max(
+                    float(np.percentile(np.abs(visible), 97)) * 1.25,
+                    _MIN_HALF_RANGE_UV,
+                )
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
             row["plot"].setYRange(-half_range, half_range, padding=0)
 
     def clear(self):

@@ -22,7 +22,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+<<<<<<< HEAD
 from gui.raw_metrics import aggregate_band_history, derive_ppg_metrics
+=======
+from gui.widgets.metric_card import MetricCard
+from gui.widgets.fatigue_panel import FatiguePanel
+from gui.widgets.spectrum_chart import SpectrumChart
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
 from gui.widgets.electrode_table import ElectrodeTable
 from gui.widgets.fatigue_panel import FatiguePanel
 from gui.widgets.metric_card import MetricCard
@@ -127,10 +133,17 @@ class DashboardScreen(QWidget):
         self._dur_timer.timeout.connect(self._update_duration)
         self._dur_timer.start()
 
+<<<<<<< HEAD
         self._eeg_timer = QTimer(self)
         self._eeg_timer.setInterval(100)
         self._eeg_timer.timeout.connect(self._refresh_live_panels)
         self._eeg_timer.start()
+=======
+        # 10-Hz timer for EEG trace refresh
+        self._eeg_timer = QTimer(self)
+        self._eeg_timer.setInterval(100)
+        self._eeg_timer.timeout.connect(self._electrode_table.refresh)
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
 
     def _build_ui(self):
         outer = QVBoxLayout(self)
@@ -218,6 +231,7 @@ class DashboardScreen(QWidget):
         self._spectrum.setMinimumHeight(300)
         left_splitter.addWidget(self._spectrum)
 
+<<<<<<< HEAD
         self._electrode_table = ElectrodeTable()
         self._electrode_table.setMinimumHeight(220)
         left_splitter.addWidget(self._electrode_table)
@@ -225,6 +239,12 @@ class DashboardScreen(QWidget):
         left_splitter.setStretchFactor(1, 2)
         left_splitter.setSizes([560, 240])
         left_layout.addWidget(left_splitter, stretch=1)
+=======
+        # Electrode table
+        self._electrode_table = ElectrodeTable()
+        left_layout.addWidget(self._electrode_table, stretch=2)
+
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
         splitter.addWidget(left_widget)
 
         right_scroll = QScrollArea()
@@ -587,6 +607,7 @@ class DashboardScreen(QWidget):
             pass
 
     def on_eeg(self, eeg_timed_data):
+<<<<<<< HEAD
         if not self._streaming_active:
             return
         had_data = self._electrode_table.has_data()
@@ -595,6 +616,13 @@ class DashboardScreen(QWidget):
             self._eeg_timer.start()
         if not had_data:
             self._electrode_table.refresh()
+=======
+        """Receive EEG data from DeviceManager.
+
+        Buffer all samples for the live per-channel EEG traces.
+        """
+        self._electrode_table.add_eeg_data(eeg_timed_data)
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
 
     def on_artifacts(self, artifacts):
         self._electrode_table.update_artifacts(artifacts)
@@ -655,6 +683,7 @@ class DashboardScreen(QWidget):
             f"Session Start: {self._session_start.strftime('%H:%M:%S')}"
         )
         self._id_label.setText(f"Session ID: {self._session_id}")
+<<<<<<< HEAD
 
         self._ppg_state = {}
         self._latest_ppg_metrics = {}
@@ -674,6 +703,10 @@ class DashboardScreen(QWidget):
         self._update_ppg_metrics_panel()
         self._update_rhythms_diagram()
         self._refresh_mems_charts()
+=======
+        self._electrode_table.set_session_start()
+        self._electrode_table.clear()
+>>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
         self._eeg_timer.start()
 
     def set_session_file(self, path: str):
