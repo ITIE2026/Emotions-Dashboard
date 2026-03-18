@@ -1138,3 +1138,183 @@ ValueError: invalid literal for int() with base 10: b'`\xb9\xa0\xed'
 2026-03-14 13:09:29,439 [INFO] gui.main_window: Signal started by user
 2026-03-14 13:11:34,100 [INFO] gui.main_window: Application closing
 2026-03-14 13:11:34,101 [INFO] gui.main_window: Session stopped
+2026-03-16 17:10:47,053 [INFO] main: Starting BCI Dashboard
+2026-03-16 17:11:02,260 [INFO] main: Entering event loop
+2026-03-16 17:20:11,296 [INFO] gui.main_window: Application closing
+2026-03-16 17:20:11,298 [INFO] gui.main_window: Session stopped
+2026-03-16 17:21:57,626 [INFO] main: Starting BCI Dashboard
+2026-03-16 17:22:01,887 [INFO] main: Entering event loop
+2026-03-16 17:22:12,631 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-16 17:23:20,247 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 45, in nfb_to_dict
+    "failReason": _safe_int(nfb.failReason),
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 41, in _safe_int
+    return int(v)
+ValueError: invalid literal for int() with base 10: b'@\x0eR$'
+
+2026-03-16 17:27:00,117 [INFO] gui.main_window: Session stopped
+2026-03-16 17:27:00,118 [INFO] gui.main_window: Signal stopped by user
+2026-03-16 17:27:10,365 [INFO] gui.main_window: Session started
+2026-03-16 17:27:10,375 [INFO] gui.main_window: Signal started by user
+2026-03-16 17:29:41,216 [INFO] gui.main_window: Application closing
+2026-03-16 17:29:41,217 [INFO] gui.main_window: Session stopped
+2026-03-16 17:29:41,228 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-17 11:17:12,681 [INFO] main: Starting BCI Dashboard
+2026-03-17 11:17:21,639 [INFO] main: Entering event loop
+2026-03-17 11:17:31,334 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-17 11:18:38,801 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 45, in nfb_to_dict
+    "failReason": _safe_int(nfb.failReason),
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 41, in _safe_int
+    return int(v)
+ValueError: invalid literal for int() with base 10: b'\x10\x9f8\xf6'
+
+2026-03-17 11:30:21,681 [INFO] gui.main_window: Session stopped
+2026-03-17 11:30:21,681 [INFO] gui.main_window: Signal stopped by user
+2026-03-17 11:30:34,534 [INFO] gui.main_window: Session started
+2026-03-17 11:30:34,539 [INFO] gui.main_window: Signal started by user
+2026-03-17 11:34:35,100 [INFO] gui.main_window: Application closing
+2026-03-17 11:34:35,100 [INFO] gui.main_window: Session stopped
+2026-03-17 11:34:35,103 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-17 11:34:39,026 [INFO] main: Starting BCI Dashboard
+2026-03-17 11:34:40,737 [INFO] main: Entering event loop
+2026-03-17 11:35:08,223 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-17 11:36:16,667 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 45, in nfb_to_dict
+    "failReason": _safe_int(nfb.failReason),
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 41, in _safe_int
+    return int(v)
+ValueError: invalid literal for int() with base 10: b'p\xcc\x96-'
+
+2026-03-17 11:49:03,143 [INFO] gui.main_window: Application closing
+2026-03-17 11:49:03,144 [INFO] gui.main_window: Session stopped
+2026-03-17 11:49:03,144 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-17 11:49:07,239 [INFO] main: Starting BCI Dashboard
+2026-03-17 11:49:11,842 [INFO] main: Entering event loop
+2026-03-17 11:49:25,509 [INFO] gui.main_window: Device connected – serial 821112
+2026-03-17 11:52:06,963 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-17 11:52:11,956 [INFO] gui.main_window: Device confirmed disconnected
+2026-03-17 11:52:11,959 [INFO] gui.main_window: Session stopped
+2026-03-17 11:52:40,568 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-17 11:53:52,211 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 45, in nfb_to_dict
+    "failReason": _safe_int(nfb.failReason),
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 41, in _safe_int
+    return int(v)
+ValueError: invalid literal for int() with base 10: b'P\x7f[\x19'
+
+2026-03-17 11:54:49,853 [INFO] gui.main_window: Session stopped
+2026-03-17 11:54:49,854 [INFO] gui.main_window: Signal stopped by user
+2026-03-17 11:54:59,012 [INFO] gui.main_window: Session started
+2026-03-17 11:54:59,030 [INFO] gui.main_window: Signal started by user
+2026-03-17 11:57:01,365 [INFO] gui.main_window: Session stopped
+2026-03-17 11:57:01,376 [INFO] gui.main_window: Signal stopped by user
+2026-03-17 11:57:07,478 [INFO] gui.main_window: Session started
+2026-03-17 11:57:07,489 [INFO] gui.main_window: Signal started by user
+2026-03-17 11:59:33,189 [INFO] gui.main_window: Application closing
+2026-03-17 11:59:33,190 [INFO] gui.main_window: Session stopped
+2026-03-17 11:59:33,202 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-17 12:44:07,376 [INFO] main: Starting BCI Dashboard
+2026-03-17 12:44:11,472 [INFO] main: Entering event loop
+2026-03-17 12:44:29,414 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-17 12:45:36,894 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 45, in nfb_to_dict
+    "failReason": _safe_int(nfb.failReason),
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 41, in _safe_int
+    return int(v)
+ValueError: invalid literal for int() with base 10: b'\x80\xa6\x96I'
+
+2026-03-17 12:46:08,108 [INFO] gui.main_window: Session stopped
+2026-03-17 12:46:08,110 [INFO] gui.main_window: Signal stopped by user
+2026-03-17 12:46:10,723 [INFO] gui.main_window: Session started
+2026-03-17 12:46:10,730 [INFO] gui.main_window: Signal started by user
+2026-03-17 12:57:41,396 [INFO] gui.main_window: Application closing
+2026-03-17 12:57:41,397 [INFO] gui.main_window: Session stopped
+2026-03-17 12:57:41,402 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-17 13:12:34,977 [INFO] main: Starting BCI Dashboard
+2026-03-17 13:12:39,222 [INFO] main: Entering event loop
+2026-03-17 13:13:19,291 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-17 13:14:26,750 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 45, in nfb_to_dict
+    "failReason": _safe_int(nfb.failReason),
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 41, in _safe_int
+    return int(v)
+ValueError: invalid literal for int() with base 10: b'\xb0\xcd\xf6m'
+
+2026-03-17 13:14:55,142 [INFO] gui.main_window: Session stopped
+2026-03-17 13:14:55,143 [INFO] gui.main_window: Signal stopped by user
+2026-03-17 13:14:56,329 [INFO] gui.main_window: Session started
+2026-03-17 13:14:56,340 [INFO] gui.main_window: Signal started by user
+2026-03-17 13:18:31,099 [INFO] gui.main_window: Session stopped
+2026-03-17 13:18:31,103 [INFO] gui.main_window: Signal stopped by user
+2026-03-17 13:18:45,603 [INFO] gui.main_window: Application closing
+2026-03-17 13:18:45,604 [INFO] gui.main_window: Session stopped
+2026-03-17 13:18:45,605 [INFO] gui.main_window: Device disconnected signal – starting debounce timer
+2026-03-18 12:43:40,950 [INFO] main: Starting BCI Dashboard
+2026-03-18 12:44:04,750 [INFO] main: Entering event loop
+2026-03-18 12:45:40,410 [INFO] gui.main_window: Device connected – serial 820628
+2026-03-18 12:46:48,191 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 195, in _on_prod_baselines
+    self._check_baselines_done()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 210, in _check_baselines_done
+    self._finish()
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_manager.py", line 216, in _finish
+    cal_data["nfb"] = nfb_to_dict(self._nfb_data)
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 45, in nfb_to_dict
+    "failReason": _safe_int(nfb.failReason),
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\calibration\calibration_store.py", line 41, in _safe_int
+    return int(v)
+ValueError: invalid literal for int() with base 10: b'\x10\xc7\xe4;'
+
+2026-03-18 12:47:11,513 [INFO] gui.main_window: Session stopped
+2026-03-18 12:47:11,514 [INFO] gui.main_window: Signal stopped by user
+2026-03-18 12:47:12,387 [INFO] gui.main_window: Session started
+2026-03-18 12:47:12,395 [INFO] gui.main_window: Signal started by user
+2026-03-18 12:51:39,248 [INFO] gui.main_window: Session stopped
+2026-03-18 12:51:39,252 [INFO] gui.main_window: Signal stopped by user
+2026-03-18 12:51:51,539 [INFO] gui.main_window: Application closing
+2026-03-18 12:51:51,539 [INFO] gui.main_window: Session stopped
+2026-03-18 12:51:51,542 [INFO] gui.main_window: Device disconnected signal – starting debounce timer

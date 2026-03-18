@@ -33,8 +33,14 @@ from gui.widgets.training_game_widgets import (
     JumpBallWidget,
     NeuroRacerWidget,
     PatternRecallWidget,
+    ProstheticArmWidget,
     SpaceShooterWidget,
 )
+from prosthetic_arm.arm_lab_panel import ArmLabPanel
+from prosthetic_arm.arm_state import ArmStateEngine, dominant_state_for_metrics
+from prosthetic_arm.arduino_arm import ArduinoArmController
+from prosthetic_arm.brainbit_backend import BrainBitMetricAdapter
+from prosthetic_arm.capsule_backend import CapsuleMetricAdapter
 from utils.config import ACCENT_GREEN, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY
 
 
@@ -215,6 +221,20 @@ class TrainingScreen(QWidget):
         self._current_game_id = "mind_maze"
         self._controller = self._game_specs[self._current_game_id].controller_factory()
         self._music_engine = AdaptiveMusicEngine(self, self._audio_dir, self.SOUNDTRACKS)
+        self._arm_backend_mode = "capsule"
+        self._arm_backend_status = "Using live Capsule productivity metrics."
+        self._arm_live_metrics = {
+            "attention": 0.0,
+            "relaxation": 0.0,
+            "dominant_state": "Balanced",
+        }
+        self._arm_last_metrics_t = 0.0
+        self._arm_state_engine = ArmStateEngine()
+        self._arm_state_history: list[str] = []
+        self._arm_preview_state = "OPEN"
+        self._capsule_arm_backend = CapsuleMetricAdapter(self)
+        self._brainbit_arm_backend = BrainBitMetricAdapter(self)
+        self._arduino_arm = ArduinoArmController(self)
 
         self._calibration_timer = QTimer(self)
         self._calibration_timer.setInterval(250)
@@ -225,6 +245,7 @@ class TrainingScreen(QWidget):
         self._gameplay_timer.timeout.connect(self._tick_gameplay)
 
         self._build_ui()
+        self._wire_arm_lab()
         self._load_settings()
         self._ensure_audio_assets()
         self._refresh_soundtrack_cards()
@@ -244,6 +265,7 @@ class TrainingScreen(QWidget):
         self._catalog_page = self._build_catalog_page()
         self._detail_page = self._build_detail_page()
         self._settings_page = self._build_settings_page()
+        self._arm_lab_page = self._build_arm_lab_page()
         self._calibration_page = self._build_calibration_page()
         self._gameplay_page = self._build_gameplay_page()
         self._result_page = self._build_result_page()
@@ -251,6 +273,7 @@ class TrainingScreen(QWidget):
             self._catalog_page,
             self._detail_page,
             self._settings_page,
+            self._arm_lab_page,
             self._calibration_page,
             self._gameplay_page,
             self._result_page,
@@ -286,6 +309,7 @@ class TrainingScreen(QWidget):
         section_order = [
             "Reduce stress and tension",
             "Improve concentration",
+            "Assistive motor control",
             "Arcade neurofeedback",
             "Memory and cognitive control",
             "Relax before sleep",
@@ -378,10 +402,13 @@ class TrainingScreen(QWidget):
         self._detail_settings_btn.clicked.connect(self._show_settings)
         self._detail_start_btn = self._pill_button("Start", filled=True)
         self._detail_start_btn.clicked.connect(self._begin_calibration_flow)
+        self._detail_arm_lab_btn = self._pill_button("Arm Lab", filled=False)
+        self._detail_arm_lab_btn.clicked.connect(self._show_arm_lab)
         back_btn = self._pill_button("Back", filled=False)
         back_btn.clicked.connect(self._show_catalog)
         buttons.addWidget(self._detail_settings_btn)
         buttons.addWidget(self._detail_start_btn)
+        buttons.addWidget(self._detail_arm_lab_btn)
         buttons.addWidget(back_btn)
         layout.addLayout(buttons)
         layout.addStretch()
@@ -435,6 +462,224 @@ class TrainingScreen(QWidget):
         layout.addLayout(buttons)
         layout.addStretch()
         return page
+
+    def _build_arm_lab_page(self):
+        panel = ArmLabPanel()
+        panel.back_button.clicked.connect(lambda: self._show_detail(self._current_game_id))
+        return panel
+
+    def _wire_arm_lab(self):
+        self._arm_lab_page.source_changed.connect(self._set_arm_backend_mode)
+        self._arm_lab_page.brainbit_toggle_requested.connect(self._toggle_brainbit_connection)
+        self._arm_lab_page.arduino_toggle_requested.connect(self._toggle_arduino_connection)
+        self._arm_lab_page.iapf_requested.connect(self._start_arm_iapf)
+        self._arm_lab_page.baseline_requested.connect(self._start_arm_baseline)
+
+        self._capsule_arm_backend.status_changed.connect(lambda text: self._on_arm_source_status("capsule", text))
+        self._capsule_arm_backend.connection_changed.connect(
+            lambda connected: self._on_arm_source_connection("capsule", connected)
+        )
+        self._capsule_arm_backend.metrics_changed.connect(lambda data: self._on_arm_metrics("capsule", data))
+
+        self._brainbit_arm_backend.status_changed.connect(lambda text: self._on_arm_source_status("brainbit", text))
+        self._brainbit_arm_backend.connection_changed.connect(
+            lambda connected: self._on_arm_source_connection("brainbit", connected)
+        )
+        self._brainbit_arm_backend.metrics_changed.connect(lambda data: self._on_arm_metrics("brainbit", data))
+        self._brainbit_arm_backend.resistance_changed.connect(
+            lambda data: self._on_arm_resistance("brainbit", data)
+        )
+        self._brainbit_arm_backend.waves_changed.connect(
+            lambda alpha, beta: self._on_arm_waves("brainbit", alpha, beta)
+        )
+        self._brainbit_arm_backend.raw_uv_changed.connect(lambda data: self._on_arm_raw_uv("brainbit", data))
+        self._brainbit_arm_backend.calibration_mode_changed.connect(
+            lambda mode: self._arm_lab_page.set_calibration(mode, 0)
+        )
+        self._brainbit_arm_backend.calibration_progress_changed.connect(
+            lambda progress: self._arm_lab_page.set_calibration("BrainBit", progress)
+        )
+
+        self._arduino_arm.connection_changed.connect(self._on_arduino_connection)
+        self._arduino_arm.status_changed.connect(self._on_arduino_status)
+        self._sync_arm_lab_panel()
+
+    def _arm_feature_active(self) -> bool:
+        current_page = self._stack.currentWidget()
+        return self._current_game_id == "prosthetic_arm" and current_page in {
+            self._detail_page,
+            self._arm_lab_page,
+            self._calibration_page,
+            self._gameplay_page,
+            self._result_page,
+        }
+
+    def _arm_metrics_are_fresh(self) -> bool:
+        return (time.monotonic() - self._arm_last_metrics_t) <= 2.0
+
+    def _current_metric_pair(self) -> tuple[float, float]:
+        if self._current_game_id == "prosthetic_arm":
+            return (
+                float(self._arm_live_metrics.get("attention", 0.0)),
+                float(self._arm_live_metrics.get("relaxation", 0.0)),
+            )
+        return (
+            float(self._latest_productivity.get("concentrationScore", 0.0)),
+            float(self._latest_productivity.get("relaxationScore", 0.0)),
+        )
+
+    def _current_metrics_fresh(self) -> bool:
+        if self._current_game_id == "prosthetic_arm":
+            return self._arm_metrics_are_fresh()
+        return (time.monotonic() - self._last_productivity_t) <= 2.0
+
+    def _show_arm_lab(self):
+        self._stop_runtime_loops()
+        self._sync_arm_lab_panel()
+        self._stack.setCurrentWidget(self._arm_lab_page)
+
+    def _set_arm_backend_mode(self, mode: str):
+        if mode not in {"capsule", "brainbit"}:
+            return
+        if self._arm_backend_mode == mode:
+            self._sync_arm_lab_panel()
+            return
+        self._arm_backend_mode = mode
+        self._arm_state_engine.reset()
+        self._arm_state_history = []
+        self._arm_preview_state = "OPEN"
+        self._arm_lab_page.clear_raw()
+        self._arm_lab_page.clear_waves()
+        if mode == "capsule":
+            self._brainbit_arm_backend.disconnect_device()
+            self._arm_backend_status = "Using live Capsule productivity metrics."
+            if self._latest_productivity:
+                self._capsule_arm_backend.ingest_productivity(self._latest_productivity)
+            else:
+                self._arm_last_metrics_t = 0.0
+        else:
+            self._arm_last_metrics_t = 0.0
+            self._arm_live_metrics = {
+                "attention": 0.0,
+                "relaxation": 0.0,
+                "dominant_state": "Balanced",
+            }
+            self._arm_backend_status = "BrainBit mode selected. Connect a device to begin streaming."
+        self._sync_arm_lab_panel()
+        self._refresh_live_labels()
+
+    def _toggle_brainbit_connection(self):
+        if self._arm_backend_mode != "brainbit":
+            self._set_arm_backend_mode("brainbit")
+        if self._brainbit_arm_backend.is_connected:
+            self._brainbit_arm_backend.disconnect_device()
+        else:
+            self._brainbit_arm_backend.connect_device()
+
+    def _toggle_arduino_connection(self):
+        if self._arduino_arm.is_connected:
+            self._arduino_arm.disconnect_device()
+            return
+        port_text = self._arm_lab_page.manual_port_edit.text().strip()
+        self._arduino_arm.connect_device(port_text or None)
+
+    def _start_arm_iapf(self):
+        if self._arm_backend_mode != "brainbit":
+            self._set_arm_backend_mode("brainbit")
+        self._brainbit_arm_backend.start_iapf_calibration()
+
+    def _start_arm_baseline(self):
+        if self._arm_backend_mode != "brainbit":
+            self._set_arm_backend_mode("brainbit")
+        self._brainbit_arm_backend.start_baseline_calibration()
+
+    def _on_arm_source_status(self, source: str, text: str):
+        if source != self._arm_backend_mode:
+            return
+        self._arm_backend_status = text
+        self._arm_lab_page.set_backend_status(text)
+
+    def _on_arm_source_connection(self, source: str, connected: bool):
+        if source != self._arm_backend_mode:
+            return
+        if source == "brainbit":
+            self._arm_lab_page.set_brainbit_connection(connected)
+        self._sync_arm_lab_panel()
+        self._refresh_live_labels()
+
+    def _on_arm_metrics(self, source: str, data: dict):
+        if source != self._arm_backend_mode:
+            return
+        self._arm_live_metrics = data or {
+            "attention": 0.0,
+            "relaxation": 0.0,
+            "dominant_state": "Balanced",
+        }
+        self._arm_last_metrics_t = time.monotonic()
+        preview = self._arm_state_engine.update(
+            float(self._arm_live_metrics.get("attention", 0.0)),
+            float(self._arm_live_metrics.get("relaxation", 0.0)),
+        )
+        self._arm_preview_state = preview.state
+        if not self._arm_state_history or self._arm_state_history[-1] != preview.state:
+            self._arm_state_history.append(preview.state)
+            self._arm_state_history = self._arm_state_history[-8:]
+        self._arm_lab_page.set_metrics(
+            float(self._arm_live_metrics.get("attention", 0.0)),
+            float(self._arm_live_metrics.get("relaxation", 0.0)),
+            str(self._arm_live_metrics.get("dominant_state", "Balanced")),
+        )
+        self._arm_lab_page.set_arm_state(
+            preview.state,
+            self._arduino_arm.is_connected,
+            self._arm_backend_mode,
+        )
+        self._arm_lab_page.set_history(self._arm_state_history)
+        if self._arm_feature_active():
+            self._arduino_arm.send_state(preview.state)
+        if self._current_game_id == "prosthetic_arm":
+            self._refresh_live_labels()
+
+    def _on_arm_resistance(self, source: str, data: dict):
+        if source != self._arm_backend_mode:
+            return
+        self._arm_lab_page.update_resistance(data or {})
+
+    def _on_arm_waves(self, source: str, alpha: float, beta: float):
+        if source != self._arm_backend_mode:
+            return
+        self._arm_lab_page.append_waves(alpha, beta)
+
+    def _on_arm_raw_uv(self, source: str, data: list):
+        if source != self._arm_backend_mode:
+            return
+        self._arm_lab_page.append_raw_uv(data or [])
+
+    def _on_arduino_connection(self, connected: bool):
+        self._arm_lab_page.set_arduino_connection(connected)
+        self._sync_arm_lab_panel()
+
+    def _on_arduino_status(self, text: str):
+        if text:
+            self._arm_lab_page.set_backend_status(text)
+            self._arm_backend_status = text
+
+    def _sync_arm_lab_panel(self):
+        self._arm_lab_page.set_source_mode(self._arm_backend_mode)
+        self._arm_lab_page.set_backend_status(self._arm_backend_status)
+        self._arm_lab_page.set_metrics(
+            float(self._arm_live_metrics.get("attention", 0.0)),
+            float(self._arm_live_metrics.get("relaxation", 0.0)),
+            str(self._arm_live_metrics.get("dominant_state", "Balanced")),
+        )
+        self._arm_lab_page.set_arm_state(
+            self._arm_preview_state,
+            self._arduino_arm.is_connected,
+            self._arm_backend_mode,
+        )
+        self._arm_lab_page.set_history(self._arm_state_history)
+        self._arm_lab_page.set_brainbit_connection(self._brainbit_arm_backend.is_connected)
+        self._arm_lab_page.set_arduino_connection(self._arduino_arm.is_connected)
 
     def _build_calibration_page(self):
         page = QWidget()
@@ -503,6 +748,7 @@ class TrainingScreen(QWidget):
         self._bubble_burst_widget = BubbleBurstWidget()
         self._pattern_widget = PatternRecallWidget()
         self._candy_cascade_widget = CandyCascadeWidget()
+        self._prosthetic_arm_widget = ProstheticArmWidget()
         self._space_shooter_widget.set_menu_callback(self._cancel_gameplay)
         self._neuro_racer_widget.set_menu_callback(self._cancel_gameplay)
         self._bubble_burst_widget.set_menu_callback(self._cancel_gameplay)
@@ -517,6 +763,7 @@ class TrainingScreen(QWidget):
             "bubble_burst": self._bubble_burst_widget,
             "pattern_recall": self._pattern_widget,
             "candy_cascade": self._candy_cascade_widget,
+            "prosthetic_arm": self._prosthetic_arm_widget,
         }
         for widget in self._game_widget_map.values():
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -661,11 +908,13 @@ class TrainingScreen(QWidget):
             card.set_selected(card.name == self._selected_soundtrack)
 
     def _refresh_live_labels(self):
-        concentration = float(self._latest_productivity.get("concentrationScore", 0.0))
-        relaxation = float(self._latest_productivity.get("relaxationScore", 0.0))
-        fresh = self._has_fresh_metrics()
+        concentration, relaxation = self._current_metric_pair()
+        fresh = self._current_metrics_fresh()
+        backend_suffix = (
+            f" ({self._arm_backend_mode.title()})" if self._current_game_id == "prosthetic_arm" else ""
+        )
         live_text = (
-            f"Live concentration {concentration:.1f}   Relaxation {relaxation:.1f}"
+            f"Live concentration {concentration:.1f}   Relaxation {relaxation:.1f}{backend_suffix}"
             if fresh
             else "Waiting for concentration and relaxation metrics."
         )
@@ -700,6 +949,9 @@ class TrainingScreen(QWidget):
 
     def _show_settings(self):
         self._stop_runtime_loops()
+        if not self._current_spec.soundtrack_enabled:
+            self._show_detail(self._current_game_id)
+            return
         self._settings_subtitle_lbl.setText(self._current_spec.detail_title)
         self._settings_copy_lbl.setText(
             f"Select the adaptive soundtrack used during calibration and {self._current_spec.card_title} gameplay. "
@@ -720,9 +972,12 @@ class TrainingScreen(QWidget):
         self._detail_body_lbl.setText(spec.detail_body)
         self._detail_instruction_lbl.setText(spec.instructions)
         self._detail_settings_btn.setEnabled(spec.soundtrack_enabled)
+        self._detail_arm_lab_btn.setVisible(spec.game_id == "prosthetic_arm")
+        if spec.game_id == "prosthetic_arm":
+            self._detail_meta_lbl.setText(f"{spec.duration}   {self._arm_backend_mode.title()} arm control")
 
     def _begin_calibration_flow(self):
-        if not self._has_fresh_metrics():
+        if not self._current_metrics_fresh():
             self._refresh_live_labels()
             return
         self._controller.reset_run()
@@ -730,7 +985,8 @@ class TrainingScreen(QWidget):
         self._calibration_title_lbl.setText(f"{self._current_spec.card_title} Calibration")
         self._calibration_subtitle_lbl.setText(self._current_spec.calibration_copy)
         self._update_calibration_ui(None)
-        self._music_engine.start(self._selected_soundtrack)
+        if self._current_spec.soundtrack_enabled:
+            self._music_engine.start(self._selected_soundtrack)
         self._stack.setCurrentWidget(self._calibration_page)
         self._calibration_timer.start()
 
@@ -776,9 +1032,8 @@ class TrainingScreen(QWidget):
         self._stack.setCurrentWidget(self._result_page)
 
     def _tick_calibration(self):
-        concentration = float(self._latest_productivity.get("concentrationScore", 0.0))
-        relaxation = float(self._latest_productivity.get("relaxationScore", 0.0))
-        valid = self._has_fresh_metrics() and not self._has_artifacts()
+        concentration, relaxation = self._current_metric_pair()
+        valid = self._current_metrics_fresh() and not self._has_artifacts()
         snapshot = self._controller.add_calibration_sample(concentration, relaxation, valid)
         self._update_calibration_ui(snapshot)
         if snapshot.complete:
@@ -791,9 +1046,8 @@ class TrainingScreen(QWidget):
             self._gameplay_timer.start()
 
     def _tick_gameplay(self):
-        concentration = float(self._latest_productivity.get("concentrationScore", 0.0))
-        relaxation = float(self._latest_productivity.get("relaxationScore", 0.0))
-        stale = not self._has_fresh_metrics()
+        concentration, relaxation = self._current_metric_pair()
+        stale = not self._current_metrics_fresh()
         snapshot = self._controller.update_gameplay(
             concentration,
             relaxation,
@@ -810,8 +1064,7 @@ class TrainingScreen(QWidget):
             self._level_started_at = time.monotonic()
 
     def _update_calibration_ui(self, snapshot):
-        concentration = float(self._latest_productivity.get("concentrationScore", 0.0))
-        relaxation = float(self._latest_productivity.get("relaxationScore", 0.0))
+        concentration, relaxation = self._current_metric_pair()
         if snapshot is None:
             seconds_left = 5
             self._calibration_counter_lbl.setText("00:05")
@@ -823,7 +1076,7 @@ class TrainingScreen(QWidget):
                 0.0,
                 "Relax to enter the ready zone",
                 self._current_spec.calibration_copy,
-                muted=not self._has_fresh_metrics(),
+                muted=not self._current_metrics_fresh(),
                 timer_text=f"00:{seconds_left:02d}",
                 countdown_ratio=1.0,
             )
@@ -846,7 +1099,7 @@ class TrainingScreen(QWidget):
             relax_delta,
             f"Ready hold {snapshot.ready_streak}/{READY_STREAK_TARGET}",
             snapshot.status,
-            muted=(not self._has_fresh_metrics() or self._has_artifacts()),
+            muted=(not self._current_metrics_fresh() or self._has_artifacts()),
             timer_text=f"00:{seconds_left:02d}",
             countdown_ratio=max(0.0, min(1.0, seconds_left / 5.0)),
         )
@@ -900,11 +1153,9 @@ class TrainingScreen(QWidget):
 
     def _update_gameplay_labels(self, snapshot=None):
         self._switch_game_widget()
-        immersive = self._current_game_id in self.IMMERSIVE_GAME_IDS
         self._game_level_lbl.setText(self._controller.current_level.title)
         elapsed_seconds = self._current_level_elapsed()
         self._game_time_lbl.setText(self._format_seconds(elapsed_seconds))
-        intent_label = "Hold steady"
         status = self._current_spec.instructions
         muted = False
         conc_delta = 0.0
@@ -914,11 +1165,6 @@ class TrainingScreen(QWidget):
         recommended_label = ""
         view_state = dict(getattr(self._controller, "view_state", {}) or {})
         if snapshot is not None:
-            intent_label = (
-                f"{snapshot.phase_label} • {snapshot.recommended_label}"
-                if snapshot.recommended_label
-                else snapshot.phase_label
-            )
             phase_label = snapshot.phase_label
             recommended_label = snapshot.recommended_label
             status = snapshot.blocked_reason or snapshot.control_hint
@@ -927,6 +1173,14 @@ class TrainingScreen(QWidget):
             relax_delta = snapshot.relax_delta
             balance = snapshot.balance
             view_state = dict(snapshot.view_state or {})
+        if self._current_game_id == "prosthetic_arm":
+            view_state["arm_connected"] = self._arduino_arm.is_connected
+            view_state["backend_mode"] = self._arm_backend_mode
+            view_state["backend_status"] = self._arm_backend_status
+            view_state["dominant_state"] = dominant_state_for_metrics(
+                float(self._arm_live_metrics.get("attention", 0.0)),
+                float(self._arm_live_metrics.get("relaxation", 0.0)),
+            )
         view_state["balance_panel"] = self._build_gameplay_balance_panel(
             phase_label=phase_label,
             recommended_label=recommended_label,
@@ -944,6 +1198,8 @@ class TrainingScreen(QWidget):
         self._music_engine.ensure_assets()
 
     def _update_audio_mix(self, conc_delta: float, relax_delta: float, view_state: dict | None):
+        if not self._current_spec.soundtrack_enabled:
+            return
         self._music_engine.update_mix(
             self._current_spec.music_profile,
             conc_delta,
@@ -957,9 +1213,11 @@ class TrainingScreen(QWidget):
         self.stop_audio()
 
     def _has_fresh_metrics(self):
-        return (time.monotonic() - self._last_productivity_t) <= 2.0
+        return self._current_metrics_fresh()
 
     def _has_artifacts(self):
+        if self._current_game_id == "prosthetic_arm" and self._arm_backend_mode == "brainbit":
+            return False
         return bool(
             self._latest_physio.get("nfbArtifacts", False)
             or self._latest_physio.get("cardioArtifacts", False)
@@ -979,6 +1237,7 @@ class TrainingScreen(QWidget):
     def on_productivity(self, data: dict):
         self._latest_productivity = data or {}
         self._last_productivity_t = time.monotonic()
+        self._capsule_arm_backend.ingest_productivity(data or {})
         self._refresh_live_labels()
 
     def on_cardio(self, data: dict):
@@ -989,3 +1248,12 @@ class TrainingScreen(QWidget):
 
     def stop_audio(self):
         self._music_engine.stop()
+
+    def shutdown(self):
+        self._brainbit_arm_backend.shutdown()
+        self._arduino_arm.disconnect_device()
+        self.stop_audio()
+
+    def closeEvent(self, event):  # noqa: N802 - Qt API
+        self.shutdown()
+        super().closeEvent(event)

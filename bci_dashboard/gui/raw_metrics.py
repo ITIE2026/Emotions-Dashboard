@@ -14,10 +14,18 @@ import numpy as np
 BAND_KEYS = ("delta", "theta", "alpha", "smr", "beta")
 
 
-def aggregate_band_history(history, window_seconds: float, now: float | None = None) -> dict:
-    """Average band powers from the requested rolling window."""
+def aggregate_band_history(
+    history,
+    window_seconds: float,
+    now: float | None = None,
+) -> dict | None:
+    """Average band powers from the requested rolling window.
+
+    Returns ``None`` when the requested window has no samples so callers can
+    distinguish "no data yet" from a real all-zero aggregate.
+    """
     if window_seconds <= 0:
-        return {band: 0.0 for band in BAND_KEYS}
+        return None
 
     now_ts = float(now if now is not None else time.time())
     relevant = [
@@ -26,7 +34,7 @@ def aggregate_band_history(history, window_seconds: float, now: float | None = N
         if (now_ts - float(ts)) <= window_seconds
     ]
     if not relevant:
-        return {band: 0.0 for band in BAND_KEYS}
+        return None
 
     return {
         band: float(np.mean([float(entry.get(band, 0.0)) for entry in relevant]))

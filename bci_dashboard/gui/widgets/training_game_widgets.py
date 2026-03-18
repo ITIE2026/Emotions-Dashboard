@@ -6,10 +6,12 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
+from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PySide6.QtWidgets import QWidget
 
 from gui.widgets.mind_maze_board import draw_balance_panel
+from prosthetic_arm import hand_image_path
+from prosthetic_arm.arm_state import state_label
 
 
 def _star_path(center: QPointF, outer_radius: float, inner_radius: float) -> QPainterPath:
@@ -1133,6 +1135,152 @@ class CalmCurrentWidget(QWidget):
             Qt.AlignCenter,
             self._state.get("message", ""),
         )
+        _draw_widget_balance_panel(self, painter, self._state, top=18.0)
+
+
+class ProstheticArmWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._state: dict = {}
+        self._images = {
+            "OPEN": QPixmap(hand_image_path("OPEN")),
+            "NEUTRAL": QPixmap(hand_image_path("NEUTRAL")),
+            "CLOSED": QPixmap(hand_image_path("CLOSED")),
+        }
+        self.setMinimumHeight(400)
+
+    def sizeHint(self):
+        return QSize(560, 480)
+
+    def set_state(self, view_state: dict):
+        self._state = view_state or {}
+        self.update()
+
+    def paintEvent(self, event):  # noqa: N802 - Qt API
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#05070c"))
+        glow = QRadialGradient(self.rect().center(), min(self.width(), self.height()) * 0.62)
+        glow.setColorAt(0.0, QColor(77, 138, 102, 110))
+        glow.setColorAt(1.0, QColor(0, 0, 0, 0))
+        painter.fillRect(self.rect(), glow)
+        balance_rect = _balance_panel_rect(self, 18.0) if self._state.get("balance_panel") else None
+
+        target_state = str(self._state.get("target_state", "OPEN")).upper()
+        current_state = str(self._state.get("current_state", "OPEN")).upper()
+        hold_progress = max(0.0, min(1.0, float(self._state.get("hold_progress", 0.0))))
+        sequence_index = int(self._state.get("sequence_index", 0))
+        sequence_total = max(1, int(self._state.get("sequence_total", 1)))
+        headline = str(self._state.get("headline", "Prosthetic Arm"))
+        history = list(self._state.get("history", []))
+        backend_mode = str(self._state.get("backend_mode", "capsule")).title()
+        backend_status = str(self._state.get("backend_status", "Using live metrics."))
+        arm_connected = bool(self._state.get("arm_connected", False))
+        dominant_state = str(self._state.get("dominant_state", "Balanced"))
+        attention = float(self._state.get("attention", 0.0))
+        relaxation = float(self._state.get("relaxation", 0.0))
+        message = str(self._state.get("message", ""))
+
+        top = (balance_rect.bottom() + 14.0) if balance_rect is not None else 22.0
+        target_rect = QRectF(30, top, self.width() - 60, 64)
+        fill = QLinearGradient(target_rect.topLeft(), target_rect.bottomLeft())
+        fill.setColorAt(0.0, QColor("#1f3a2c"))
+        fill.setColorAt(1.0, QColor("#102116"))
+        painter.setPen(QPen(QColor("#9de9b8"), 2))
+        painter.setBrush(fill)
+        painter.drawRoundedRect(target_rect, 24, 24)
+        painter.setPen(QColor("#f8fafc"))
+        title_font = QFont()
+        title_font.setPointSize(12)
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        painter.drawText(QRectF(target_rect.left() + 18, target_rect.top() + 14, target_rect.width() - 36, 18), Qt.AlignLeft, headline)
+        body_font = QFont()
+        body_font.setPointSize(20)
+        body_font.setBold(True)
+        painter.setFont(body_font)
+        painter.drawText(target_rect.adjusted(18, 0, -18, 0), Qt.AlignVCenter | Qt.AlignLeft, f"Target {state_label(target_state)}")
+        body_font.setPointSize(11)
+        body_font.setBold(False)
+        painter.setFont(body_font)
+        painter.drawText(target_rect.adjusted(18, 0, -18, 0), Qt.AlignVCenter | Qt.AlignRight, f"Step {min(sequence_index + 1, sequence_total)}/{sequence_total}")
+
+        art_top = target_rect.bottom() + 18
+        art_rect = QRectF(40, art_top, self.width() * 0.42, min(230.0, self.height() - art_top - 118.0))
+        painter.setPen(QPen(QColor("#4e5c74"), 2))
+        painter.setBrush(QColor("#0f131a"))
+        painter.drawRoundedRect(art_rect, 32, 32)
+        pixmap = self._images.get(current_state)
+        if pixmap and not pixmap.isNull():
+            scaled = pixmap.scaled(
+                int(art_rect.width() * 0.72),
+                int(art_rect.height() * 0.72),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+            target = QRectF(
+                art_rect.center().x() - (scaled.width() / 2),
+                art_rect.center().y() - (scaled.height() / 2),
+                scaled.width(),
+                scaled.height(),
+            )
+            painter.drawPixmap(target.toRect(), scaled)
+        else:
+            painter.setPen(QColor("#d9f5e3"))
+            fallback_font = QFont()
+            fallback_font.setPointSize(18)
+            fallback_font.setBold(True)
+            painter.setFont(fallback_font)
+            painter.drawText(art_rect, Qt.AlignCenter, state_label(current_state))
+
+        painter.setPen(QColor("#d9f5e3"))
+        painter.setFont(title_font)
+        painter.drawText(QRectF(art_rect.left(), art_rect.bottom() + 8, art_rect.width(), 22), Qt.AlignCenter, f"Current {state_label(current_state)}")
+
+        stats_rect = QRectF(art_rect.right() + 18, art_top, self.width() - art_rect.right() - 58, art_rect.height())
+        painter.setPen(QPen(QColor("#3d475a"), 2))
+        painter.setBrush(QColor("#10151d"))
+        painter.drawRoundedRect(stats_rect, 28, 28)
+
+        label_font = QFont()
+        label_font.setPointSize(10)
+        label_font.setBold(True)
+        painter.setFont(label_font)
+        painter.setPen(QColor("#dce7f5"))
+        painter.drawText(QRectF(stats_rect.left() + 18, stats_rect.top() + 18, stats_rect.width() - 36, 18), Qt.AlignLeft, "Hold Progress")
+        bar_rect = QRectF(stats_rect.left() + 18, stats_rect.top() + 46, stats_rect.width() - 36, 16)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(255, 255, 255, 24))
+        painter.drawRoundedRect(bar_rect, 8, 8)
+        fill_rect = QRectF(bar_rect.left(), bar_rect.top(), bar_rect.width() * hold_progress, bar_rect.height())
+        painter.setBrush(QColor("#79d89c"))
+        painter.drawRoundedRect(fill_rect, 8, 8)
+
+        body_font.setPointSize(11)
+        painter.setFont(body_font)
+        painter.setPen(QColor("#d0d9e8"))
+        painter.drawText(QRectF(stats_rect.left() + 18, stats_rect.top() + 78, stats_rect.width() - 36, 20), Qt.AlignLeft, f"Backend  {backend_mode}")
+        painter.drawText(QRectF(stats_rect.left() + 18, stats_rect.top() + 102, stats_rect.width() - 36, 20), Qt.AlignLeft, f"Arm Output  {'Hardware' if arm_connected else 'Simulation'}")
+        painter.drawText(QRectF(stats_rect.left() + 18, stats_rect.top() + 126, stats_rect.width() - 36, 20), Qt.AlignLeft, f"Dominant  {dominant_state}")
+        painter.drawText(QRectF(stats_rect.left() + 18, stats_rect.top() + 150, stats_rect.width() - 36, 20), Qt.AlignLeft, f"Attention  {attention:.1f}")
+        painter.drawText(QRectF(stats_rect.left() + 18, stats_rect.top() + 174, stats_rect.width() - 36, 20), Qt.AlignLeft, f"Relaxation  {relaxation:.1f}")
+        painter.drawText(
+            QRectF(stats_rect.left() + 18, stats_rect.bottom() - 52, stats_rect.width() - 36, 38),
+            Qt.AlignLeft | Qt.TextWordWrap,
+            backend_status,
+        )
+
+        history_rect = QRectF(40, self.height() - 102, self.width() - 80, 34)
+        painter.setPen(QPen(QColor("#3d475a"), 1.5))
+        painter.setBrush(QColor("#11161d"))
+        painter.drawRoundedRect(history_rect, 18, 18)
+        painter.setPen(QColor("#f4f6fb"))
+        painter.setFont(body_font)
+        history_text = " -> ".join(state_label(item) for item in history[-6:]) if history else "Waiting for stable states"
+        painter.drawText(history_rect.adjusted(16, 0, -16, 0), Qt.AlignVCenter | Qt.AlignLeft, history_text)
+
+        painter.setPen(QColor("#d2d8e3"))
+        painter.drawText(QRectF(0, self.height() - 46, self.width(), 24), Qt.AlignCenter, message)
         _draw_widget_balance_panel(self, painter, self._state, top=18.0)
 
 

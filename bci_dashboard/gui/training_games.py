@@ -17,12 +17,16 @@ from gui.eeg_game_base import (
     TrainingRunResult,
 )
 from gui.mind_maze_controller import MindMazeController
+from prosthetic_arm.arm_state import ArmStateEngine, dominant_state_for_metrics, state_label
 
 
 DIR_LABELS = {
     None: "Hold steady",
     "left": "Backtrack",
     "right": "Advance",
+    "open": "Open",
+    "neutral": "Neutral",
+    "closed": "Close",
     "flow": "Flow",
     "confirm": "Confirm",
     "boost": "Boost",
@@ -2504,6 +2508,174 @@ class CandyCascadeController(MemoryGameController):
         }
 
 
+class ProstheticArmController(BaseTrainingController):
+    LEVELS = [
+        TrainingLevel("Grip Acquisition", 40),
+        TrainingLevel("Neutral Control", 48),
+        TrainingLevel("Mixed Sequence", 60),
+    ]
+    ROUTINES = [
+        ["OPEN", "CLOSED", "OPEN", "CLOSED"],
+        ["NEUTRAL", "OPEN", "NEUTRAL", "CLOSED", "NEUTRAL"],
+        ["OPEN", "CLOSED", "NEUTRAL", "CLOSED", "OPEN", "NEUTRAL"],
+    ]
+    HOLD_TARGETS_MS = [1000, 1200, 1500]
+
+    def __init__(self):
+        self._state_engine = ArmStateEngine()
+        super().__init__(self.LEVELS)
+
+    def _reset_level_state(self) -> None:
+        self._state_engine.reset()
+        self._routine = list(self.ROUTINES[self._level_index])
+        self._hold_target_ms = self.HOLD_TARGETS_MS[self._level_index]
+        self._sequence_index = 0
+        self._hold_progress_ms = 0
+        self._tick_clock_ms = 0
+        self._successes = 0
+        self._misses = 0
+        self._stable_history: list[str] = []
+        self._last_logged_state = None
+        self._last_penalized_state = None
+        self._message = "Guide the arm to the first target."
+        self._view_state = self._arm_view_state(
+            concentration=0.0,
+            relaxation=0.0,
+            current_state="OPEN",
+            target_state=self._routine[0],
+            blocked_reason="",
+        )
+
+    def update_gameplay(
+        self,
+        concentration: float,
+        relaxation: float,
+        valid: bool,
+        stale: bool,
+        elapsed_seconds: float,
+    ) -> GameplaySnapshot:
+        self._tick_clock_ms += 250
+        arm_snapshot = self._state_engine.update(
+            concentration,
+            relaxation,
+            now_ms=self._tick_clock_ms,
+        )
+        current_state = arm_snapshot.state
+        target_state = self._routine[min(self._sequence_index, len(self._routine) - 1)]
+        phase_label = self.current_level.title
+        blocked_reason = ""
+        moved = False
+        level_completed = False
+        run_completed = False
+
+        if current_state != self._last_logged_state:
+            self._stable_history.append(current_state)
+            self._stable_history = self._stable_history[-8:]
+            self._last_logged_state = current_state
+
+        control_hint = (
+            "Focus to close the arm, soften attention to open it, and stay between the thresholds for neutral."
+        )
+
+        if stale:
+            blocked_reason = "Metrics are stale. Arm sequence paused."
+        elif not valid:
+            blocked_reason = "Artifacts detected. Arm sequence paused."
+        else:
+            if current_state == target_state:
+                self._last_penalized_state = None
+                self._hold_progress_ms = min(self._hold_target_ms, self._hold_progress_ms + 250)
+                self._message = f"{state_label(target_state)} engaged. Hold steady."
+                moved = True
+                if self._hold_progress_ms >= self._hold_target_ms:
+                    self._successes += 1
+                    self._sequence_index += 1
+                    self._hold_progress_ms = 0
+                    if self._sequence_index >= len(self._routine):
+                        accuracy_bonus = max(0.0, 18.0 - (self._misses * 3.0))
+                        speed_bonus = max(0.0, (self.current_level.target_seconds - elapsed_seconds) * 0.75)
+                        score = 58.0 + (self._successes * 6.0) + accuracy_bonus + speed_bonus
+                        self._record_level_result(True, elapsed_seconds, score_override=score)
+                        level_completed = True
+                        run_completed = self._advance_level()
+                    else:
+                        next_target = self._routine[self._sequence_index]
+                        self._message = (
+                            f"{state_label(target_state)} locked. Next target: {state_label(next_target)}."
+                        )
+            else:
+                if current_state != self._last_penalized_state and arm_snapshot.debounce_ratio >= 1.0:
+                    self._misses += 1
+                    self._last_penalized_state = current_state
+                self._hold_progress_ms = max(0, self._hold_progress_ms - 125)
+                self._message = f"Guide the arm to {state_label(target_state)}."
+
+        balance = concentration - relaxation
+        conc_delta = concentration - (self._conc_baseline if self._conc_baseline is not None else 50.0)
+        relax_delta = relaxation - (self._relax_baseline if self._relax_baseline is not None else 50.0)
+        view_state = self._arm_view_state(
+            concentration=concentration,
+            relaxation=relaxation,
+            current_state=current_state,
+            target_state=target_state,
+            blocked_reason=blocked_reason,
+        )
+        self._view_state = view_state
+        return GameplaySnapshot(
+            level_number=self.current_level_number,
+            phase="prosthetic_arm",
+            phase_label=phase_label,
+            recommended_direction=target_state.lower(),
+            recommended_label=state_label(target_state),
+            control_hint=blocked_reason or control_hint,
+            direction=target_state.lower(),
+            direction_label=DIR_LABELS[target_state.lower()],
+            moved=moved,
+            blocked_reason=blocked_reason,
+            conc_delta=conc_delta,
+            relax_delta=relax_delta,
+            balance=balance,
+            level_completed=level_completed,
+            run_completed=run_completed,
+            view_state=view_state,
+        )
+
+    def _arm_view_state(
+        self,
+        *,
+        concentration: float,
+        relaxation: float,
+        current_state: str,
+        target_state: str,
+        blocked_reason: str,
+    ) -> dict:
+        return {
+            "mode": "prosthetic_arm",
+            "headline": self.current_level.title,
+            "target_state": target_state,
+            "current_state": current_state,
+            "hold_progress": self._hold_progress_ms / max(1, self._hold_target_ms),
+            "hold_target_ms": self._hold_target_ms,
+            "hold_ms": self._hold_progress_ms,
+            "sequence_index": min(self._sequence_index, len(self._routine)),
+            "sequence_total": len(self._routine),
+            "history": list(self._stable_history),
+            "successes": self._successes,
+            "misses": self._misses,
+            "attention": concentration,
+            "relaxation": relaxation,
+            "dominant_state": dominant_state_for_metrics(concentration, relaxation),
+            "message": blocked_reason or self._message,
+            "music_scene": "assistive_focus",
+            "music_bias": max(-1.0, min(1.0, (concentration - relaxation) / 50.0)),
+            "serenity": max(0.0, min(100.0, relaxation)),
+            "restlessness": max(0.0, min(100.0, concentration)),
+            "arm_connected": False,
+            "backend_mode": "capsule",
+            "backend_status": "Using live Capsule productivity metrics.",
+        }
+
+
 TRAINING_SPECS: list[TrainingGameSpec] = [
     TrainingGameSpec(
         game_id="calm_current",
@@ -2551,6 +2723,33 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         enabled=True,
         controller_factory=MindMazeController,
         widget_kind="mind_maze",
+        music_profile="concentration",
+    ),
+    TrainingGameSpec(
+        game_id="prosthetic_arm",
+        section="Assistive motor control",
+        eyebrow="Assistive control",
+        card_title="Prosthetic Arm Lab",
+        detail_title="A target-sequence prosthetic arm trainer with live control and Arm Lab diagnostics",
+        duration="12 min",
+        description="Practice open, neutral, and close arm states while the live control panel mirrors the arm in simulation or hardware.",
+        detail_body=(
+            "Prosthetic Arm Lab adapts the supplied Phaseon arm-control concept into Training Lab. The scored training "
+            "routine prompts open, neutral, and close targets in sequence, while Arm Lab shows the same control stream "
+            "through live metrics, BrainBit diagnostics, and Arduino output when hardware is connected."
+        ),
+        instructions=(
+            "Focus to close the arm, soften attention to open it, and hover between the thresholds for neutral. "
+            "During training, follow the highlighted state, hold it until the sequence advances, and use Arm Lab for "
+            "BrainBit diagnostics or Arduino setup when needed."
+        ),
+        calibration_copy="Relax into a clean baseline before the first grip sequence starts.",
+        preview_label="ARM",
+        colors=("#2d4737", "#87d2a1"),
+        enabled=True,
+        controller_factory=ProstheticArmController,
+        widget_kind="prosthetic_arm",
+        soundtrack_enabled=False,
         music_profile="concentration",
     ),
     TrainingGameSpec(

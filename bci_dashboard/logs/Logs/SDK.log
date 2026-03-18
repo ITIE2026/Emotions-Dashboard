@@ -123,3 +123,5 @@
 [2026-03-14 13:08:40.687] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
 [2026-03-14 13:08:40.687] [SDK] [warning] Failed start BLE scanner
 [2026-03-14 13:08:40.689] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
+[2026-03-17 11:52:06.690] [SDK] [warning] Failed write characteristic value: The operation was canceled by the user.
+[2026-03-17 13:13:17.617] [SDK] [warning] GetCharacteristics Failed: [AccessDenied] [Service UUID]:[7E400001-B534-F393-68A9-E50E24DCCA95]  [Attemtp]:[2]

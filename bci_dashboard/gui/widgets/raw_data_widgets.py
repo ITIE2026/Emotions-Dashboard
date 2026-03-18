@@ -98,6 +98,21 @@ class CollapsibleSection(QWidget):
     def content_layout(self):
         return self._body_layout
 
+    def is_expanded(self) -> bool:
+        return bool(self._button.isChecked())
+
+    def set_expanded(self, expanded: bool):
+        expanded = bool(expanded)
+        if self._button.isChecked() == expanded:
+            self._button.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+            self._body.setVisible(expanded)
+            return
+        self._button.setChecked(expanded)
+        self._toggle(expanded)
+
+    def toggle(self):
+        self.set_expanded(not self.is_expanded())
+
     def _toggle(self, checked: bool):
         self._button.setArrowType(Qt.DownArrow if checked else Qt.RightArrow)
         self._body.setVisible(checked)
@@ -226,11 +241,17 @@ class RhythmsPieChartWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._band_powers = {key: 0.0 for key in _PIE_COLORS}
+        self._waiting_text = "Waiting for PSD data"
         self.setMinimumHeight(260)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def set_band_powers(self, band_powers: dict):
         self._band_powers = {key: float(band_powers.get(key, 0.0)) for key in _PIE_COLORS}
+        self._waiting_text = ""
+        self.update()
+
+    def set_waiting(self, message: str = "Waiting for PSD data"):
+        self._waiting_text = message
         self.update()
 
     def paintEvent(self, event):  # noqa: N802 - Qt API
@@ -263,9 +284,16 @@ class RhythmsPieChartWidget(QWidget):
             -(chart_rect.width() - side) // 2,
             -(chart_rect.height() - side),
         )
-        if total <= 1e-9:
+        if total <= np.finfo(float).eps:
             painter.setPen(QPen(QColor(TEXT_SECONDARY), 1))
             painter.drawEllipse(pie_rect)
+            painter.setPen(QColor(TEXT_SECONDARY))
+            painter.setFont(QFont("Segoe UI", 10))
+            painter.drawText(
+                pie_rect.adjusted(-20, 0, 20, 0),
+                Qt.AlignCenter | Qt.TextWordWrap,
+                self._waiting_text or "Waiting for rhythm data",
+            )
             return
 
         start_angle = 90 * 16
@@ -288,6 +316,6 @@ class RhythmsPieChartWidget(QWidget):
                 48,
                 20,
                 Qt.AlignCenter,
-                f"{value:.3f}",
+                f"{fraction:.3f}",
             )
             start_angle += span_angle

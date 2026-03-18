@@ -239,12 +239,21 @@ class MainWindow(QMainWindow):
     def _show_dashboard(self, section: str = ""):
         """Switch to dashboard page (menu items navigate here)."""
         self._stack.setCurrentIndex(PAGE_DASHBOARD)
+        section_map = {
+            "Rhythms Diagram": "rhythms_diagram",
+            "Accelerometer": "accelerometer",
+            "Gyroscope": "gyroscope",
+        }
+        section_id = section_map.get(section)
+        if section_id:
+            QTimer.singleShot(0, lambda sid=section_id: self._dash_screen.show_section(sid))
 
     # ==================================================================
     #  Toolbar actions
     # ==================================================================
     def _on_stop_signal(self):
         if self._streaming:
+            self._dash_screen.set_streaming_active(False)
             self._dm.stop_streaming()
             self._streaming = False
             self._stop_session()
@@ -315,6 +324,7 @@ class MainWindow(QMainWindow):
         if not self._dm.is_connected():
             log.info("Device confirmed disconnected")
             self._dash_screen.set_session_info(connected=False)
+            self._dash_screen.set_streaming_active(False)
             self._streaming = False
             self._stop_session()
 
@@ -332,10 +342,15 @@ class MainWindow(QMainWindow):
             self._prod_h = ProductivityHandler(dev, lib, parent=self)
             self._cardio_h = CardioHandler(dev, lib, parent=self)
             self._physio_h = PhysioHandler(dev, lib, parent=self)
-            self._mems_h = MemsHandler(dev, lib, parent=self)
         except Exception as exc:
             log.error("Failed to create classifiers: %s", _safe_str(exc))
             return
+
+        try:
+            self._mems_h = MemsHandler(dev, lib, parent=self)
+        except Exception as exc:
+            self._mems_h = None
+            log.warning("MEMS handler unavailable: %s", _safe_str(exc))
 
         self._classifiers_created = True
 
@@ -353,7 +368,8 @@ class MainWindow(QMainWindow):
         self._cardio_h.ppg_updated.connect(self._dash_screen.on_ppg)
         self._cardio_h.calibrated.connect(lambda: self._dash_screen.set_ppg_calibrated(True))
         self._physio_h.states_updated.connect(self._on_physio_states)
-        self._mems_h.mems_updated.connect(self._dash_screen.on_mems)
+        if self._mems_h:
+            self._mems_h.mems_updated.connect(self._dash_screen.on_mems)
 
         # ── Connect raw signal → dashboard ───────────────────────────
         self._dm.psd_received.connect(self._dash_screen.on_psd)
@@ -411,6 +427,7 @@ class MainWindow(QMainWindow):
         self._stack.setCurrentIndex(PAGE_CONNECTION)
 
     def _cancel_calibration(self):
+        self._dash_screen.set_streaming_active(False)
         self._dm.stop_streaming()
         self._streaming = False
         self._stack.setCurrentIndex(PAGE_CONNECTION)
@@ -426,6 +443,7 @@ class MainWindow(QMainWindow):
         if self._csv.file_path:
             self._dash_screen.set_session_file(self._csv.file_path)
         self._dash_screen.reset_session()
+        self._dash_screen.set_streaming_active(True)
         self._log_timer.start()
 
         if self._status_mon:
@@ -445,6 +463,7 @@ class MainWindow(QMainWindow):
 
     def _stop_session(self):
         log.info("Session stopped")
+        self._dash_screen.set_streaming_active(False)
         self._log_timer.stop()
         self._csv.stop_session()
         self._dash_screen.stop_eeg_timer()
@@ -519,7 +538,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         log.info("Application closing")
         self._stop_session()
-        self._training_screen.stop_audio()
+        self._training_screen.shutdown()
         self._dm.disconnect()
         self._streaming = False
         self._bridge.shutdown()

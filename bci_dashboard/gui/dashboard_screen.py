@@ -112,6 +112,8 @@ class DashboardScreen(QWidget):
         self._ppg_samples = deque(maxlen=PPG_WINDOW_SAMPLES)
         self._ppg_timestamps = deque(maxlen=PPG_WINDOW_SAMPLES)
         self._band_history = deque(maxlen=BAND_HISTORY_POINTS)
+        self._last_nonempty_band_history = None
+        self._streaming_active = False
         self._mems_time_origin = None
         self._mems_buffers = {
             "accelerometer": self._new_vector_buffer(),
@@ -128,6 +130,7 @@ class DashboardScreen(QWidget):
         self._eeg_timer = QTimer(self)
         self._eeg_timer.setInterval(100)
         self._eeg_timer.timeout.connect(self._refresh_live_panels)
+        self._eeg_timer.start()
 
     def _build_ui(self):
         outer = QVBoxLayout(self)
@@ -203,18 +206,34 @@ class DashboardScreen(QWidget):
         left_layout.setContentsMargins(8, 8, 4, 8)
         left_layout.setSpacing(6)
 
+        left_splitter = QSplitter(Qt.Vertical)
+        left_splitter.setChildrenCollapsible(False)
+        left_splitter.setHandleWidth(2)
+        left_splitter.setStyleSheet(
+            f"QSplitter {{ background: {BG_PRIMARY}; }}"
+            f"QSplitter::handle {{ background: {BORDER_SUBTLE}; height: 2px; }}"
+        )
+
         self._spectrum = SpectrumChart()
-        left_layout.addWidget(self._spectrum, stretch=3)
+        self._spectrum.setMinimumHeight(300)
+        left_splitter.addWidget(self._spectrum)
 
         self._electrode_table = ElectrodeTable()
-        left_layout.addWidget(self._electrode_table, stretch=2)
+        self._electrode_table.setMinimumHeight(220)
+        left_splitter.addWidget(self._electrode_table)
+        left_splitter.setStretchFactor(0, 4)
+        left_splitter.setStretchFactor(1, 2)
+        left_splitter.setSizes([560, 240])
+        left_layout.addWidget(left_splitter, stretch=1)
         splitter.addWidget(left_widget)
 
         right_scroll = QScrollArea()
         right_scroll.setWidgetResizable(True)
         right_scroll.setFrameShape(QScrollArea.NoFrame)
         right_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self._right_scroll = right_scroll
         right_widget = QWidget()
+        self._right_widget = right_widget
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(8, 8, 8, 12)
         right_layout.setSpacing(6)
@@ -339,18 +358,21 @@ class DashboardScreen(QWidget):
         right_layout.addWidget(hr_card)
 
         accel_section = CollapsibleSection("Accelerometer", expanded=True)
+        self._sections = {"accelerometer": accel_section}
         self._accel_chart = TriAxisChartWidget("Accelerometer")
         self._accel_chart.set_session_start(self._session_start_wall)
         accel_section.content_layout.addWidget(self._accel_chart)
         right_layout.addWidget(accel_section)
 
         gyro_section = CollapsibleSection("Gyroscope", expanded=True)
+        self._sections["gyroscope"] = gyro_section
         self._gyro_chart = TriAxisChartWidget("Gyroscope")
         self._gyro_chart.set_session_start(self._session_start_wall)
         gyro_section.content_layout.addWidget(self._gyro_chart)
         right_layout.addWidget(gyro_section)
 
         rhythms_section = CollapsibleSection("Rhythms Diagram", expanded=True)
+        self._sections["rhythms_diagram"] = rhythms_section
         rhythm_controls = QHBoxLayout()
         rhythm_controls.setContentsMargins(10, 8, 10, 0)
         rhythm_controls.setSpacing(8)
@@ -361,7 +383,9 @@ class DashboardScreen(QWidget):
         self._rhythm_scale_combo = QComboBox()
         self._rhythm_scale_combo.addItems(["1min", "5min", "15min"])
         self._rhythm_scale_combo.setCurrentText("1min")
-        self._rhythm_scale_combo.currentTextChanged.connect(self._update_rhythms_diagram)
+        self._rhythm_scale_combo.currentTextChanged.connect(
+            lambda _text: self._update_rhythms_diagram()
+        )
         self._rhythm_scale_combo.setStyleSheet(
             f"QComboBox {{ background: {BG_CARD}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER_SUBTLE}; padding: 4px 8px; }}"
         )
@@ -401,6 +425,29 @@ class DashboardScreen(QWidget):
         outer.addWidget(splitter, stretch=1)
 
         self._update_ppg_metrics_panel()
+        self._update_rhythms_diagram()
+
+    def set_streaming_active(self, active: bool):
+        self._streaming_active = bool(active)
+        if not self._streaming_active:
+            self._eeg_timer.stop()
+            self._clear_vector_buffers()
+            self._refresh_mems_charts()
+            return
+        if not self._eeg_timer.isActive():
+            self._eeg_timer.start()
+
+    def show_section(self, section_id: str):
+        section = self._sections.get(section_id)
+        if section is None:
+            return
+        section.set_expanded(True)
+        if section_id == "rhythms_diagram":
+            self._update_rhythms_diagram()
+        QTimer.singleShot(
+            0,
+            lambda: self._right_scroll.ensureWidgetVisible(section, 0, 24),
+        )
 
     def on_emotions(self, data: dict):
         try:
@@ -504,6 +551,8 @@ class DashboardScreen(QWidget):
         self._update_ppg_metrics_panel()
 
     def on_psd(self, psd_data):
+        if not self._streaming_active:
+            return
         now = time.monotonic()
         if now - self._last_psd_t < 0.2:
             return
@@ -525,7 +574,7 @@ class DashboardScreen(QWidget):
             p_arr = np.asarray(avg_power, dtype=float)
             self._latest_band_powers = compute_band_powers(f_arr, p_arr)
             self._latest_peaks = compute_peak_frequencies(f_arr, p_arr)
-            self._band_history.append((time.time(), dict(self._latest_band_powers)))
+            self._band_history.append((time.monotonic(), dict(self._latest_band_powers)))
 
             for name in ["alpha", "beta", "theta", "smr"]:
                 value = self._latest_band_powers.get(name, 0.0)
@@ -538,12 +587,21 @@ class DashboardScreen(QWidget):
             pass
 
     def on_eeg(self, eeg_timed_data):
+        if not self._streaming_active:
+            return
+        had_data = self._electrode_table.has_data()
         self._electrode_table.add_eeg_data(eeg_timed_data)
+        if not self._eeg_timer.isActive():
+            self._eeg_timer.start()
+        if not had_data:
+            self._electrode_table.refresh()
 
     def on_artifacts(self, artifacts):
         self._electrode_table.update_artifacts(artifacts)
 
     def on_mems(self, mems_timed_data):
+        if not self._streaming_active:
+            return
         try:
             for idx in range(len(mems_timed_data)):
                 sample_ts = float(mems_timed_data.get_timestamp(idx)) / 1000.0
@@ -600,9 +658,12 @@ class DashboardScreen(QWidget):
 
         self._ppg_state = {}
         self._latest_ppg_metrics = {}
+        self._latest_band_powers = {}
+        self._latest_peaks = {}
         self._ppg_samples.clear()
         self._ppg_timestamps.clear()
         self._band_history.clear()
+        self._last_nonempty_band_history = None
         self._mems_time_origin = None
         self._clear_vector_buffers()
 
@@ -633,6 +694,8 @@ class DashboardScreen(QWidget):
         os.startfile(SESSION_DIR)
 
     def _refresh_live_panels(self):
+        if not self._streaming_active:
+            return
         self._electrode_table.refresh()
         self._refresh_mems_charts()
 
@@ -677,8 +740,23 @@ class DashboardScreen(QWidget):
     def _update_rhythms_diagram(self):
         window_lookup = {"1min": 60.0, "5min": 300.0, "15min": 900.0}
         window_seconds = window_lookup.get(self._rhythm_scale_combo.currentText(), 60.0)
-        aggregated = aggregate_band_history(self._band_history, window_seconds)
-        self._rhythms_pie.set_band_powers(aggregated)
+        aggregated = aggregate_band_history(
+            self._band_history,
+            window_seconds,
+            now=time.monotonic(),
+        )
+        if aggregated is not None:
+            self._last_nonempty_band_history = dict(aggregated)
+            self._rhythms_pie.set_band_powers(aggregated)
+            return
+        if any(float(value) > 0.0 for value in self._latest_band_powers.values()):
+            self._last_nonempty_band_history = dict(self._latest_band_powers)
+            self._rhythms_pie.set_band_powers(self._latest_band_powers)
+            return
+        if self._last_nonempty_band_history is not None:
+            self._rhythms_pie.set_band_powers(self._last_nonempty_band_history)
+            return
+        self._rhythms_pie.set_waiting("Waiting for PSD data")
 
     def _refresh_mems_charts(self):
         accel = self._mems_buffers["accelerometer"]

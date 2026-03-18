@@ -10,7 +10,13 @@ import time
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from utils.config import BG_CARD, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY
 
@@ -19,12 +25,16 @@ _CHANNEL_COLORS = {
     "O1-T3": "#4FC3F7",
     "O2-T4": "#81C784",
 }
+_TRACE_COLOR = "#00E5FF"
+_NAME_BG = "#5567A9"
 
 _CHANNEL_NAMES = {0: "O1-T3", 1: "O2-T4"}
 _GRAPH_BG = "#131624"
 _WINDOW_SEC = 6.0
 _MAX_SAMPLES = 1500
 _MIN_HALF_RANGE_UV = 15.0
+_HEADER_BG = "#5E70B7"
+_ROW_BG = "#2A2E48"
 
 
 class _SessionAxisItem(pg.AxisItem):
@@ -73,13 +83,39 @@ class ElectrodeTable(QWidget):
         self.setStyleSheet(
             f"background: {BG_CARD}; border: 1px solid {BORDER_SUBTLE}; border-radius: 8px;"
         )
+        self.setMinimumHeight(220)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(0)
 
+        trace_header = QHBoxLayout()
+        trace_header.setContentsMargins(0, 0, 0, 4)
+        trace_header.setSpacing(0)
+        trace_spacer = QWidget()
+        trace_spacer.setFixedWidth(270)
+        trace_label = QLabel("Hz")
+        trace_label.setAlignment(Qt.AlignCenter)
+        trace_label.setStyleSheet(
+            f"font-size: 11px; font-weight: bold; color: {TEXT_PRIMARY}; "
+            f"background: transparent; border: none;"
+        )
+        trace_header.addWidget(trace_spacer)
+        trace_header.addWidget(trace_label, stretch=1)
+        layout.addLayout(trace_header)
+
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 6)
         header.setSpacing(4)
+        header_widget = QWidget()
+        header_widget.setStyleSheet(
+            f"background: {_HEADER_BG}; border: none; border-radius: 0px;"
+        )
+        header_widget.setFixedHeight(28)
+        header_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        header_inner = QHBoxLayout(header_widget)
+        header_inner.setContentsMargins(6, 0, 6, 0)
+        header_inner.setSpacing(4)
         for text, width in [
             ("Electrode", 90),
             ("Artifacts", 72),
@@ -88,29 +124,31 @@ class ElectrodeTable(QWidget):
         ]:
             lbl = QLabel(text)
             lbl.setStyleSheet(
-                f"font-size: 11px; font-weight: bold; color: {TEXT_SECONDARY}; "
+                f"font-size: 11px; font-weight: bold; color: {TEXT_PRIMARY}; "
                 f"background: transparent; border: none; padding: 2px;"
             )
             if width:
                 lbl.setFixedWidth(width)
-            header.addWidget(lbl, stretch=(0 if width else 1))
-        layout.addLayout(header)
+            header_inner.addWidget(lbl, stretch=(0 if width else 1))
+        layout.addWidget(header_widget)
 
         self._rows = {}
         channel_names = list(_CHANNEL_COLORS.keys())
         last_channel = channel_names[-1]
         for ch_name, colour in _CHANNEL_COLORS.items():
             row_widget = QWidget()
-            row_widget.setStyleSheet("background: transparent; border: none;")
+            row_widget.setStyleSheet(
+                f"background: {_ROW_BG}; border: none;"
+            )
             row = QHBoxLayout(row_widget)
-            row.setContentsMargins(0, 2, 0, 2)
+            row.setContentsMargins(6, 4, 6, 4)
             row.setSpacing(4)
 
             name_lbl = QLabel(ch_name)
             name_lbl.setFixedWidth(90)
             name_lbl.setStyleSheet(
-                f"font-size: 12px; font-weight: bold; color: {colour}; "
-                f"background: {BORDER_SUBTLE}; border: none; border-radius: 4px; "
+                f"font-size: 12px; font-weight: bold; color: {TEXT_PRIMARY}; "
+                f"background: {_NAME_BG}; border: none; border-radius: 4px; "
                 f"padding: 4px 6px;"
             )
 
@@ -133,6 +171,7 @@ class ElectrodeTable(QWidget):
             plot = pg.PlotWidget(axisItems={"bottom": axis})
             plot.setBackground(_GRAPH_BG)
             plot.setFixedHeight(82 if ch_name == last_channel else 72)
+            plot.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             plot.getPlotItem().setMenuEnabled(False)
             plot.getViewBox().setMouseEnabled(x=False, y=False)
             plot.showGrid(x=True, y=True, alpha=0.12)
@@ -153,7 +192,7 @@ class ElectrodeTable(QWidget):
                 pen=pg.mkPen(color="#334055", width=1),
             )
             plot.addItem(baseline)
-            curve = plot.plot(pen=pg.mkPen(colour, width=1.4))
+            curve = plot.plot(pen=pg.mkPen(_TRACE_COLOR, width=1.4))
 
             row.addWidget(name_lbl)
             row.addWidget(art_lbl)
@@ -207,24 +246,20 @@ class ElectrodeTable(QWidget):
                 if ch_name not in self._rows:
                     continue
 
-                packet_uv = []
                 for sample_idx in range(n_samples):
                     raw_value = float(eeg_timed_data.get_raw_value(ch_idx, sample_idx))
                     value_uv = raw_value * 1_000_000.0
-                    packet_uv.append(value_uv)
                     self._buffers[ch_name].append(value_uv)
                     self._time_bufs[ch_name].append(mapped_times[sample_idx])
-
-                if packet_uv:
-                    avg_uv = float(np.mean(np.abs(packet_uv)))
-                    self._avg_uv[ch_name] = avg_uv
-                    self._rows[ch_name]["avg_lbl"].setText(f"{avg_uv:.3f}")
         except Exception:
             pass
 
     def update_eeg(self, eeg_timed_data):
         """Compatibility wrapper for older callers."""
         self.add_eeg_data(eeg_timed_data)
+
+    def has_data(self) -> bool:
+        return any(bool(times) for times in self._time_bufs.values())
 
     def refresh(self):
         """Redraw both channel traces from the rolling buffers."""
@@ -252,17 +287,34 @@ class ElectrodeTable(QWidget):
 
             t = np.asarray(times, dtype=float)
             y = np.asarray(samples, dtype=float)
-            row["curve"].setData(t, y)
-            row["plot"].setXRange(t_start, t_end, padding=0)
-
             visible = y[t >= t_start]
             if visible.size == 0:
+                display = y
                 half_range = _MIN_HALF_RANGE_UV
+                avg_uv = 0.0
             else:
-                half_range = max(
-                    float(np.percentile(np.abs(visible), 97)) * 1.25,
+                center = float(np.median(visible))
+                display = y - center
+                display_visible = display[t >= t_start]
+                if display_visible.size == 0:
+                    display_visible = display
+                clip_level = max(
+                    float(np.percentile(np.abs(display_visible), 99)),
                     _MIN_HALF_RANGE_UV,
                 )
+                display = np.clip(display, -clip_level * 1.5, clip_level * 1.5)
+                display_visible = np.clip(
+                    display_visible, -clip_level * 1.5, clip_level * 1.5
+                )
+                avg_uv = float(np.mean(np.abs(display_visible)))
+                half_range = max(
+                    float(np.percentile(np.abs(display_visible), 97)) * 1.25,
+                    _MIN_HALF_RANGE_UV,
+                )
+            row["curve"].setData(t, display)
+            row["plot"].setXRange(t_start, t_end, padding=0)
+            self._avg_uv[ch_name] = avg_uv
+            row["avg_lbl"].setText(f"{avg_uv:.3f}")
             row["plot"].setYRange(-half_range, half_range, padding=0)
 
     def clear(self):
