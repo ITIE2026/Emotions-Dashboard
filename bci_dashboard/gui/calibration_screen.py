@@ -90,6 +90,7 @@ class CalibrationScreen(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._current_stage = 0
+        self._mode = "quick"
         self._build_ui()
 
     def _build_ui(self):
@@ -103,6 +104,7 @@ class CalibrationScreen(QWidget):
             f"font-size: 24px; font-weight: bold; color: {TEXT_PRIMARY};"
         )
         title.setAlignment(Qt.AlignCenter)
+        self._title_label = title
         layout.addWidget(title)
         layout.addSpacing(16)
 
@@ -195,9 +197,10 @@ class CalibrationScreen(QWidget):
     # ── Public API ────────────────────────────────────────────────────
     def set_stage(self, stage_num: int, description: str):
         self._current_stage = stage_num
-        self._stage_label.setText(f"Stage {stage_num} / 3")
+        total_stages = 1 if self._mode == "detect" else 3
+        self._stage_label.setText(f"Stage {stage_num} / {total_stages}")
         if stage_num == 1:
-            self._instruction.setText("Close your eyes and relax")
+            self._instruction.setText(description or "Close your eyes and relax")
             self._show_clock_mode()
             self._clock.start()
         else:
@@ -213,6 +216,15 @@ class CalibrationScreen(QWidget):
 
     def set_result_text(self, text: str):
         self._result_label.setText(text)
+
+    def set_mode(self, mode: str):
+        self._mode = mode or "quick"
+        if self._mode == "detect":
+            self._title_label.setText("Detect iAPF")
+            self._stage_label.setText("Stage 1 / 1")
+        else:
+            self._title_label.setText("Quick iAPF Calibration")
+            self._stage_label.setText("Stage 1 / 3")
 
     @property
     def cancel_button(self):

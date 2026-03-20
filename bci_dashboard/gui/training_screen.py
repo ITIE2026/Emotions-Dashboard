@@ -8,7 +8,7 @@ import os
 import tempfile
 import time
 
-from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtCore import QSettings, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.eeg_game_base import READY_STREAK_TARGET, TrainingGameSpec
+from gui.neuroflow_training_page import NeuroflowTrainingPage
 from gui.training_audio import AdaptiveMusicEngine
 from gui.training_games import TRAINING_SPECS, active_training_specs
 from gui.widgets.mind_maze_board import MindMazeBoard, MindMazeControlBar
@@ -173,6 +174,7 @@ class SoundtrackCard(QFrame):
 
 
 class TrainingScreen(QWidget):
+    neuroflow_quick_calibration_requested = Signal()
     IMMERSIVE_GAME_IDS = {"space_shooter", "neuro_racer", "bubble_burst"}
 
     SOUNDTRACKS = {
@@ -205,13 +207,30 @@ class TrainingScreen(QWidget):
         },
     ]
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, runtime=None):
         super().__init__(parent)
+        self._phaseon_runtime = runtime
+        self._owns_arm_runtime = runtime is None
         self._latest_emotions: dict = {}
         self._latest_productivity: dict = {}
         self._latest_cardio: dict = {}
         self._latest_physio: dict = {}
         self._last_productivity_t = 0.0
+        self._latest_connection = {"connected": False, "serial": "--"}
+        self._streaming_active = False
+        self._view_active = False
+        self._latest_band_powers: dict = {}
+        self._latest_peak_freqs: dict = {}
+        self._latest_psd_t: float | None = None
+        self._latest_resistances: dict = {}
+        self._latest_iapf_status: dict = {
+            "frequency": None,
+            "source": "Not set",
+            "status": "Not set",
+            "applied": False,
+        }
+        self._eeg_sample_rate_hz: float | None = None
+        self._eeg_channel_names: list[str] = []
         self._selected_soundtrack = "Kitten"
         self._level_started_at = 0.0
         self._audio_dir = os.path.join(tempfile.gettempdir(), "bci_training_audio")
@@ -229,12 +248,18 @@ class TrainingScreen(QWidget):
             "dominant_state": "Balanced",
         }
         self._arm_last_metrics_t = 0.0
-        self._arm_state_engine = ArmStateEngine()
         self._arm_state_history: list[str] = []
         self._arm_preview_state = "OPEN"
-        self._capsule_arm_backend = CapsuleMetricAdapter(self)
-        self._brainbit_arm_backend = BrainBitMetricAdapter(self)
-        self._arduino_arm = ArduinoArmController(self)
+        if runtime is not None:
+            self._arm_state_engine = runtime.arm_state_engine
+            self._capsule_arm_backend = runtime.capsule_backend
+            self._brainbit_arm_backend = runtime.brainbit_backend
+            self._arduino_arm = runtime.arduino_arm
+        else:
+            self._arm_state_engine = ArmStateEngine()
+            self._capsule_arm_backend = CapsuleMetricAdapter(self)
+            self._brainbit_arm_backend = BrainBitMetricAdapter(self)
+            self._arduino_arm = ArduinoArmController(self)
 
         self._calibration_timer = QTimer(self)
         self._calibration_timer.setInterval(250)
@@ -266,6 +291,7 @@ class TrainingScreen(QWidget):
         self._detail_page = self._build_detail_page()
         self._settings_page = self._build_settings_page()
         self._arm_lab_page = self._build_arm_lab_page()
+        self._neuroflow_page = self._build_neuroflow_page()
         self._calibration_page = self._build_calibration_page()
         self._gameplay_page = self._build_gameplay_page()
         self._result_page = self._build_result_page()
@@ -274,6 +300,7 @@ class TrainingScreen(QWidget):
             self._detail_page,
             self._settings_page,
             self._arm_lab_page,
+            self._neuroflow_page,
             self._calibration_page,
             self._gameplay_page,
             self._result_page,
@@ -467,6 +494,12 @@ class TrainingScreen(QWidget):
         panel = ArmLabPanel()
         panel.back_button.clicked.connect(lambda: self._show_detail(self._current_game_id))
         return panel
+
+    def _build_neuroflow_page(self):
+        page = NeuroflowTrainingPage()
+        page.back_requested.connect(lambda: self._show_detail(self._current_game_id))
+        page.quick_calibration_requested.connect(self.neuroflow_quick_calibration_requested.emit)
+        return page
 
     def _wire_arm_lab(self):
         self._arm_lab_page.source_changed.connect(self._set_arm_backend_mode)
@@ -913,6 +946,21 @@ class TrainingScreen(QWidget):
         backend_suffix = (
             f" ({self._arm_backend_mode.title()})" if self._current_game_id == "prosthetic_arm" else ""
         )
+        if self._current_game_id == "neuroflow":
+            connected = bool(self._latest_connection.get("connected", False))
+            serial = str(self._latest_connection.get("serial", "--"))
+            if connected:
+                live_text = f"Live device detected for Neuroflow   Serial {serial}"
+            else:
+                live_text = "No live device detected. Neuroflow can fall back to simulation."
+            self._catalog_live_lbl.setText(live_text)
+            self._detail_conc_lbl.setText(f"Concentration: {concentration:.1f}")
+            self._detail_relax_lbl.setText(f"Relaxation: {relaxation:.1f}")
+            self._detail_start_btn.setEnabled(True)
+            self._detail_availability_lbl.setText(
+                "Enter Neuroflow to use dashboard-owned live EEG state, PSD-driven focus control, or the built-in simulation fallback."
+            )
+            return
         live_text = (
             f"Live concentration {concentration:.1f}   Relaxation {relaxation:.1f}{backend_suffix}"
             if fresh
@@ -973,10 +1021,14 @@ class TrainingScreen(QWidget):
         self._detail_instruction_lbl.setText(spec.instructions)
         self._detail_settings_btn.setEnabled(spec.soundtrack_enabled)
         self._detail_arm_lab_btn.setVisible(spec.game_id == "prosthetic_arm")
+        self._detail_start_btn.setText("Enter Neuroflow" if spec.game_id == "neuroflow" else "Start")
         if spec.game_id == "prosthetic_arm":
             self._detail_meta_lbl.setText(f"{spec.duration}   {self._arm_backend_mode.title()} arm control")
 
     def _begin_calibration_flow(self):
+        if self._current_game_id == "neuroflow":
+            self._begin_neuroflow_flow()
+            return
         if not self._current_metrics_fresh():
             self._refresh_live_labels()
             return
@@ -989,6 +1041,24 @@ class TrainingScreen(QWidget):
             self._music_engine.start(self._selected_soundtrack)
         self._stack.setCurrentWidget(self._calibration_page)
         self._calibration_timer.start()
+
+    def _begin_neuroflow_flow(self):
+        self._stop_runtime_loops()
+        self._neuroflow_page.set_connection_state(
+            bool(self._latest_connection.get("connected", False)),
+            str(self._latest_connection.get("serial", "--")),
+        )
+        self._neuroflow_page.set_streaming_active(self._streaming_active)
+        self._neuroflow_page.on_resistance(self._latest_resistances)
+        self._neuroflow_page.on_iapf_status(self._latest_iapf_status)
+        if self._latest_band_powers:
+            self._neuroflow_page.update_signal_snapshot(
+                self._latest_band_powers,
+                self._latest_peak_freqs,
+                self._latest_psd_t,
+            )
+        self._neuroflow_page.activate()
+        self._stack.setCurrentWidget(self._neuroflow_page)
 
     def _cancel_calibration(self):
         self._stop_runtime_loops()
@@ -1210,7 +1280,33 @@ class TrainingScreen(QWidget):
     def _stop_runtime_loops(self):
         self._calibration_timer.stop()
         self._gameplay_timer.stop()
+        self._neuroflow_page.deactivate()
         self.stop_audio()
+
+    def set_view_active(self, active: bool):
+        self._view_active = bool(active)
+        if not self._view_active:
+            self._calibration_timer.stop()
+            self._gameplay_timer.stop()
+            self._neuroflow_page.deactivate()
+            return
+        if self._stack.currentWidget() is self._calibration_page and self._streaming_active:
+            if not self._calibration_timer.isActive():
+                self._calibration_timer.start()
+        if self._stack.currentWidget() is self._gameplay_page and self._streaming_active:
+            if not self._gameplay_timer.isActive():
+                self._gameplay_timer.start()
+        if self.is_neuroflow_active():
+            self._neuroflow_page.activate()
+            return
+        self._neuroflow_page.deactivate()
+
+    def is_neuroflow_active(self) -> bool:
+        return bool(
+            self._view_active
+            and self._streaming_active
+            and self._stack.currentWidget() is self._neuroflow_page
+        )
 
     def _has_fresh_metrics(self):
         return self._current_metrics_fresh()
@@ -1237,7 +1333,8 @@ class TrainingScreen(QWidget):
     def on_productivity(self, data: dict):
         self._latest_productivity = data or {}
         self._last_productivity_t = time.monotonic()
-        self._capsule_arm_backend.ingest_productivity(data or {})
+        if self._owns_arm_runtime:
+            self._capsule_arm_backend.ingest_productivity(data or {})
         self._refresh_live_labels()
 
     def on_cardio(self, data: dict):
@@ -1246,12 +1343,82 @@ class TrainingScreen(QWidget):
     def on_physio_states(self, data: dict):
         self._latest_physio = data or {}
 
+    def on_connection_state(self, connected: bool, serial: str = "--"):
+        self._latest_connection = {"connected": bool(connected), "serial": serial or "--"}
+        if self.is_neuroflow_active():
+            self._neuroflow_page.set_connection_state(bool(connected), serial or "--")
+        self._refresh_live_labels()
+
+    def on_resistance(self, data: dict):
+        self._latest_resistances = data or {}
+        if self.is_neuroflow_active():
+            self._neuroflow_page.on_resistance(data or {})
+
+    def on_eeg(self, eeg_timed_data):
+        return
+
+    def on_psd(self, psd_data):
+        return
+
+    def update_signal_snapshot(
+        self,
+        band_powers: dict,
+        peak_freqs: dict,
+        psd_timestamp: float | None = None,
+    ):
+        self._latest_band_powers = dict(band_powers or {})
+        self._latest_peak_freqs = dict(peak_freqs or {})
+        self._latest_psd_t = psd_timestamp
+        if self.is_neuroflow_active():
+            self._neuroflow_page.update_signal_snapshot(
+                self._latest_band_powers,
+                self._latest_peak_freqs,
+                self._latest_psd_t,
+            )
+
+    def on_iapf_status(self, payload: dict):
+        self._latest_iapf_status = payload or {
+            "frequency": None,
+            "source": "Not set",
+            "status": "Not set",
+            "applied": False,
+        }
+        if self.is_neuroflow_active():
+            self._neuroflow_page.on_iapf_status(self._latest_iapf_status)
+
+    def on_neuroflow_calibration_started(self):
+        if self.is_neuroflow_active():
+            self._neuroflow_page.on_calibration_started()
+
+    def on_neuroflow_calibration_finished(self, success: bool, message: str = ""):
+        if self._stack.currentWidget() is self._neuroflow_page:
+            self._neuroflow_page.on_calibration_finished(success, message)
+
+    def set_streaming_active(self, active: bool):
+        self._streaming_active = bool(active)
+        self._neuroflow_page.set_streaming_active(bool(active))
+        if not self._streaming_active:
+            self._calibration_timer.stop()
+            self._gameplay_timer.stop()
+        if not self.is_neuroflow_active():
+            self._neuroflow_page.deactivate()
+
+    def set_eeg_stream_metadata(
+        self,
+        sample_rate_hz: float | None = None,
+        channel_names: list[str] | None = None,
+    ):
+        self._eeg_sample_rate_hz = sample_rate_hz
+        self._eeg_channel_names = list(channel_names or [])
+
     def stop_audio(self):
         self._music_engine.stop()
 
     def shutdown(self):
-        self._brainbit_arm_backend.shutdown()
-        self._arduino_arm.disconnect_device()
+        if self._owns_arm_runtime:
+            self._brainbit_arm_backend.shutdown()
+            self._arduino_arm.disconnect_device()
+        self._neuroflow_page.shutdown()
         self.stop_audio()
 
     def closeEvent(self, event):  # noqa: N802 - Qt API

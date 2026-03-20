@@ -125,3 +125,58 @@
 [2026-03-14 13:08:40.689] [SDK] [warning] Failed start BLE scanner. BLE adapter not found or disabled
 [2026-03-17 11:52:06.690] [SDK] [warning] Failed write characteristic value: The operation was canceled by the user.
 [2026-03-17 13:13:17.617] [SDK] [warning] GetCharacteristics Failed: [AccessDenied] [Service UUID]:[7E400001-B534-F393-68A9-E50E24DCCA95]  [Attemtp]:[2]
+[2026-03-18 16:24:28.409] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-18 16:24:30.021] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-18 16:24:30.033] [SDK] [warning] Failed read characteristic value.
+[2026-03-18 16:24:30.033] [SDK] [error] Failed create Smart Band BLE Protocol: [Can not read Serial number] Code: [0]
+[2026-03-18 16:24:30.036] [SDK] [warning] Coud not process disconnect
+[2026-03-18 16:25:43.582] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-18 16:25:45.201] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-18 16:25:45.202] [SDK] [error] Failed create Smart Band BLE Protocol: [Can not read Serial number] Code: [0]
+[2026-03-18 16:25:45.206] [SDK] [warning] Coud not process disconnect
+[2026-03-20 14:22:04.677] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:22:04.694] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:22:14.751] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:22:14.787] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:22:31.155] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:22:31.172] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:34:57.739] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:34:57.756] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:35:10.240] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:35:10.256] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:35:40.190] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:35:40.206] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:35:52.675] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:35:52.691] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:38:18.816] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:38:18.851] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:39:26.209] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:39:26.224] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:40:05.216] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:40:05.233] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:41:43.962] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:41:43.979] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:46:01.934] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:46:01.978] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:46:15.579] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:46:15.618] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:47:41.411] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:47:41.462] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:50:50.881] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:50:50.920] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:51:14.156] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 14:51:14.195] [SDK] [warning] Failed start BLE scanner
+[2026-03-20 16:03:55.692] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-20 16:03:57.813] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-20 16:03:57.822] [SDK] [warning] Failed read characteristic value.
+[2026-03-20 16:03:57.823] [SDK] [error] Failed create Smart Band BLE Protocol: [Can not read Serial number] Code: [0]
+[2026-03-20 16:03:57.826] [SDK] [warning] Coud not process disconnect
+[2026-03-20 16:04:56.704] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-20 16:04:58.361] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-20 16:04:58.362] [SDK] [error] Failed create Smart Band BLE Protocol: [Can not read Serial number] Code: [0]
+[2026-03-20 16:04:58.364] [SDK] [warning] Coud not process disconnect
+[2026-03-20 16:05:39.308] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-20 16:05:39.315] [SDK] [warning] Failed read characteristic value.
+[2026-03-20 16:05:44.764] [SDK] [warning] Failed read characteristic value: Unreachable
+[2026-03-20 16:05:44.765] [SDK] [error] Failed create Smart Band BLE Protocol: [Can not read Serial number] Code: [0]
+[2026-03-20 16:05:44.767] [SDK] [warning] Coud not process disconnect

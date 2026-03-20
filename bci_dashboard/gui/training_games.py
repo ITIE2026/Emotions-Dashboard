@@ -251,6 +251,46 @@ class BaseTrainingController:
         raise NotImplementedError
 
 
+class NeuroflowPlaceholderController(BaseTrainingController):
+    LEVELS = [TrainingLevel("Neuroflow", 120)]
+
+    def __init__(self):
+        super().__init__(self.LEVELS)
+
+    def _reset_level_state(self) -> None:
+        self._view_state = {
+            "mode": "neuroflow",
+            "message": "Neuroflow uses its own embedded launcher page.",
+        }
+
+    def update_gameplay(
+        self,
+        concentration: float,
+        relaxation: float,
+        valid: bool,
+        stale: bool,
+        elapsed_seconds: float,
+    ) -> GameplaySnapshot:
+        return GameplaySnapshot(
+            level_number=1,
+            phase="neuroflow",
+            phase_label="Neuroflow",
+            recommended_direction=None,
+            recommended_label="",
+            control_hint="Use the Neuroflow launcher page instead of the standard gameplay shell.",
+            direction=None,
+            direction_label=DIR_LABELS[None],
+            moved=False,
+            blocked_reason="",
+            conc_delta=0.0,
+            relax_delta=0.0,
+            balance=0.0,
+            level_completed=False,
+            run_completed=False,
+            view_state=self._view_state,
+        )
+
+
 class CalmCurrentController(BaseTrainingController):
     LEVELS = [
         TrainingLevel("Level 1", 45),
@@ -2700,6 +2740,33 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         controller_factory=CalmCurrentController,
         widget_kind="calm_current",
         music_profile="calm",
+    ),
+    TrainingGameSpec(
+        game_id="neuroflow",
+        section="Improve concentration",
+        eyebrow="Focus launcher",
+        card_title="Neuroflow Launcher",
+        detail_title="A staged focus-to-launch workflow driven by raw EEG and PSD",
+        duration="Continuous",
+        description="Move through device detection, resistance check, quick calibration, EEG streaming, spectral analysis, and focus-triggered app launch.",
+        detail_body=(
+            "Neuroflow is not a short mini-game. It is a staged launcher flow that mirrors the original Neuroflow "
+            "logic: resistances must pass, quick calibration must complete, the concentration index is computed from "
+            "raw PSD band powers, and sustained focus launches the selected desktop app."
+        ),
+        instructions=(
+            "Keep the headset connected, pass the resistance check, run quick calibration, and then sustain the "
+            "focus threshold until the dwell bar completes. Neuroflow uses Beta / (Theta + Alpha) with hysteresis "
+            "and cooldown, just like the original launcher."
+        ),
+        calibration_copy="Neuroflow uses the embedded quick-calibration flow and then transitions directly into focus launch mode.",
+        preview_label="NEUROFLOW",
+        colors=("#18314f", "#40b6ff"),
+        enabled=True,
+        controller_factory=NeuroflowPlaceholderController,
+        widget_kind="neuroflow",
+        soundtrack_enabled=False,
+        music_profile="concentration",
     ),
     TrainingGameSpec(
         game_id="mind_maze",

@@ -2,6 +2,7 @@
 Utility helpers: formatting, colour mapping, clamping, EEG band power.
 """
 import numpy as np
+import math
 from datetime import datetime
 from utils.config import (
     RESIST_GOOD_THRESHOLD, RESIST_WARN_THRESHOLD,
@@ -25,6 +26,8 @@ def clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
 
 def resist_color(value_ohms: float) -> str:
     """Return hex colour string for a resistance value."""
+    if value_ohms is None or not math.isfinite(float(value_ohms)):
+        return "#F44336"
     if value_ohms < RESIST_GOOD_THRESHOLD:
         return "#4CAF50"   # green
     elif value_ohms < RESIST_WARN_THRESHOLD:
@@ -35,6 +38,8 @@ def resist_color(value_ohms: float) -> str:
 
 def resist_label(value_ohms: float) -> str:
     """Human-readable resistance (kΩ)."""
+    if value_ohms is None or not math.isfinite(float(value_ohms)):
+        return "--"
     return f"{value_ohms / 1000:.0f} kΩ"
 
 

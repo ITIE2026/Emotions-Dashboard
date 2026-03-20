@@ -20,6 +20,34 @@ for d in (LOG_DIR, SESSION_DIR, CALIBRATION_DIR):
 # ── Device ─────────────────────────────────────────────────────────────
 DEVICE_SEARCH_TIMEOUT_SEC = 15
 BIPOLAR_CHANNELS = True
+DEVICE_TYPE_OPTIONS = [
+    ("Headband", 0),
+    ("Headphones", 2),
+]
+
+WRITE_OPTION_SPECS = [
+    ("cardio_metrics", "Cardio Metrics"),
+    ("eeg", "EEG"),
+    ("eeg_artifacts", "EEG Artifacts"),
+    ("emotions", "Emotions"),
+    ("export_to_csv", "Export to csv"),
+    ("mems", "MEMS"),
+    ("ppg", "PPG"),
+    ("productivity", "Productivity"),
+    ("productivity_baselines", "Productivity baselines"),
+    ("raw_eeg", "Raw EEG"),
+    ("resistances", "Resistances"),
+    ("rhythms", "Rhythms"),
+]
+WRITE_OPTION_DEFAULTS = {key: True for key, _label in WRITE_OPTION_SPECS}
+SESSION_JSON_NAME = "session.json"
+SESSION_H5_NAME = "session.h5"
+SESSION_METRICS_NAME = "metrics.csv"
+SESSION_FILE_NAMES = {
+    "json": SESSION_JSON_NAME,
+    "h5": SESSION_H5_NAME,
+    "metrics": SESSION_METRICS_NAME,
+}
 
 # ── Resistance thresholds (Ohms) ──────────────────────────────────────
 RESIST_GOOD_THRESHOLD = 500_000        # < 500 kΩ → green
@@ -101,6 +129,13 @@ CSV_COLUMNS = [
 
 CSV_FLUSH_INTERVAL_SEC = 30
 CSV_AGGREGATE_PER_MINUTE = True        # match existing data format
+
+# ── EEG display filter ─────────────────────────────────────────────────
+EEG_FILTER_ENABLED_DEFAULT = True
+EEG_FILTER_SFREQ = 250.0
+EEG_FILTER_L_FREQ = 1.0
+EEG_FILTER_H_FREQ = 40.0
+EEG_FILTER_NOTCH_FREQ = 50.0
 
 # ── Window ─────────────────────────────────────────────────────────────
 WINDOW_TITLE = "BCI Dashboard"

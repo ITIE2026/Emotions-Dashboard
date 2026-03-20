@@ -22,13 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-<<<<<<< HEAD
 from gui.raw_metrics import aggregate_band_history, derive_ppg_metrics
-=======
-from gui.widgets.metric_card import MetricCard
-from gui.widgets.fatigue_panel import FatiguePanel
-from gui.widgets.spectrum_chart import SpectrumChart
->>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
 from gui.widgets.electrode_table import ElectrodeTable
 from gui.widgets.fatigue_panel import FatiguePanel
 from gui.widgets.metric_card import MetricCard
@@ -46,10 +40,12 @@ from utils.config import (
     BG_CARD,
     BG_PRIMARY,
     BORDER_SUBTLE,
+    EEG_FILTER_ENABLED_DEFAULT,
     SESSION_DIR,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
 )
+from utils.eeg_filter import EEGDisplayFilter
 from utils.helpers import (
     compute_band_powers,
     compute_peak_frequencies,
@@ -119,11 +115,18 @@ class DashboardScreen(QWidget):
         self._ppg_timestamps = deque(maxlen=PPG_WINDOW_SAMPLES)
         self._band_history = deque(maxlen=BAND_HISTORY_POINTS)
         self._last_nonempty_band_history = None
+        self._eeg_dirty = False
+        self._psd_dirty = False
+        self._psd_refresh_interval = 0.08
         self._streaming_active = False
-        self._mems_time_origin = None
-        self._mems_buffers = {
-            "accelerometer": self._new_vector_buffer(),
-            "gyroscope": self._new_vector_buffer(),
+        self._view_active = False
+        self._eeg_filter_enabled = bool(EEG_FILTER_ENABLED_DEFAULT)
+        self._eeg_display_filter = EEGDisplayFilter()
+        self._iapf_status = {
+            "frequency": None,
+            "source": "Not set",
+            "status": "Not set",
+            "applied": False,
         }
 
         self._build_ui()
@@ -133,17 +136,9 @@ class DashboardScreen(QWidget):
         self._dur_timer.timeout.connect(self._update_duration)
         self._dur_timer.start()
 
-<<<<<<< HEAD
         self._eeg_timer = QTimer(self)
-        self._eeg_timer.setInterval(100)
+        self._eeg_timer.setInterval(50)
         self._eeg_timer.timeout.connect(self._refresh_live_panels)
-        self._eeg_timer.start()
-=======
-        # 10-Hz timer for EEG trace refresh
-        self._eeg_timer = QTimer(self)
-        self._eeg_timer.setInterval(100)
-        self._eeg_timer.timeout.connect(self._electrode_table.refresh)
->>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
 
     def _build_ui(self):
         outer = QVBoxLayout(self)
@@ -162,11 +157,15 @@ class DashboardScreen(QWidget):
         self._serial_label = QLabel("Serial: --")
         self._mode_label = QLabel("Mode: Unspecified")
         self._battery_label = QLabel("Battery: ?")
+        self._iapf_label = QLabel("iAPF: Not set")
+        self._filter_label = QLabel("EEG Filter: On")
         for lbl in (
             self._conn_label,
             self._serial_label,
             self._mode_label,
             self._battery_label,
+            self._iapf_label,
+            self._filter_label,
         ):
             lbl.setStyleSheet(
                 f"font-size: 12px; color: {TEXT_PRIMARY}; background: transparent;"
@@ -231,20 +230,17 @@ class DashboardScreen(QWidget):
         self._spectrum.setMinimumHeight(300)
         left_splitter.addWidget(self._spectrum)
 
-<<<<<<< HEAD
         self._electrode_table = ElectrodeTable()
         self._electrode_table.setMinimumHeight(220)
+        self._electrode_table.set_display_filter(
+            self._eeg_filter_enabled,
+            self._eeg_display_filter,
+        )
         left_splitter.addWidget(self._electrode_table)
         left_splitter.setStretchFactor(0, 4)
         left_splitter.setStretchFactor(1, 2)
         left_splitter.setSizes([560, 240])
         left_layout.addWidget(left_splitter, stretch=1)
-=======
-        # Electrode table
-        self._electrode_table = ElectrodeTable()
-        left_layout.addWidget(self._electrode_table, stretch=2)
-
->>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
         splitter.addWidget(left_widget)
 
         right_scroll = QScrollArea()
@@ -254,6 +250,7 @@ class DashboardScreen(QWidget):
         self._right_scroll = right_scroll
         right_widget = QWidget()
         self._right_widget = right_widget
+        self._sections = {}
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(8, 8, 8, 12)
         right_layout.setSpacing(6)
@@ -377,46 +374,6 @@ class DashboardScreen(QWidget):
         hr_layout.addStretch()
         right_layout.addWidget(hr_card)
 
-        accel_section = CollapsibleSection("Accelerometer", expanded=True)
-        self._sections = {"accelerometer": accel_section}
-        self._accel_chart = TriAxisChartWidget("Accelerometer")
-        self._accel_chart.set_session_start(self._session_start_wall)
-        accel_section.content_layout.addWidget(self._accel_chart)
-        right_layout.addWidget(accel_section)
-
-        gyro_section = CollapsibleSection("Gyroscope", expanded=True)
-        self._sections["gyroscope"] = gyro_section
-        self._gyro_chart = TriAxisChartWidget("Gyroscope")
-        self._gyro_chart.set_session_start(self._session_start_wall)
-        gyro_section.content_layout.addWidget(self._gyro_chart)
-        right_layout.addWidget(gyro_section)
-
-        rhythms_section = CollapsibleSection("Rhythms Diagram", expanded=True)
-        self._sections["rhythms_diagram"] = rhythms_section
-        rhythm_controls = QHBoxLayout()
-        rhythm_controls.setContentsMargins(10, 8, 10, 0)
-        rhythm_controls.setSpacing(8)
-        time_scale_lbl = QLabel("Time Scale")
-        time_scale_lbl.setStyleSheet(
-            f"font-size: 12px; color: {TEXT_PRIMARY}; background: transparent; font-weight: bold;"
-        )
-        self._rhythm_scale_combo = QComboBox()
-        self._rhythm_scale_combo.addItems(["1min", "5min", "15min"])
-        self._rhythm_scale_combo.setCurrentText("1min")
-        self._rhythm_scale_combo.currentTextChanged.connect(
-            lambda _text: self._update_rhythms_diagram()
-        )
-        self._rhythm_scale_combo.setStyleSheet(
-            f"QComboBox {{ background: {BG_CARD}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER_SUBTLE}; padding: 4px 8px; }}"
-        )
-        rhythm_controls.addWidget(time_scale_lbl)
-        rhythm_controls.addWidget(self._rhythm_scale_combo)
-        rhythm_controls.addStretch()
-        rhythms_section.content_layout.addLayout(rhythm_controls)
-        self._rhythms_pie = RhythmsPieChartWidget()
-        rhythms_section.content_layout.addWidget(self._rhythms_pie)
-        right_layout.addWidget(rhythms_section)
-
         self._fatigue_panel = FatiguePanel()
         right_layout.addWidget(self._fatigue_panel)
 
@@ -445,17 +402,25 @@ class DashboardScreen(QWidget):
         outer.addWidget(splitter, stretch=1)
 
         self._update_ppg_metrics_panel()
-        self._update_rhythms_diagram()
+        self._refresh_filter_label()
 
     def set_streaming_active(self, active: bool):
         self._streaming_active = bool(active)
         if not self._streaming_active:
+            self._eeg_dirty = False
+            self._psd_dirty = False
             self._eeg_timer.stop()
-            self._clear_vector_buffers()
-            self._refresh_mems_charts()
             return
-        if not self._eeg_timer.isActive():
+        if self._view_active and not self._eeg_timer.isActive():
             self._eeg_timer.start()
+
+    def set_view_active(self, active: bool):
+        self._view_active = bool(active)
+        if self._streaming_active and self._view_active:
+            if not self._eeg_timer.isActive():
+                self._eeg_timer.start()
+            return
+        self._eeg_timer.stop()
 
     def show_section(self, section_id: str):
         section = self._sections.get(section_id)
@@ -571,10 +536,10 @@ class DashboardScreen(QWidget):
         self._update_ppg_metrics_panel()
 
     def on_psd(self, psd_data):
-        if not self._streaming_active:
+        if not self._streaming_active or not self._view_active:
             return
         now = time.monotonic()
-        if now - self._last_psd_t < 0.2:
+        if now - self._last_psd_t < self._psd_refresh_interval:
             return
         self._last_psd_t = now
         try:
@@ -602,58 +567,31 @@ class DashboardScreen(QWidget):
             for key in ["alpha_peak", "beta_peak", "theta_peak"]:
                 self._peak_labels[key].setText(f"{self._latest_peaks.get(key, 0.0):.1f} Hz")
 
-            self._update_rhythms_diagram()
+            self._psd_dirty = True
         except Exception:
             pass
 
     def on_eeg(self, eeg_timed_data):
-<<<<<<< HEAD
-        if not self._streaming_active:
+        if not self._streaming_active or not self._view_active:
             return
         had_data = self._electrode_table.has_data()
         self._electrode_table.add_eeg_data(eeg_timed_data)
+        self._eeg_dirty = True
         if not self._eeg_timer.isActive():
             self._eeg_timer.start()
         if not had_data:
             self._electrode_table.refresh()
-=======
-        """Receive EEG data from DeviceManager.
-
-        Buffer all samples for the live per-channel EEG traces.
-        """
-        self._electrode_table.add_eeg_data(eeg_timed_data)
->>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
+            self._eeg_dirty = False
 
     def on_artifacts(self, artifacts):
         self._electrode_table.update_artifacts(artifacts)
 
     def on_mems(self, mems_timed_data):
-        if not self._streaming_active:
-            return
-        try:
-            for idx in range(len(mems_timed_data)):
-                sample_ts = float(mems_timed_data.get_timestamp(idx)) / 1000.0
-                mapped_ts = self._map_sdk_time(sample_ts, "_mems_time_origin")
-
-                accel = mems_timed_data.get_accelerometer(idx)
-                gyro = mems_timed_data.get_gyroscope(idx)
-
-                self._append_vector_sample(
-                    self._mems_buffers["accelerometer"],
-                    mapped_ts,
-                    (float(accel.x), float(accel.y), float(accel.z)),
-                )
-                self._append_vector_sample(
-                    self._mems_buffers["gyroscope"],
-                    mapped_ts,
-                    (float(gyro.x), float(gyro.y), float(gyro.z)),
-                )
-        except Exception:
-            pass
+        return
 
     def on_resistance(self, data: dict):
         for ch, lbl in self._resist_labels.items():
-            ohms = data.get(ch, float("inf"))
+            ohms = _resistance_value_for_channel(data, ch)
             lbl.setText(f"{ch}: {resist_label(ohms)}")
             lbl.setStyleSheet(
                 f"font-size: 12px; color: {resist_color(ohms)}; background: transparent;"
@@ -669,21 +607,64 @@ class DashboardScreen(QWidget):
         self._mode_label.setText(f"Mode: {mode_str}")
 
     def set_battery(self, pct: int):
-        self._battery_label.setText(f"Battery: {pct}%")
+        try:
+            pct = int(pct)
+        except (TypeError, ValueError):
+            pct = -1
+        if 0 <= pct <= 100:
+            self._battery_label.setText(f"Battery: {pct}%")
+            return
+        self._battery_label.setText("Battery: ?")
 
     def set_ppg_calibrated(self, calibrated: bool = True):
         self._ppg_calibrated = bool(calibrated)
         self._update_ppg_metrics_panel()
 
-    def reset_session(self):
-        self._session_id = str(uuid.uuid4())
+    def set_eeg_filter_enabled(self, enabled: bool):
+        self._eeg_filter_enabled = bool(enabled)
+        self._electrode_table.set_display_filter(
+            self._eeg_filter_enabled,
+            self._eeg_display_filter,
+        )
+        self._eeg_dirty = True
+        self._refresh_filter_label()
+        self._electrode_table.refresh()
+        self._eeg_dirty = False
+
+    def set_eeg_stream_metadata(
+        self,
+        sample_rate_hz: float | None = None,
+        channel_names: list[str] | None = None,
+    ):
+        self._electrode_table.set_sample_rate(sample_rate_hz)
+        self._electrode_table.set_channel_names(channel_names)
+
+    def set_iapf_status(
+        self,
+        frequency: float | None = None,
+        source: str = "Not set",
+        status: str = "Not set",
+        applied: bool = False,
+    ):
+        self._iapf_status = {
+            "frequency": frequency,
+            "source": source,
+            "status": status,
+            "applied": bool(applied),
+        }
+        if frequency in (None, 0):
+            self._iapf_label.setText("iAPF: Not set")
+        else:
+            self._iapf_label.setText(f"iAPF: {float(frequency):.2f} Hz ({source})")
+
+    def reset_session(self, session_id: str | None = None):
+        self._session_id = session_id or str(uuid.uuid4())
         self._session_start = datetime.now()
         self._session_start_wall = time.time()
         self._start_label.setText(
             f"Session Start: {self._session_start.strftime('%H:%M:%S')}"
         )
         self._id_label.setText(f"Session ID: {self._session_id}")
-<<<<<<< HEAD
 
         self._ppg_state = {}
         self._latest_ppg_metrics = {}
@@ -693,21 +674,17 @@ class DashboardScreen(QWidget):
         self._ppg_timestamps.clear()
         self._band_history.clear()
         self._last_nonempty_band_history = None
-        self._mems_time_origin = None
-        self._clear_vector_buffers()
+        self._last_psd_t = 0.0
+        self._eeg_dirty = False
+        self._psd_dirty = False
 
+        self._eeg_display_filter.reset()
         self._electrode_table.set_session_start(self._session_start_wall)
         self._electrode_table.clear()
-        self._accel_chart.set_session_start(self._session_start_wall)
-        self._gyro_chart.set_session_start(self._session_start_wall)
         self._update_ppg_metrics_panel()
-        self._update_rhythms_diagram()
-        self._refresh_mems_charts()
-=======
-        self._electrode_table.set_session_start()
-        self._electrode_table.clear()
->>>>>>> 37a8744cc26ae10d9b2efba88a54589e1c35714e
-        self._eeg_timer.start()
+        self._refresh_filter_label()
+        if self._streaming_active and self._view_active:
+            self._eeg_timer.start()
 
     def set_session_file(self, path: str):
         self._session_file = path
@@ -727,10 +704,26 @@ class DashboardScreen(QWidget):
         os.startfile(SESSION_DIR)
 
     def _refresh_live_panels(self):
-        if not self._streaming_active:
+        if not self._streaming_active or not self._view_active:
             return
-        self._electrode_table.refresh()
-        self._refresh_mems_charts()
+
+        refreshed = False
+        if self._eeg_dirty or self._electrode_table.has_pending_refresh():
+            self._electrode_table.refresh()
+            self._eeg_dirty = False
+            refreshed = True
+
+        if self._psd_dirty:
+            self._update_rhythms_diagram()
+            self._psd_dirty = False
+            refreshed = True
+
+        if refreshed:
+            self._refresh_filter_label()
+
+    def _refresh_filter_label(self):
+        state = self._eeg_display_filter.status_text(self._eeg_filter_enabled)
+        self._filter_label.setText(f"EEG Filter: {state}")
 
     def _update_ppg_metrics_panel(self):
         metrics = self._latest_ppg_metrics or {}
@@ -771,6 +764,8 @@ class DashboardScreen(QWidget):
         )
 
     def _update_rhythms_diagram(self):
+        if not hasattr(self, "_rhythms_pie") or not hasattr(self, "_rhythm_scale_combo"):
+            return
         window_lookup = {"1min": 60.0, "5min": 300.0, "15min": 900.0}
         window_seconds = window_lookup.get(self._rhythm_scale_combo.currentText(), 60.0)
         aggregated = aggregate_band_history(
@@ -792,6 +787,8 @@ class DashboardScreen(QWidget):
         self._rhythms_pie.set_waiting("Waiting for PSD data")
 
     def _refresh_mems_charts(self):
+        if not hasattr(self, "_accel_chart") or not hasattr(self, "_gyro_chart"):
+            return
         accel = self._mems_buffers["accelerometer"]
         gyro = self._mems_buffers["gyroscope"]
         self._accel_chart.set_series(
@@ -885,3 +882,30 @@ class DashboardScreen(QWidget):
     @property
     def peak_frequencies(self) -> dict:
         return self._latest_peaks
+
+    @property
+    def ppg_metrics(self) -> dict:
+        return dict(self._latest_ppg_metrics)
+
+    @property
+    def filter_enabled(self) -> bool:
+        return self._eeg_filter_enabled
+
+    @property
+    def iapf_status(self) -> dict:
+        return dict(self._iapf_status)
+
+
+def _resistance_value_for_channel(data: dict, channel: str) -> float:
+    if not data:
+        return float("inf")
+    aliases = {
+        "O1": ("O1", "01"),
+        "O2": ("O2", "02"),
+        "T3": ("T3",),
+        "T4": ("T4",),
+    }
+    for key in aliases.get(channel, (channel,)):
+        if key in data:
+            return data[key]
+    return float("inf")

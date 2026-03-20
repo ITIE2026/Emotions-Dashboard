@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -11,6 +12,7 @@ if APP_ROOT not in sys.path:
     sys.path.insert(0, APP_ROOT)
 
 from gui.raw_metrics import aggregate_band_history, derive_ppg_metrics  # noqa: E402
+from utils.eeg_filter import EEGDisplayFilter  # noqa: E402
 
 
 class DashboardRawMetricsTests(unittest.TestCase):
@@ -47,6 +49,14 @@ class DashboardRawMetricsTests(unittest.TestCase):
         self.assertGreater(metrics["signal_quality_avg"], 0.1)
         self.assertAlmostEqual(metrics["rr_mean"], 1.0, delta=0.2)
         self.assertLess(metrics["sdnn"], 0.2)
+
+    def test_display_filter_falls_back_to_passthrough_when_mne_is_missing(self):
+        samples = np.linspace(-50.0, 50.0, 256)
+        with patch("utils.eeg_filter._load_mne", return_value=None):
+            filt = EEGDisplayFilter()
+            filtered = filt.apply(samples)
+
+        np.testing.assert_allclose(filtered, samples)
 
 
 if __name__ == "__main__":
