@@ -8,7 +8,7 @@ import time
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
@@ -68,6 +68,8 @@ class _SessionAxisItem(pg.AxisItem):
 
 
 class CollapsibleSection(QWidget):
+    expanded_changed = Signal(bool)
+
     def __init__(self, title: str, expanded: bool = True, parent=None):
         super().__init__(parent)
         self._button = QToolButton()
@@ -116,6 +118,7 @@ class CollapsibleSection(QWidget):
     def _toggle(self, checked: bool):
         self._button.setArrowType(Qt.DownArrow if checked else Qt.RightArrow)
         self._body.setVisible(checked)
+        self.expanded_changed.emit(bool(checked))
 
 
 class TriAxisChartWidget(QWidget):

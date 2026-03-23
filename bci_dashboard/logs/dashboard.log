@@ -1808,3 +1808,210 @@ Error.CapsuleException: b'Channel index is out of range'
 2026-03-20 16:46:22,444 [INFO] main: Starting BCI Dashboard
 2026-03-20 16:46:34,297 [INFO] main: Entering event loop
 2026-03-20 17:07:02,209 [INFO] gui.main_window: Application closing
+2026-03-23 11:32:41,223 [INFO] main: Starting BCI Dashboard
+2026-03-23 11:33:05,657 [INFO] main: Entering event loop
+2026-03-23 11:33:19,771 [INFO] main: Starting BCI Dashboard
+2026-03-23 11:33:24,672 [INFO] main: Entering event loop
+2026-03-23 11:33:40,983 [INFO] main: Starting BCI Dashboard
+2026-03-23 11:33:45,917 [INFO] main: Entering event loop
+2026-03-23 11:37:39,556 [INFO] main: Starting BCI Dashboard
+2026-03-23 11:37:44,554 [INFO] main: Entering event loop
+2026-03-23 11:39:22,582 [INFO] gui.main_window: Application closing
+2026-03-23 11:52:43,031 [INFO] main: Starting BCI Dashboard
+2026-03-23 11:52:47,950 [INFO] main: Entering event loop
+2026-03-23 11:54:36,628 [WARNING] device.device_manager: Scan helper process error: QWindowsContext: OleInitialize() failed:  "COM error 0x80010106: Cannot change thread mode after it is set."
+[*** LOG ERROR #0001 ***] [2026-03-23 11:54:36] [Backtrace] rotating_file_sink: failed renaming C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\logs\Backtrace.log to C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\logs\Backtrace.1.log: permission denied
+2026-03-23 11:55:31,836 [WARNING] device.device_manager: Scan helper process error: QWindowsContext: OleInitialize() failed:  "COM error 0x80010106: Cannot change thread mode after it is set."
+2026-03-23 11:55:44,276 [WARNING] device.device_manager: Scan helper process error: QWindowsContext: OleInitialize() failed:  "COM error 0x80010106: Cannot change thread mode after it is set."
+2026-03-23 11:56:45,415 [INFO] gui.main_window: Application closing
+2026-03-23 11:58:24,090 [INFO] main: Starting BCI Dashboard
+2026-03-23 11:58:28,871 [INFO] main: Entering event loop
+2026-03-23 12:02:50,432 [INFO] gui.main_window: Application closing
+2026-03-23 12:12:09,835 [INFO] main: Starting BCI Dashboard
+2026-03-23 12:12:14,879 [INFO] main: Entering event loop
+2026-03-23 12:15:27,800 [INFO] gui.main_window: Application closing
+2026-03-23 12:17:23,591 [INFO] main: Starting BCI Dashboard
+2026-03-23 12:17:28,848 [INFO] main: Entering event loop
+2026-03-23 12:17:38,272 [INFO] gui.main_window: Device connected - serial 821252
+2026-03-23 12:17:38,341 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 12:18:00,469 [INFO] gui.main_window: Application closing
+2026-03-23 12:18:00,547 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 12:18:03,376 [INFO] main: Starting BCI Dashboard
+2026-03-23 12:18:08,175 [INFO] main: Entering event loop
+2026-03-23 12:18:37,496 [INFO] gui.main_window: Device connected - serial 821252
+2026-03-23 12:18:37,774 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 12:20:28,550 [INFO] gui.main_window: Signal stopped by user
+2026-03-23 12:23:15,821 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 12:23:15,857 [INFO] gui.main_window: Signal started by user
+2026-03-23 12:24:39,484 [INFO] gui.main_window: Signal stopped by user
+2026-03-23 12:24:41,738 [INFO] gui.main_window: Application closing
+2026-03-23 12:24:41,747 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 14:43:53,672 [INFO] main: Starting BCI Dashboard
+2026-03-23 14:44:02,988 [INFO] main: Entering event loop
+2026-03-23 14:58:30,930 [INFO] gui.main_window: Device connected - serial 821252
+2026-03-23 14:58:31,234 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 14:59:53,147 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 15:03:03,744 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 15:07:39,681 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 15:08:24,380 [INFO] gui.main_window: Signal stopped by user
+2026-03-23 15:09:56,083 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 15:10:36,030 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 15:10:36,053 [INFO] gui.main_window: Signal started by user
+2026-03-23 15:13:01,237 [INFO] main: Starting BCI Dashboard
+2026-03-23 15:13:08,034 [INFO] main: Entering event loop
+2026-03-23 15:14:10,540 [INFO] gui.main_window: Device connected - serial 820628
+2026-03-23 15:14:10,603 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 15:15:21,600 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 15:16:21,719 [INFO] gui.main_window: Calibration finished: Calibration finished successfully (9.82 Hz)
+2026-03-23 15:16:43,077 [INFO] gui.main_window: Application closing
+2026-03-23 15:16:43,103 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 15:16:46,271 [INFO] main: Starting BCI Dashboard
+2026-03-23 15:16:53,127 [INFO] main: Entering event loop
+2026-03-23 15:17:24,302 [INFO] gui.main_window: Device connected - serial 820628
+2026-03-23 15:17:24,567 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 15:21:12,672 [INFO] gui.main_window: Signal stopped by user
+2026-03-23 15:21:24,294 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 15:21:24,312 [INFO] gui.main_window: Signal started by user
+2026-03-23 15:23:46,204 [INFO] gui.main_window: Signal stopped by user
+2026-03-23 15:24:02,409 [INFO] gui.main_window: Application closing
+2026-03-23 15:24:02,416 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 15:39:12,361 [INFO] main: Starting BCI Dashboard
+2026-03-23 15:39:18,536 [INFO] main: Entering event loop
+2026-03-23 15:39:29,893 [INFO] gui.main_window: Device connected - serial 821252
+2026-03-23 15:39:30,039 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 15:40:32,749 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 15:41:38,947 [INFO] gui.main_window: Signal stopped by user
+2026-03-23 15:41:44,035 [INFO] gui.main_window: Application closing
+2026-03-23 15:41:44,052 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 15:41:46,772 [INFO] main: Starting BCI Dashboard
+2026-03-23 15:41:52,673 [INFO] main: Entering event loop
+2026-03-23 15:42:06,985 [INFO] gui.main_window: Device connected - serial 820628
+2026-03-23 15:42:07,227 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 15:47:18,797 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 16:05:47,516 [INFO] gui.main_window: Signal stopped by user
+2026-03-23 16:05:49,164 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 16:05:49,174 [INFO] gui.main_window: Signal started by user
+2026-03-23 16:06:24,118 [INFO] gui.main_window: Signal stopped by user
+2026-03-23 16:08:01,605 [INFO] gui.main_window: Application closing
+2026-03-23 16:08:01,609 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 16:08:07,467 [INFO] main: Starting BCI Dashboard
+2026-03-23 16:08:09,979 [INFO] main: Entering event loop
+2026-03-23 16:08:24,948 [INFO] gui.main_window: Device connected - serial 821252
+2026-03-23 16:08:25,049 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 16:08:39,191 [INFO] calibration.calibration_manager: Calibration started: mode=quick serial=821252
+2026-03-23 16:09:09,345 [INFO] calibration.calibration_manager: Calibration NFB stage finished
+2026-03-23 16:09:09,346 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 16:09:09,359 [INFO] calibration.calibration_manager: Calibration productivity baseline started
+2026-03-23 16:10:18,826 [INFO] calibration.calibration_manager: Calibration productivity baseline finished
+2026-03-23 16:10:18,862 [INFO] calibration.calibration_manager: Calibration physiological baseline started
+2026-03-23 16:11:03,865 [WARNING] calibration.calibration_manager: Calibration physiological baseline timed out; retrying (1/1)
+2026-03-23 16:11:03,865 [WARNING] calibration.calibration_manager: Calibration physiological baseline retry started (1/1)
+2026-03-23 16:11:20,883 [INFO] calibration.calibration_manager: Calibration started: mode=quick serial=821252
+2026-03-23 16:11:50,955 [INFO] calibration.calibration_manager: Calibration NFB stage finished
+2026-03-23 16:11:50,955 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 16:11:51,007 [INFO] calibration.calibration_manager: Calibration productivity baseline started
+2026-03-23 16:12:21,085 [INFO] calibration.calibration_manager: Calibration productivity baseline finished
+2026-03-23 16:12:21,126 [INFO] calibration.calibration_manager: Calibration physiological baseline started
+2026-03-23 16:13:01,984 [INFO] gui.main_window: Signal stopped by user
+2026-03-23 16:13:06,127 [WARNING] calibration.calibration_manager: Calibration physiological baseline timed out; retrying (1/1)
+2026-03-23 16:13:06,127 [WARNING] calibration.calibration_manager: Calibration physiological baseline retry started (1/1)
+2026-03-23 16:13:11,000 [INFO] gui.main_window: Application closing
+2026-03-23 16:13:11,004 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 16:14:39,169 [INFO] main: Starting BCI Dashboard
+2026-03-23 16:14:41,749 [INFO] main: Entering event loop
+2026-03-23 16:14:54,811 [INFO] gui.main_window: Device connected - serial 820628
+2026-03-23 16:14:54,926 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 16:15:07,495 [INFO] calibration.calibration_manager: Calibration started: mode=quick serial=820628
+2026-03-23 16:15:37,588 [INFO] calibration.calibration_manager: Calibration NFB stage finished
+2026-03-23 16:15:37,589 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 16:15:37,599 [INFO] calibration.calibration_manager: Calibration productivity baseline started
+2026-03-23 16:16:12,869 [INFO] calibration.calibration_manager: Calibration productivity baseline finished
+2026-03-23 16:16:12,887 [INFO] calibration.calibration_manager: Calibration physiological baseline started
+2026-03-23 16:16:57,875 [WARNING] calibration.calibration_manager: Calibration physiological baseline timed out; retrying (1/1)
+2026-03-23 16:16:57,876 [WARNING] calibration.calibration_manager: Calibration physiological baseline retry started (1/1)
+2026-03-23 16:17:42,885 [WARNING] calibration.calibration_manager: Calibration physiological baseline timed out after retry
+2026-03-23 16:17:42,885 [WARNING] gui.main_window: Calibration failed: Physiological baseline calibration timed out. Please retry.
+2026-03-23 16:18:04,203 [INFO] gui.main_window: Application closing
+2026-03-23 16:18:04,223 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 16:23:14,357 [INFO] main: Starting BCI Dashboard
+2026-03-23 16:23:18,216 [INFO] main: Entering event loop
+2026-03-23 16:23:42,000 [INFO] gui.main_window: Device connected - serial 820628
+2026-03-23 16:23:42,421 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 16:23:58,337 [INFO] calibration.calibration_manager: Calibration started: mode=quick serial=820628
+2026-03-23 16:24:28,499 [INFO] calibration.calibration_manager: Calibration NFB stage finished
+2026-03-23 16:24:28,500 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 16:24:28,501 [INFO] gui.main_window: Calibration finished: Calibration finished successfully (9.49 Hz)
+2026-03-23 16:25:02,223 [INFO] calibration.calibration_manager: Calibration started: mode=quick serial=820628
+2026-03-23 16:25:32,259 [INFO] calibration.calibration_manager: Calibration NFB stage finished
+2026-03-23 16:25:32,259 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 16:25:32,260 [INFO] gui.main_window: Calibration finished: Calibration finished successfully (9.52 Hz)
+2026-03-23 16:25:54,836 [INFO] gui.main_window: Signal stopped by user
+2026-03-23 16:25:56,923 [INFO] gui.main_window: Application closing
+2026-03-23 16:25:56,927 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 16:27:07,573 [INFO] main: Starting BCI Dashboard
+2026-03-23 16:27:09,767 [INFO] main: Entering event loop
+2026-03-23 16:27:29,784 [INFO] gui.main_window: Device connected - serial 820628
+2026-03-23 16:27:29,904 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 16:27:35,924 [INFO] calibration.calibration_manager: Calibration started: mode=quick serial=820628
+2026-03-23 16:28:06,063 [INFO] calibration.calibration_manager: Calibration NFB stage finished
+2026-03-23 16:28:06,063 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 16:28:06,064 [INFO] gui.main_window: Calibration finished: Calibration finished successfully (9.70 Hz)
+2026-03-23 16:28:13,910 [INFO] gui.main_window: Application closing
+2026-03-23 16:28:13,925 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 16:32:48,089 [INFO] main: Starting BCI Dashboard
+2026-03-23 16:32:50,325 [INFO] main: Entering event loop
+2026-03-23 16:33:46,910 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 16:33:49,935 [INFO] main: Starting BCI Dashboard
+2026-03-23 16:33:52,171 [INFO] main: Entering event loop
+2026-03-23 16:34:08,132 [INFO] gui.main_window: Device connected - serial 820628
+2026-03-23 16:34:08,152 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 16:34:13,410 [INFO] calibration.calibration_manager: Calibration started: mode=quick serial=820628
+2026-03-23 16:34:44,029 [INFO] calibration.calibration_manager: Calibration NFB stage finished
+2026-03-23 16:34:44,030 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 16:34:44,032 [INFO] gui.main_window: Calibration finished: Calibration finished successfully (9.69 Hz)
+2026-03-23 16:35:21,851 [INFO] calibration.calibration_manager: Calibration started: mode=quick serial=820628
+2026-03-23 16:35:51,950 [INFO] calibration.calibration_manager: Calibration NFB stage finished
+2026-03-23 16:35:51,950 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 16:35:51,953 [INFO] gui.main_window: Calibration finished: Calibration finished successfully (9.55 Hz)
+2026-03-23 16:56:02,683 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 950, in _on_psd
+    psd_snapshot = self._extract_psd_snapshot(psd_data)
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 1129, in _extract_psd_snapshot
+    avg_power[f_idx] += float(psd_data.get_psd(ch_idx, f_idx))
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\capsule_sdk\PSDData.py", line 82, in get_psd
+    def get_psd(self, channelIdx, freqIdx):
+KeyboardInterrupt
+
+2026-03-23 16:56:14,658 [CRITICAL] root: Unhandled exception:
+Traceback (most recent call last):
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 950, in _on_psd
+    psd_snapshot = self._extract_psd_snapshot(psd_data)
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\gui\main_window.py", line 1129, in _extract_psd_snapshot
+    avg_power[f_idx] += float(psd_data.get_psd(ch_idx, f_idx))
+  File "C:\Users\asus\Documents\dashboard\Emotions-Dashboard\bci_dashboard\capsule_sdk\PSDData.py", line 84, in get_psd
+    psd = self._lib.clCPSDData_GetPSD(self._pointer, channelIdx, freqIdx, ctypes.byref(error))
+KeyboardInterrupt
+
+2026-03-23 17:07:04,634 [INFO] main: Starting BCI Dashboard
+2026-03-23 17:07:09,302 [INFO] main: Entering event loop
+2026-03-23 17:07:25,160 [INFO] gui.main_window: Device connected - serial 820628
+2026-03-23 17:07:25,426 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 17:07:52,447 [INFO] calibration.calibration_manager: Calibration started: mode=quick serial=820628
+2026-03-23 17:08:22,537 [INFO] calibration.calibration_manager: Calibration NFB stage finished
+2026-03-23 17:08:22,538 [WARNING] calibration.calibration_manager: Falling back to safe NFB serialization: invalid literal for int() with base 10: b'\x00\x00\x00\x00'
+2026-03-23 17:08:22,542 [INFO] gui.main_window: Quick calibration visible phase finished: Calibration finished successfully (9.73 Hz)
+2026-03-23 17:08:22,618 [INFO] calibration.calibration_manager: Calibration productivity baseline started
+2026-03-23 17:08:52,922 [INFO] calibration.calibration_manager: Calibration productivity baseline finished
+2026-03-23 17:08:53,222 [INFO] calibration.calibration_manager: Calibration physiological baseline started
+2026-03-23 17:09:23,404 [INFO] calibration.calibration_manager: Calibration physiological baseline finished
+2026-03-23 17:09:23,430 [INFO] gui.main_window: Calibration finished: Background baselines ready (9.73 Hz)
+2026-03-23 17:14:26,197 [INFO] gui.main_window: Application closing
+2026-03-23 17:14:26,225 [INFO] gui.main_window: Device disconnected signal - starting debounce timer
+2026-03-23 17:14:29,187 [INFO] main: Starting BCI Dashboard
+2026-03-23 17:14:34,813 [INFO] main: Entering event loop
+2026-03-23 17:14:49,840 [INFO] gui.main_window: Device connected - serial 820628
+2026-03-23 17:14:49,883 [WARNING] storage.session_recorder: h5py is not installed; session.h5 will not be written.
+2026-03-23 17:21:09,853 [INFO] gui.main_window: Signal stopped by user
+2026-03-23 17:21:14,426 [INFO] gui.main_window: Application closing
+2026-03-23 17:21:14,433 [INFO] gui.main_window: Device disconnected signal - starting debounce timer

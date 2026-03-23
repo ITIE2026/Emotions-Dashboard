@@ -12,7 +12,6 @@ from utils.config import (
     STATUS_POLL_INTERVAL_MS,
     RECONNECT_INTERVAL_MS,
     MAX_RECONNECT_ATTEMPTS,
-    BIPOLAR_CHANNELS,
 )
 
 # How many consecutive missed polls before we declare a real disconnect
@@ -130,7 +129,7 @@ class DeviceStatusMonitor(QObject):
         try:
             serial = self._dm.device_serial
             if serial:
-                self._dm.connect_device(serial, BIPOLAR_CHANNELS)
+                self._dm.connect_device(serial, self._dm.active_bipolar_mode)
         except Exception:
             pass  # will retry on next timer tick
 

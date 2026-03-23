@@ -36,6 +36,7 @@ class MemsScreen(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._streaming_active = False
+        self._view_active = False
         self._session_id = str(uuid.uuid4())
         self._session_start = datetime.now()
         self._session_start_wall = time.time()
@@ -43,6 +44,11 @@ class MemsScreen(QWidget):
         self._latest_band_powers = {}
         self._band_history = deque(maxlen=BAND_HISTORY_POINTS)
         self._last_nonempty_band_history = None
+        self._active_sections = {
+            "accelerometer": False,
+            "gyroscope": False,
+            "rhythms_diagram": False,
+        }
         self._mems_buffers = {
             "accelerometer": self._new_vector_buffer(),
             "gyroscope": self._new_vector_buffer(),
@@ -116,22 +122,31 @@ class MemsScreen(QWidget):
 
         self._sections = {}
 
-        accel_section = CollapsibleSection("Accelerometer", expanded=True)
+        accel_section = CollapsibleSection("Accelerometer", expanded=False)
         self._sections["accelerometer"] = accel_section
+        accel_section.expanded_changed.connect(
+            lambda expanded: self._on_section_expanded_changed("accelerometer", expanded)
+        )
         self._accel_chart = TriAxisChartWidget("Accelerometer")
         self._accel_chart.set_session_start(self._session_start_wall)
         accel_section.content_layout.addWidget(self._accel_chart)
         body_layout.addWidget(accel_section)
 
-        gyro_section = CollapsibleSection("Gyroscope", expanded=True)
+        gyro_section = CollapsibleSection("Gyroscope", expanded=False)
         self._sections["gyroscope"] = gyro_section
+        gyro_section.expanded_changed.connect(
+            lambda expanded: self._on_section_expanded_changed("gyroscope", expanded)
+        )
         self._gyro_chart = TriAxisChartWidget("Gyroscope")
         self._gyro_chart.set_session_start(self._session_start_wall)
         gyro_section.content_layout.addWidget(self._gyro_chart)
         body_layout.addWidget(gyro_section)
 
-        rhythms_section = CollapsibleSection("Rhythms Diagram", expanded=True)
+        rhythms_section = CollapsibleSection("Rhythms Diagram", expanded=False)
         self._sections["rhythms_diagram"] = rhythms_section
+        rhythms_section.expanded_changed.connect(
+            lambda expanded: self._on_section_expanded_changed("rhythms_diagram", expanded)
+        )
         rhythm_controls = QHBoxLayout()
         rhythm_controls.setContentsMargins(10, 8, 10, 0)
         rhythm_controls.setSpacing(8)
@@ -164,13 +179,16 @@ class MemsScreen(QWidget):
     def set_streaming_active(self, active: bool):
         self._streaming_active = bool(active)
         self._status_label.setText("Status: Live" if self._streaming_active else "Status: Idle")
-        if self._streaming_active:
-            if not self._refresh_timer.isActive():
-                self._refresh_timer.start()
-            return
-        self._refresh_timer.stop()
-        self._clear_vector_buffers()
-        self._refresh_mems_charts()
+        if not self._streaming_active:
+            self._deactivate_all_sections(collapse=True)
+            self._clear_vector_buffers()
+            self._refresh_mems_charts()
+            self._update_rhythms_diagram()
+        self._update_refresh_state()
+
+    def set_view_active(self, active: bool):
+        self._view_active = bool(active)
+        self._update_refresh_state()
 
     def set_session_info(self, connected: bool = False, serial: str = "--"):
         state = "Connected" if connected else "Disconnected"
@@ -197,12 +215,14 @@ class MemsScreen(QWidget):
         self._latest_band_powers = {}
         self._band_history.clear()
         self._last_nonempty_band_history = None
+        self._deactivate_all_sections(collapse=True)
         self._clear_vector_buffers()
         self._session_label.setText(f"Session ID: {self._session_id}")
         self._accel_chart.set_session_start(self._session_start_wall)
         self._gyro_chart.set_session_start(self._session_start_wall)
         self._refresh_mems_charts()
         self._update_rhythms_diagram()
+        self._update_refresh_state()
 
     def show_section(self, section_id: str):
         section = self._sections.get(section_id)
@@ -217,7 +237,11 @@ class MemsScreen(QWidget):
         )
 
     def on_mems(self, mems_timed_data):
-        if not self._streaming_active:
+        if (
+            not self._streaming_active
+            or not self._view_active
+            or not (self._active_sections["accelerometer"] or self._active_sections["gyroscope"])
+        ):
             return
         try:
             for idx in range(len(mems_timed_data)):
@@ -225,20 +249,28 @@ class MemsScreen(QWidget):
                 mapped_ts = self._map_sdk_time(sample_ts)
                 accel = mems_timed_data.get_accelerometer(idx)
                 gyro = mems_timed_data.get_gyroscope(idx)
-                self._append_vector_sample(
-                    self._mems_buffers["accelerometer"],
-                    mapped_ts,
-                    (float(accel.x), float(accel.y), float(accel.z)),
-                )
-                self._append_vector_sample(
-                    self._mems_buffers["gyroscope"],
-                    mapped_ts,
-                    (float(gyro.x), float(gyro.y), float(gyro.z)),
-                )
+                if self._active_sections["accelerometer"]:
+                    self._append_vector_sample(
+                        self._mems_buffers["accelerometer"],
+                        mapped_ts,
+                        (float(accel.x), float(accel.y), float(accel.z)),
+                    )
+                if self._active_sections["gyroscope"]:
+                    self._append_vector_sample(
+                        self._mems_buffers["gyroscope"],
+                        mapped_ts,
+                        (float(gyro.x), float(gyro.y), float(gyro.z)),
+                    )
         except Exception:
             return
 
     def on_band_powers(self, band_powers: dict):
+        if (
+            not self._streaming_active
+            or not self._view_active
+            or not self._active_sections["rhythms_diagram"]
+        ):
+            return
         self._latest_band_powers = {
             key: float(value)
             for key, value in (band_powers or {}).items()
@@ -248,11 +280,14 @@ class MemsScreen(QWidget):
         self._update_rhythms_diagram()
 
     def _refresh_live_panels(self):
-        if not self._streaming_active:
+        if not self._streaming_active or not self._view_active:
             return
         self._refresh_mems_charts()
 
     def _update_rhythms_diagram(self):
+        if not self._active_sections["rhythms_diagram"]:
+            self._rhythms_pie.set_waiting("Open Rhythms Diagram to start")
+            return
         window_lookup = {"1min": 60.0, "5min": 300.0, "15min": 900.0}
         window_seconds = window_lookup.get(self._rhythm_scale_combo.currentText(), 60.0)
         aggregated = aggregate_band_history(
@@ -302,6 +337,31 @@ class MemsScreen(QWidget):
             buf["y"].clear()
             buf["z"].clear()
             buf["current"] = (0.0, 0.0, 0.0)
+
+    def _on_section_expanded_changed(self, section_id: str, expanded: bool):
+        self._active_sections[section_id] = bool(expanded)
+        if section_id == "rhythms_diagram":
+            self._update_rhythms_diagram()
+        self._update_refresh_state()
+
+    def _deactivate_all_sections(self, collapse: bool = False):
+        for section_id in self._active_sections:
+            self._active_sections[section_id] = False
+        if collapse:
+            for section in self._sections.values():
+                section.set_expanded(False)
+
+    def _update_refresh_state(self):
+        needs_refresh = (
+            self._streaming_active
+            and self._view_active
+            and (self._active_sections["accelerometer"] or self._active_sections["gyroscope"])
+        )
+        if needs_refresh:
+            if not self._refresh_timer.isActive():
+                self._refresh_timer.start()
+            return
+        self._refresh_timer.stop()
 
     @staticmethod
     def _new_vector_buffer():

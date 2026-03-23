@@ -3,11 +3,10 @@ CalibrationScreen – progress UI for the 3-stage calibration.
 Dark-themed to match Mind Tracker BCI style.
 
 Stage 1 (NFB, 30 s): shows a circular countdown clock.
-Stages 2+3: shows a progress bar.
+Stages 2+3: show status text only.
 """
-import math
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QProgressBar, QPushButton,
+    QWidget, QVBoxLayout, QLabel, QPushButton,
 )
 from PySide6.QtCore import Qt, QTimer, QRectF
 from PySide6.QtGui import QPainter, QPen, QColor, QFont
@@ -126,32 +125,11 @@ class CalibrationScreen(QWidget):
         layout.addWidget(self._clock_wrap)
         layout.addSpacing(8)
 
-        # ── Progress bar (stages 2-3) ──────────────────────────────────
-        self._progress = QProgressBar()
-        self._progress.setRange(0, 100)
-        self._progress.setValue(0)
-        self._progress.setMinimumHeight(18)
-        self._progress.setStyleSheet(
-            f"""
-            QProgressBar {{
-                border: none;
-                border-radius: 9px;
-                background: #222;
-                text-align: center;
-                color: {TEXT_PRIMARY};
-            }}
-            QProgressBar::chunk {{
-                background-color: {ACCENT_GREEN};
-                border-radius: 9px;
-            }}
-            """
-        )
-        self._progress_label = QLabel("0%")
-        self._progress_label.setStyleSheet(f"font-size: 14px; color: {TEXT_SECONDARY};")
-        self._progress_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self._progress)
-        layout.addSpacing(6)
-        layout.addWidget(self._progress_label)
+        self._status_hint = QLabel("30 second timer is enough for calibration.")
+        self._status_hint.setStyleSheet(f"font-size: 14px; color: {TEXT_SECONDARY};")
+        self._status_hint.setAlignment(Qt.AlignCenter)
+        self._status_hint.setWordWrap(True)
+        layout.addWidget(self._status_hint)
         layout.addSpacing(18)
 
         # Stage label
@@ -185,14 +163,12 @@ class CalibrationScreen(QWidget):
     # ── Mode helpers ──────────────────────────────────────────────────
     def _show_clock_mode(self):
         self._clock_wrap.show()
-        self._progress.hide()
-        self._progress_label.hide()
+        self._status_hint.show()
 
-    def _show_bar_mode(self):
+    def _show_status_mode(self):
         self._clock.stop()
         self._clock_wrap.hide()
-        self._progress.show()
-        self._progress_label.show()
+        self._status_hint.show()
 
     # ── Public API ────────────────────────────────────────────────────
     def set_stage(self, stage_num: int, description: str):
@@ -205,14 +181,10 @@ class CalibrationScreen(QWidget):
             self._clock.start()
         else:
             self._instruction.setText(description)
-            self._show_bar_mode()
+            self._show_status_mode()
 
     def set_progress(self, fraction: float):
-        if self._current_stage == 1:
-            return   # clock handles stage-1 visually
-        pct = int(fraction * 100)
-        self._progress.setValue(pct)
-        self._progress_label.setText(f"{pct}%")
+        return
 
     def set_result_text(self, text: str):
         self._result_label.setText(text)
@@ -224,7 +196,7 @@ class CalibrationScreen(QWidget):
             self._stage_label.setText("Stage 1 / 1")
         else:
             self._title_label.setText("Quick iAPF Calibration")
-            self._stage_label.setText("Stage 1 / 3")
+            self._stage_label.setText("Stage 1 / 1")
 
     @property
     def cancel_button(self):

@@ -29,6 +29,7 @@ from gui.training_games import (  # noqa: E402
     CandyCascadeController,
     FullRebootController,
     JumpBallController,
+    NeonDriftArenaController,
     NeuroRacerController,
     PatternRecallController,
     ProstheticArmController,
@@ -66,6 +67,24 @@ class _FakeEEGTimedData:
         if self._processed_channels is None:
             raise AttributeError("processed EEG unavailable")
         return float(self._processed_channels[ch_idx][sample_idx])
+
+
+class _FakePSDData:
+    def __init__(self, freqs, channel_powers):
+        self._freqs = list(freqs)
+        self._channel_powers = [list(channel) for channel in channel_powers]
+
+    def get_frequencies_count(self):
+        return len(self._freqs)
+
+    def get_channels_count(self):
+        return len(self._channel_powers)
+
+    def get_frequency(self, idx):
+        return float(self._freqs[idx])
+
+    def get_psd(self, ch_idx, f_idx):
+        return float(self._channel_powers[ch_idx][f_idx])
 
 
 class _SignalStub:
@@ -564,7 +583,7 @@ class TrainingGameControllerTests(unittest.TestCase):
 
     def test_active_specs_include_arcade_games(self):
         active_ids = {spec.game_id for spec in active_training_specs()}
-        self.assertTrue({"space_shooter", "jump_ball", "neuro_racer", "bubble_burst"}.issubset(active_ids))
+        self.assertTrue({"space_shooter", "jump_ball", "neuro_racer", "neon_drift_arena", "bubble_burst"}.issubset(active_ids))
         self.assertIn("full_reboot", active_ids)
         self.assertIn("candy_cascade", active_ids)
         self.assertIn("prosthetic_arm", active_ids)
@@ -754,6 +773,92 @@ class TrainingGameControllerTests(unittest.TestCase):
 
         for _ in range(7):
             snapshot = controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=8.0)
+
+        self.assertTrue(snapshot.level_completed)
+        self.assertEqual(controller.current_level_number, 2)
+
+    def test_neon_drift_arena_focus_and_relax_shift_kart_between_lanes(self):
+        controller = NeonDriftArenaController()
+        self._calibrate(controller)
+        start_lane = controller.view_state["kart_lane"]
+
+        controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=2.0)
+        snapshot = controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=2.0)
+        self.assertEqual(snapshot.direction, "right")
+        self.assertEqual(controller.view_state["kart_lane"], start_lane + 1)
+
+        controller.update_gameplay(49.0, 52.0, valid=True, stale=False, elapsed_seconds=3.0)
+        snapshot = controller.update_gameplay(49.0, 52.0, valid=True, stale=False, elapsed_seconds=3.0)
+        self.assertEqual(snapshot.direction, "left")
+        self.assertEqual(controller.view_state["kart_lane"], start_lane)
+
+    def test_neon_drift_arena_steady_boost_consumes_charge(self):
+        controller = NeonDriftArenaController()
+        self._calibrate(controller)
+        controller._boost_meter = 52.0
+        start_progress = controller.view_state["track_progress"]
+
+        controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=2.0)
+        snapshot = controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=2.0)
+
+        self.assertEqual(snapshot.direction, "boost")
+        self.assertGreater(controller.view_state["track_progress"], start_progress)
+        self.assertGreater(controller.view_state["boost_ticks"], 0)
+        self.assertLess(controller.view_state["boost_meter"], 52.0)
+
+    def test_neon_drift_arena_hazard_hit_resets_combo_and_drains_score(self):
+        controller = NeonDriftArenaController()
+        self._calibrate(controller)
+        controller._lane = 2
+        controller._drift_bias = 0.0
+        controller._combo = 4
+        controller._best_combo = 4
+        controller._score = 180
+        controller._items = [
+            {
+                "type": "hazard",
+                "distance": 9.0,
+                "lane": 2.0,
+                "width": 0.9,
+                "sway": 0.0,
+                "penalty": 40,
+                "resolved": False,
+            }
+        ]
+        controller._view_state = controller._arena_view_state()
+
+        controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=2.0)
+
+        self.assertEqual(controller.view_state["hazard_hits"], 1)
+        self.assertEqual(controller.view_state["combo"], 0)
+        self.assertLess(controller.view_state["score"], 180)
+
+    def test_neon_drift_arena_completion_uses_overlay_before_level_progression(self):
+        controller = NeonDriftArenaController()
+        self._calibrate(controller)
+        controller._target_collectibles = 1
+        controller._target_score = 20
+        controller._items = [
+            {
+                "type": "tile",
+                "distance": 8.0,
+                "lane": float(controller._lane),
+                "value": 28,
+                "style": "violet",
+                "sway": 0.0,
+                "width": 0.62,
+                "resolved": False,
+            }
+        ]
+        controller._view_state = controller._arena_view_state()
+
+        snapshot = controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=3.0)
+
+        self.assertFalse(snapshot.level_completed)
+        self.assertEqual(controller.view_state["overlay_kind"], "success")
+
+        for _ in range(7):
+            snapshot = controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=3.0)
 
         self.assertTrue(snapshot.level_completed)
         self.assertEqual(controller.current_level_number, 2)
@@ -1260,6 +1365,79 @@ class DashboardMemsFilteringTests(unittest.TestCase):
         finally:
             table.close()
 
+    def test_main_window_extract_eeg_snapshot_preserves_microvolt_values(self):
+        timestamps_ms = [0.0, 4.0, 8.0, 12.0]
+        raw = np.asarray([12.0, -18.0, 24.0, -9.0], dtype=float)
+        processed = np.asarray([1.0, 2.0, 3.0, 4.0], dtype=float)
+        packet = _FakeEEGTimedData(
+            [raw, raw * 0.5],
+            timestamps_ms,
+            processed_channels=[processed, processed * 0.5],
+        )
+
+        snapshot = MainWindow._extract_eeg_snapshot(packet)
+
+        self.assertEqual(snapshot["timestampsMs"], timestamps_ms)
+        self.assertEqual(snapshot["channels"][0], raw.tolist())
+        self.assertEqual(snapshot["processed_channels"][0], processed.tolist())
+
+    def test_main_window_extract_psd_snapshot_returns_average_and_summary(self):
+        psd = _FakePSDData(
+            [4.0, 6.0, 8.0, 10.0, 12.0, 18.0],
+            [
+                [1.0, 2.0, 6.0, 4.0, 2.0, 1.0],
+                [1.0, 4.0, 8.0, 6.0, 4.0, 2.0],
+            ],
+        )
+
+        snapshot = MainWindow._extract_psd_snapshot(psd)
+
+        self.assertEqual(snapshot["freqs"], [4.0, 6.0, 8.0, 10.0, 12.0, 18.0])
+        self.assertEqual(len(snapshot["avg_power"]), 6)
+        self.assertIn("alpha", snapshot["band_powers"])
+        self.assertIn("alpha_peak", snapshot["peak_frequencies"])
+        self.assertAlmostEqual(snapshot["peak_frequencies"]["alpha_peak"], 8.0)
+
+    def test_dashboard_psd_snapshot_path_uses_precomputed_summary(self):
+        screen = DashboardScreen()
+        try:
+            screen.set_streaming_active(True)
+            screen.set_view_active(True)
+            snapshot = {
+                "freqs": [4.0, 6.0, 8.0, 10.0, 12.0],
+                "avg_power": [1.0, 2.0, 6.0, 4.0, 2.0],
+                "band_powers": {"alpha": 10.0, "beta": 3.0, "theta": 2.0, "smr": 1.0},
+                "peak_frequencies": {"alpha_peak": 8.0, "beta_peak": 18.0, "theta_peak": 6.0},
+                "received_at": time.monotonic(),
+            }
+
+            with patch("gui.dashboard_screen.compute_band_powers", side_effect=AssertionError("should not recompute")), patch(
+                "gui.dashboard_screen.compute_peak_frequencies",
+                side_effect=AssertionError("should not recompute"),
+            ):
+                screen.on_psd_snapshot(snapshot)
+
+            self.assertEqual(screen._latest_band_powers["alpha"], 10.0)
+            self.assertEqual(screen._peak_labels["alpha_peak"].text(), "8.0 Hz")
+        finally:
+            screen.close()
+
+    def test_electrode_table_accepts_preextracted_eeg_snapshot(self):
+        table = ElectrodeTable()
+        try:
+            timestamps_ms = [index * 4.0 for index in range(200)]
+            raw = np.sin(np.linspace(0.0, 20.0, 200)) * 80.0
+            packet = _FakeEEGTimedData([raw, raw * 0.5], timestamps_ms)
+            snapshot = MainWindow._extract_eeg_snapshot(packet)
+
+            table.add_eeg_snapshot(snapshot)
+            table.refresh()
+
+            self.assertTrue(len(table._display_buffers[0]) > 0)
+            self.assertGreater(table._avg_uv["O1-T3"], 0.0)
+        finally:
+            table.close()
+
 
 class CalibrationStabilityTests(unittest.TestCase):
     def _build_manager(self):
@@ -1279,13 +1457,15 @@ class CalibrationStabilityTests(unittest.TestCase):
         self.assertEqual(coerce_percent(b"\x32\x00\x00\x00", default=-1), 50)
         self.assertEqual(coerce_percent(b"\x80\xf2\xaeI", default=-1), -1)
 
-    def test_quick_calibration_runs_three_stages_in_sequence(self):
+    def test_quick_calibration_emits_ready_then_finishes_after_background_baselines(self):
         manager, prod, phy = self._build_manager()
         stages = []
         progress = []
+        ready = []
         completed = []
         manager.stage_changed.connect(lambda stage, text: stages.append((stage, text)))
         manager.progress_updated.connect(progress.append)
+        manager.quick_ready.connect(ready.append)
         manager.calibration_complete.connect(completed.append)
 
         with patch("calibration.calibration_manager.Calibrator", _CalFakeCalibrator), patch(
@@ -1307,20 +1487,24 @@ class CalibrationStabilityTests(unittest.TestCase):
             self.assertEqual(stages[0][0], manager.STAGE_NFB)
 
             manager._on_nfb_finished(None, object())
+            APP.processEvents()
             self.assertEqual(prod.started, 1)
             self.assertEqual(phy.started, 0)
 
-            manager._on_prod_progress(0.5)
             prod.baselines_updated.emit(object())
+            APP.processEvents()
             self.assertEqual(phy.started, 1)
 
-            manager._on_phy_progress(0.5)
             phy.baselines_updated.emit(object())
+            APP.processEvents()
 
         self.assertEqual([stage for stage, _ in stages], [1, 2, 3])
         self.assertTrue(all(left <= right for left, right in zip(progress, progress[1:])))
         self.assertAlmostEqual(progress[-1], 1.0)
+        self.assertEqual(ready[-1]["mode"], manager.MODE_QUICK)
+        self.assertTrue(ready[-1]["applied"])
         self.assertEqual(completed[-1]["mode"], manager.MODE_QUICK)
+        self.assertTrue(completed[-1]["applied"])
 
     def test_detect_mode_finishes_after_nfb_only(self):
         manager, prod, phy = self._build_manager()
@@ -1377,6 +1561,49 @@ class CalibrationStabilityTests(unittest.TestCase):
         self.assertFalse(failures)
         self.assertEqual(completed[-1]["mode"], manager.MODE_QUICK)
         self.assertTrue(completed[-1]["applied"])
+
+    def test_quick_calibration_starts_followup_baselines_in_background(self):
+        manager, prod, phy = self._build_manager()
+        ready = []
+        manager.quick_ready.connect(ready.append)
+
+        with patch("calibration.calibration_manager.Calibrator", _CalFakeCalibrator), patch(
+            "calibration.calibration_manager.nfb_to_dict",
+            return_value={"individualFrequency": 10.0},
+        ):
+            manager.start_quick("SERIAL-4")
+            manager._on_nfb_finished(None, object())
+            APP.processEvents()
+            self.assertEqual(len(ready), 1)
+            self.assertEqual(prod.started, 1)
+            self.assertEqual(phy.started, 0)
+
+    def test_quick_calibration_ignores_late_baseline_callbacks_after_background_completion(self):
+        manager, prod, phy = self._build_manager()
+        completed = []
+        manager.calibration_complete.connect(completed.append)
+
+        with patch("calibration.calibration_manager.Calibrator", _CalFakeCalibrator), patch(
+            "calibration.calibration_manager.nfb_to_dict",
+            return_value={"individualFrequency": 10.0},
+        ), patch(
+            "calibration.calibration_manager.prod_baselines_to_dict",
+            return_value={"focus": 1.0},
+        ), patch(
+            "calibration.calibration_manager.phy_baselines_to_dict",
+            return_value={"relaxation": 1.0},
+        ):
+            manager.start_quick("SERIAL-5")
+            manager._on_nfb_finished(None, object())
+            APP.processEvents()
+            prod.baselines_updated.emit(object())
+            APP.processEvents()
+            phy.baselines_updated.emit(object())
+            APP.processEvents()
+            prod.baselines_updated.emit(object())
+            phy.baselines_updated.emit(object())
+
+        self.assertEqual(len(completed), 1)
 
     def test_device_manager_battery_path_ignores_invalid_values(self):
         manager = DeviceManager(_BridgeLite())

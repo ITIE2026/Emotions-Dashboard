@@ -26,8 +26,10 @@ from utils.config import (
     ACCENT_RED,
     BG_CARD,
     BG_INPUT,
+    BIPOLAR_CHANNELS,
     BORDER_SUBTLE,
     DEVICE_TYPE_OPTIONS,
+    EEG_FILTER_ENABLED_DEFAULT,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
     WRITE_OPTION_DEFAULTS,
@@ -52,12 +54,16 @@ _BTN_DANGER = (
 class ConnectionScreen(QWidget):
     device_type_changed = Signal(str)
     write_options_changed = Signal(dict)
+    bipolar_mode_changed = Signal(bool)
+    filter_signal_changed = Signal(bool)
 
     def __init__(self, device_manager, parent=None):
         super().__init__(parent)
         self._dm = device_manager
         self._selected_serial = None
         self._write_option_boxes: dict[str, QCheckBox] = {}
+        self._bipolar_checkbox: QCheckBox | None = None
+        self._filter_checkbox: QCheckBox | None = None
         self._build_ui()
         self._connect_signals()
 
@@ -106,6 +112,32 @@ class ConnectionScreen(QWidget):
         )
         self._device_type_combo.currentTextChanged.connect(self._on_device_type_changed)
         device_layout.addWidget(self._device_type_combo)
+
+        options_row = QHBoxLayout()
+        options_row.setContentsMargins(0, 0, 0, 0)
+        options_row.setSpacing(18)
+
+        checkbox_style = (
+            f"QCheckBox {{ color: {TEXT_PRIMARY}; font-size: 13px; spacing: 8px; }}"
+            f"QCheckBox::indicator {{ width: 16px; height: 16px; border: 1px solid {BORDER_SUBTLE}; "
+            f"background: #25293d; }}"
+            "QCheckBox::indicator:checked { background: #5567a9; image: none; }"
+        )
+
+        self._bipolar_checkbox = QCheckBox("Bipolar channels")
+        self._bipolar_checkbox.setChecked(bool(BIPOLAR_CHANNELS))
+        self._bipolar_checkbox.setStyleSheet(checkbox_style)
+        self._bipolar_checkbox.toggled.connect(self.bipolar_mode_changed)
+        options_row.addWidget(self._bipolar_checkbox)
+
+        self._filter_checkbox = QCheckBox("Filter signal")
+        self._filter_checkbox.setChecked(bool(EEG_FILTER_ENABLED_DEFAULT))
+        self._filter_checkbox.setStyleSheet(checkbox_style)
+        self._filter_checkbox.toggled.connect(self.filter_signal_changed)
+        options_row.addWidget(self._filter_checkbox)
+        options_row.addStretch()
+
+        device_layout.addLayout(options_row)
         root.addWidget(device_row)
 
         self._scan_btn = QPushButton("Scan Devices")
@@ -259,6 +291,26 @@ class ConnectionScreen(QWidget):
             for key, box in self._write_option_boxes.items()
         }
 
+    @property
+    def selected_bipolar_channels(self) -> bool:
+        return bool(self._bipolar_checkbox and self._bipolar_checkbox.isChecked())
+
+    @property
+    def selected_filter_signal(self) -> bool:
+        return bool(self._filter_checkbox and self._filter_checkbox.isChecked())
+
+    def set_filter_signal_checked(self, checked: bool):
+        if self._filter_checkbox is None:
+            return
+        checked = bool(checked)
+        if self._filter_checkbox.isChecked() == checked:
+            return
+        blocked = self._filter_checkbox.blockSignals(True)
+        try:
+            self._filter_checkbox.setChecked(checked)
+        finally:
+            self._filter_checkbox.blockSignals(blocked)
+
     def _emit_write_options(self):
         self.write_options_changed.emit(self.selected_write_options)
 
@@ -300,7 +352,10 @@ class ConnectionScreen(QWidget):
         self._connect_btn.setText("Connecting...")
         self._conn_timer.start()
         try:
-            self._dm.connect_device(self._selected_serial)
+            self._dm.connect_device(
+                self._selected_serial,
+                bipolar=self.selected_bipolar_channels,
+            )
         except Exception as exc:
             self._conn_timer.stop()
             QMessageBox.critical(self, "Connection Error", str(exc))

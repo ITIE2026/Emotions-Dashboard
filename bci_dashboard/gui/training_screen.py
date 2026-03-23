@@ -32,6 +32,7 @@ from gui.widgets.training_game_widgets import (
     CalmCurrentWidget,
     FullRebootWidget,
     JumpBallWidget,
+    NeonDriftArenaWidget,
     NeuroRacerWidget,
     PatternRecallWidget,
     ProstheticArmWidget,
@@ -175,7 +176,7 @@ class SoundtrackCard(QFrame):
 
 class TrainingScreen(QWidget):
     neuroflow_quick_calibration_requested = Signal()
-    IMMERSIVE_GAME_IDS = {"space_shooter", "neuro_racer", "bubble_burst"}
+    IMMERSIVE_GAME_IDS = {"space_shooter", "neuro_racer", "bubble_burst", "neon_drift_arena"}
 
     SOUNDTRACKS = {
         "Central Park": {
@@ -398,7 +399,6 @@ class TrainingScreen(QWidget):
         self._detail_title_lbl.setWordWrap(True)
         self._detail_title_lbl.setStyleSheet("font-size: 46px; font-weight: bold; color: #f8fafc;")
         layout.addWidget(self._detail_title_lbl)
-
         self._detail_body_lbl = QLabel("")
         self._detail_body_lbl.setWordWrap(True)
         self._detail_body_lbl.setStyleSheet(f"font-size: 15px; color: {TEXT_SECONDARY};")
@@ -778,12 +778,14 @@ class TrainingScreen(QWidget):
         self._space_shooter_widget = SpaceShooterWidget()
         self._jump_ball_widget = JumpBallWidget()
         self._neuro_racer_widget = NeuroRacerWidget()
+        self._neon_drift_arena_widget = NeonDriftArenaWidget()
         self._bubble_burst_widget = BubbleBurstWidget()
         self._pattern_widget = PatternRecallWidget()
         self._candy_cascade_widget = CandyCascadeWidget()
         self._prosthetic_arm_widget = ProstheticArmWidget()
         self._space_shooter_widget.set_menu_callback(self._cancel_gameplay)
         self._neuro_racer_widget.set_menu_callback(self._cancel_gameplay)
+        self._neon_drift_arena_widget.set_menu_callback(self._cancel_gameplay)
         self._bubble_burst_widget.set_menu_callback(self._cancel_gameplay)
         self._bubble_burst_widget.set_swap_callback(self._swap_bubble_queue)
         self._game_widget_map = {
@@ -793,6 +795,7 @@ class TrainingScreen(QWidget):
             "space_shooter": self._space_shooter_widget,
             "jump_ball": self._jump_ball_widget,
             "neuro_racer": self._neuro_racer_widget,
+            "neon_drift_arena": self._neon_drift_arena_widget,
             "bubble_burst": self._bubble_burst_widget,
             "pattern_recall": self._pattern_widget,
             "candy_cascade": self._candy_cascade_widget,

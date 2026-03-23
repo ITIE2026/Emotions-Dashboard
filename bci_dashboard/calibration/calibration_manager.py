@@ -51,6 +51,8 @@ class CalibrationManager(QObject):
     progress_updated = Signal(float)
     # all cal data dict (for saving)
     calibration_complete = Signal(dict)
+    # quick mode visible phase complete; background baselines still running
+    quick_ready = Signal(dict)
     # failure reason
     calibration_failed = Signal(str)
     # iAPF status payload
@@ -64,6 +66,8 @@ class CalibrationManager(QObject):
     STAGE_1_END = 0.33
     STAGE_2_END = 0.66
     STAGE_3_END = 1.0
+    BASELINE_TIMEOUT_MS = 45_000
+    MAX_PHY_RETRIES = 1
 
     def __init__(self, device, lib, prod_handler, physio_handler, parent=None):
         super().__init__(parent)
@@ -83,6 +87,23 @@ class CalibrationManager(QObject):
         self._serial = None
         self._mode = self.MODE_QUICK
         self._last_progress = 0.0
+        self._watchdog_stage = 0
+        self._phy_retry_count = 0
+        self._pending_phy_retry = False
+        self._terminal_emitted = False
+        self._quick_ready_emitted = False
+
+        self._prod_start_timer = QTimer(self)
+        self._prod_start_timer.setSingleShot(True)
+        self._prod_start_timer.timeout.connect(self._start_prod_stage)
+
+        self._phy_start_timer = QTimer(self)
+        self._phy_start_timer.setSingleShot(True)
+        self._phy_start_timer.timeout.connect(self._start_phy_stage)
+
+        self._stage_watchdog = QTimer(self)
+        self._stage_watchdog.setSingleShot(True)
+        self._stage_watchdog.timeout.connect(self._on_stage_timeout)
 
         # Connect classifier baseline signals
         self._prod_h.baselines_updated.connect(self._on_prod_baselines)
@@ -96,6 +117,7 @@ class CalibrationManager(QObject):
 
     def import_saved(self, serial: str) -> bool:
         """Import previously saved calibration. Returns True on success."""
+        self._reset_runtime_state()
         data = load_calibration(serial)
         if data is None:
             return False
@@ -147,6 +169,7 @@ class CalibrationManager(QObject):
 
     def start(self, serial: str, mode: str = MODE_QUICK):
         """Begin the requested live calibration process."""
+        self._reset_runtime_state()
         self._serial = serial
         self._mode = mode if mode in {self.MODE_DETECT, self.MODE_QUICK} else self.MODE_QUICK
         self._nfb_data = None
@@ -156,6 +179,7 @@ class CalibrationManager(QObject):
         self._phy_baselines = None
         self._phy_payload = None
         self._last_progress = 0.0
+        self._quick_ready_emitted = False
         try:
             self._calibrator = Calibrator(self._device, self._lib)
             self._calibrator.set_on_calibration_finished(self._on_nfb_finished)
@@ -167,6 +191,7 @@ class CalibrationManager(QObject):
                 if self._mode == self.MODE_DETECT
                 else "Close your eyes for 30 seconds to calibrate iAPF"
             )
+            log.info("Calibration started: mode=%s serial=%s", self._mode, self._serial or "")
             self.stage_changed.emit(self.STAGE_NFB, description)
             self._emit_progress(0.0)
 
@@ -180,10 +205,7 @@ class CalibrationManager(QObject):
 
             self._calibrator.calibrate_quick()
         except Exception as exc:
-            msg = str(exc)
-            if hasattr(exc, 'message') and isinstance(exc.message, bytes):
-                msg = exc.message.decode('utf-8', errors='replace')
-            self.calibration_failed.emit(msg)
+            self._fail(self._safe_message(exc))
 
     def start_detect(self, serial: str):
         self.start(serial, mode=self.MODE_DETECT)
@@ -205,118 +227,134 @@ class CalibrationManager(QObject):
         pass  # quick mode has a single stage
 
     def _on_nfb_finished(self, calibrator_obj, nfb_data: IndividualNFBData):
+        if self._terminal_emitted or self._current_stage != self.STAGE_NFB:
+            return
         try:
             # Stop the local countdown timer
             if hasattr(self, '_nfb_timer') and self._nfb_timer.isActive():
                 self._nfb_timer.stop()
 
             if self._calibrator.has_calibration_failed():
-                self.calibration_failed.emit("NFB calibration failed \u2013 too many artifacts")
+                self._fail("NFB calibration failed \u2013 too many artifacts")
                 return
 
+            log.info("Calibration NFB stage finished")
             self._nfb_data = nfb_data
             nfb_dict = self._serialize_nfb(nfb_data)
             self._nfb_payload = dict(nfb_dict)
-            self.iapf_updated.emit(
-                {
-                    "mode": self._mode,
-                    "source": "Detected" if self._mode == self.MODE_DETECT else "Applied",
-                    "status": (
-                        "iAPF detected"
-                        if self._mode == self.MODE_DETECT
-                        else "iAPF applied; collecting baselines"
-                    ),
-                    "applied": self._mode == self.MODE_QUICK,
-                    "frequency": coerce_float(nfb_dict.get("individualFrequency"), 0.0) or 0.0,
-                    "peak_frequency": coerce_float(nfb_dict.get("individualPeakFrequency"), 0.0) or 0.0,
-                    "band": [
-                        coerce_float(nfb_dict.get("lowerFrequency"), 0.0) or 0.0,
-                        coerce_float(nfb_dict.get("upperFrequency"), 0.0) or 0.0,
-                    ],
-                }
-            )
 
             if self._mode == self.MODE_DETECT:
-                self._emit_progress(1.0)
-                self.calibration_complete.emit(
-                    {
-                        "mode": self.MODE_DETECT,
-                        "nfb": nfb_dict,
-                        "applied": False,
-                    }
+                self.iapf_updated.emit(
+                    self._build_iapf_payload(
+                        status="iAPF detected",
+                        source="Detected",
+                        applied=False,
+                        mode=self.MODE_DETECT,
+                    )
                 )
+                self._emit_progress(1.0)
+                self._complete_detect(nfb_dict)
                 return
 
-            self._emit_progress(self.STAGE_1_END)
-            self._current_stage = self.STAGE_PROD
-            self.stage_changed.emit(
-                self.STAGE_PROD,
-                "Calibrating productivity baseline",
+            self.iapf_updated.emit(
+                self._build_iapf_payload(
+                    status="Calibration finished. Baselines calibrating in background.",
+                    source="Applied",
+                    applied=True,
+                    mode=self.MODE_QUICK,
+                )
             )
-            self._prod_h.start_baseline_calibration()
+            self._emit_progress(1.0)
+            self._save_current_calibration(merge_existing=True)
+            self._quick_ready_emitted = True
+            self.quick_ready.emit(
+                {
+                    "mode": self.MODE_QUICK,
+                    "nfb": dict(nfb_dict),
+                    "applied": True,
+                    "background": True,
+                }
+            )
+            self._current_stage = self.STAGE_PROD
+            self._queue_prod_stage_start()
         except Exception as exc:
-            self.calibration_failed.emit(self._safe_message(exc))
+            self._fail(self._safe_message(exc))
 
     # ── Productivity callbacks ────────────────────────────────────────
     def _on_prod_progress(self, progress: float):
-        if self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PROD:
+        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PROD:
             return
         fraction = max(0.0, min(1.0, float(progress)))
         overall = self.STAGE_1_END + ((self.STAGE_2_END - self.STAGE_1_END) * fraction)
+        self._arm_stage_watchdog(self.STAGE_PROD)
         self._emit_progress(overall)
 
     def _on_prod_baselines(self, baselines):
         self._prod_baselines = baselines
         self._prod_payload = self._serialize_prod_baselines(baselines)
-        if self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PROD:
+        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PROD:
             return
+        log.info("Calibration productivity baseline finished")
+        self._clear_stage_watchdog(self.STAGE_PROD)
         self._emit_progress(self.STAGE_2_END)
         self._current_stage = self.STAGE_PHY
-        self.stage_changed.emit(
-            self.STAGE_PHY,
-            "Calibrating physiological baseline",
-        )
-        self._phy_h.start_baseline_calibration()
+        self._queue_phy_stage_start()
 
     # ── PhysStates callbacks ──────────────────────────────────────────
     def _on_phy_progress(self, progress: float):
-        if self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PHY:
+        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PHY:
             return
         fraction = max(0.0, min(1.0, float(progress)))
         overall = self.STAGE_2_END + ((self.STAGE_3_END - self.STAGE_2_END) * fraction)
+        self._arm_stage_watchdog(self.STAGE_PHY)
         self._emit_progress(overall)
 
     def _on_phy_baselines(self, baselines):
         self._phy_baselines = baselines
         self._phy_payload = self._serialize_phy_baselines(baselines)
-        if self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PHY:
+        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PHY:
             return
+        log.info("Calibration physiological baseline finished")
+        self._clear_stage_watchdog(self.STAGE_PHY)
         self._emit_progress(1.0)
         self._finish()
 
     # ── Finish ────────────────────────────────────────────────────────
     def _finish(self):
-        cal_data = {}
-        if self._nfb_payload:
-            cal_data["nfb"] = dict(self._nfb_payload)
-        if self._prod_payload:
-            cal_data["prod_baselines"] = dict(self._prod_payload)
-        if self._phy_payload:
-            cal_data["phy_baselines"] = dict(self._phy_payload)
-
-        if self._serial:
-            try:
-                save_calibration(self._serial, cal_data)
-            except Exception as exc:
-                log.warning(
-                    "Calibration finished but saving failed for %s: %s",
-                    self._serial,
-                    self._safe_message(exc),
-                )
+        if self._terminal_emitted:
+            return
+        self._terminal_emitted = True
+        self._stop_runtime_timers()
+        cal_data = self._build_calibration_payload(merge_existing=True)
+        self._save_current_calibration(merge_existing=True)
+        self.iapf_updated.emit(
+            self._build_iapf_payload(
+                status="Background baselines ready.",
+                source="Applied",
+                applied=True,
+                mode=self.MODE_QUICK,
+            )
+        )
 
         cal_data["mode"] = self.MODE_QUICK
         cal_data["applied"] = True
         self.calibration_complete.emit(cal_data)
+
+    def _fail(self, reason: str):
+        if self._terminal_emitted:
+            return
+        self._terminal_emitted = True
+        self._stop_runtime_timers()
+        if self._mode == self.MODE_QUICK and self._quick_ready_emitted:
+            self.iapf_updated.emit(
+                self._build_iapf_payload(
+                    status="Background baseline calibration failed. Retry quick calibration.",
+                    source="Applied",
+                    applied=True,
+                    mode=self.MODE_QUICK,
+                )
+            )
+        self.calibration_failed.emit(reason)
 
     def _emit_progress(self, value: float):
         bounded = max(0.0, min(1.0, float(value)))
@@ -356,3 +394,166 @@ class CalibrationManager(QObject):
         if hasattr(exc, "message") and isinstance(exc.message, bytes):
             return exc.message.decode("utf-8", errors="replace")
         return str(exc)
+
+    def _reset_runtime_state(self):
+        self._stop_runtime_timers()
+        self._current_stage = 0
+        self._watchdog_stage = 0
+        self._phy_retry_count = 0
+        self._pending_phy_retry = False
+        self._terminal_emitted = False
+        self._quick_ready_emitted = False
+
+    def _stop_runtime_timers(self):
+        if hasattr(self, "_nfb_timer") and self._nfb_timer is not None:
+            self._nfb_timer.stop()
+        self._prod_start_timer.stop()
+        self._phy_start_timer.stop()
+        self._stage_watchdog.stop()
+        self._watchdog_stage = 0
+
+    def _queue_prod_stage_start(self):
+        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PROD:
+            return
+        self.stage_changed.emit(self.STAGE_PROD, "Calibrating productivity baseline")
+        if not self._prod_start_timer.isActive():
+            self._prod_start_timer.start(0)
+
+    def _start_prod_stage(self):
+        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PROD:
+            return
+        try:
+            log.info("Calibration productivity baseline started")
+            self._prod_h.start_baseline_calibration()
+            self._arm_stage_watchdog(self.STAGE_PROD)
+        except Exception as exc:
+            self._fail(f"Unable to start productivity baseline calibration: {self._safe_message(exc)}")
+
+    def _queue_phy_stage_start(self, retry: bool = False):
+        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PHY:
+            return
+        self._pending_phy_retry = retry
+        description = "Retrying physiological baseline..." if retry else "Calibrating physiological baseline"
+        self.stage_changed.emit(self.STAGE_PHY, description)
+        if not self._phy_start_timer.isActive():
+            self._phy_start_timer.start(0)
+
+    def _start_phy_stage(self):
+        retry = self._pending_phy_retry
+        self._pending_phy_retry = False
+        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PHY:
+            return
+        try:
+            if retry:
+                log.warning(
+                    "Calibration physiological baseline retry started (%d/%d)",
+                    self._phy_retry_count,
+                    self.MAX_PHY_RETRIES,
+                )
+            else:
+                log.info("Calibration physiological baseline started")
+            self._phy_h.start_baseline_calibration()
+            self._arm_stage_watchdog(self.STAGE_PHY)
+        except Exception as exc:
+            self._fail(f"Unable to start physiological baseline calibration: {self._safe_message(exc)}")
+
+    def _arm_stage_watchdog(self, stage: int):
+        self._watchdog_stage = stage
+        self._stage_watchdog.start(self.BASELINE_TIMEOUT_MS)
+
+    def _clear_stage_watchdog(self, stage: int | None = None):
+        if stage is None or self._watchdog_stage == stage:
+            self._stage_watchdog.stop()
+            self._watchdog_stage = 0
+
+    def _on_stage_timeout(self):
+        stage = self._watchdog_stage
+        self._watchdog_stage = 0
+        if self._terminal_emitted:
+            return
+        if stage == self.STAGE_PROD and self._current_stage == self.STAGE_PROD:
+            log.warning("Calibration productivity baseline timed out")
+            self._fail("Productivity baseline calibration timed out. Please retry.")
+            return
+        if stage == self.STAGE_PHY and self._current_stage == self.STAGE_PHY:
+            if self._phy_retry_count < self.MAX_PHY_RETRIES:
+                self._phy_retry_count += 1
+                log.warning(
+                    "Calibration physiological baseline timed out; retrying (%d/%d)",
+                    self._phy_retry_count,
+                    self.MAX_PHY_RETRIES,
+                )
+                self._queue_phy_stage_start(retry=True)
+                return
+            log.warning("Calibration physiological baseline timed out after retry")
+            self._fail("Physiological baseline calibration timed out. Please retry.")
+
+    def _complete_detect(self, nfb_dict: dict):
+        if self._terminal_emitted:
+            return
+        self._terminal_emitted = True
+        self._stop_runtime_timers()
+        self.calibration_complete.emit(
+            {
+                "mode": self.MODE_DETECT,
+                "nfb": dict(nfb_dict),
+                "applied": False,
+            }
+        )
+
+    def _build_calibration_payload(self, merge_existing: bool = False) -> dict:
+        data = {}
+        if merge_existing and self._serial:
+            try:
+                existing = load_calibration(self._serial) or {}
+                for key in ("nfb", "prod_baselines", "phy_baselines"):
+                    value = existing.get(key)
+                    if isinstance(value, dict):
+                        data[key] = dict(value)
+            except Exception as exc:
+                log.warning(
+                    "Unable to merge saved calibration for %s: %s",
+                    self._serial,
+                    self._safe_message(exc),
+                )
+        if self._nfb_payload:
+            data["nfb"] = dict(self._nfb_payload)
+        if self._prod_payload:
+            data["prod_baselines"] = dict(self._prod_payload)
+        if self._phy_payload:
+            data["phy_baselines"] = dict(self._phy_payload)
+        return data
+
+    def _save_current_calibration(self, merge_existing: bool = False):
+        if not self._serial:
+            return
+        try:
+            save_calibration(self._serial, self._build_calibration_payload(merge_existing=merge_existing))
+        except Exception as exc:
+            log.warning(
+                "Calibration save failed for %s: %s",
+                self._serial,
+                self._safe_message(exc),
+            )
+
+    def _build_iapf_payload(
+        self,
+        *,
+        status: str,
+        source: str,
+        applied: bool,
+        mode: str,
+    ) -> dict:
+        nfb_dict = self._nfb_payload or {}
+        return {
+            "mode": mode,
+            "source": source,
+            "status": status,
+            "applied": bool(applied),
+            "frequency": coerce_float(nfb_dict.get("individualFrequency"), 0.0) or 0.0,
+            "peak_frequency": coerce_float(nfb_dict.get("individualPeakFrequency"), 0.0) or 0.0,
+            "band": [
+                coerce_float(nfb_dict.get("lowerFrequency"), 0.0) or 0.0,
+                coerce_float(nfb_dict.get("upperFrequency"), 0.0) or 0.0,
+            ],
+        }

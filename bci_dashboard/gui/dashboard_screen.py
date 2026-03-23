@@ -571,11 +571,51 @@ class DashboardScreen(QWidget):
         except Exception:
             pass
 
+    def on_psd_snapshot(self, psd_snapshot: dict):
+        if not self._streaming_active or not self._view_active or not psd_snapshot:
+            return
+        now = float(psd_snapshot.get("received_at", time.monotonic()))
+        if now - self._last_psd_t < self._psd_refresh_interval:
+            return
+        freqs = list(psd_snapshot.get("freqs", []))
+        avg_power = list(psd_snapshot.get("avg_power", []))
+        if not freqs or not avg_power:
+            return
+
+        self._last_psd_t = now
+        try:
+            self._spectrum.update_psd(freqs, avg_power)
+            self._latest_band_powers = dict(psd_snapshot.get("band_powers", {}))
+            self._latest_peaks = dict(psd_snapshot.get("peak_frequencies", {}))
+            self._band_history.append((now, dict(self._latest_band_powers)))
+
+            for name in ["alpha", "beta", "theta", "smr"]:
+                value = self._latest_band_powers.get(name, 0.0)
+                self._rhythm_labels[name].setText(self._format_rhythm_value(value))
+            for key in ["alpha_peak", "beta_peak", "theta_peak"]:
+                self._peak_labels[key].setText(f"{self._latest_peaks.get(key, 0.0):.1f} Hz")
+
+            self._psd_dirty = True
+        except Exception:
+            pass
+
     def on_eeg(self, eeg_timed_data):
         if not self._streaming_active or not self._view_active:
             return
         had_data = self._electrode_table.has_data()
         self._electrode_table.add_eeg_data(eeg_timed_data)
+        self._eeg_dirty = True
+        if not self._eeg_timer.isActive():
+            self._eeg_timer.start()
+        if not had_data:
+            self._electrode_table.refresh()
+            self._eeg_dirty = False
+
+    def on_eeg_snapshot(self, eeg_snapshot: dict):
+        if not self._streaming_active or not self._view_active or not eeg_snapshot:
+            return
+        had_data = self._electrode_table.has_data()
+        self._electrode_table.add_eeg_snapshot(eeg_snapshot)
         self._eeg_dirty = True
         if not self._eeg_timer.isActive():
             self._eeg_timer.start()
@@ -656,6 +696,7 @@ class DashboardScreen(QWidget):
             self._iapf_label.setText("iAPF: Not set")
         else:
             self._iapf_label.setText(f"iAPF: {float(frequency):.2f} Hz ({source})")
+        self._update_ppg_metrics_panel()
 
     def reset_session(self, session_id: str | None = None):
         self._session_id = session_id or str(uuid.uuid4())
@@ -728,6 +769,7 @@ class DashboardScreen(QWidget):
     def _update_ppg_metrics_panel(self):
         metrics = self._latest_ppg_metrics or {}
         cardio = self._latest_cardio or {}
+        is_calibrated = bool(self._ppg_calibrated or self._iapf_status.get("applied", False))
 
         self._set_ppg_value("perfusion", self._fmt_float(metrics.get("perfusion"), 5, calculating=True))
         self._set_ppg_value("ppg_quality", self._fmt_float(metrics.get("signal_quality_avg"), 2, calculating=True))
@@ -739,7 +781,7 @@ class DashboardScreen(QWidget):
             self._set_ppg_value("ppg_si", "Calculating")
         self._set_ppg_value("sat", "--")
         self._set_ppg_value("cv", self._fmt_percent(metrics.get("cv")))
-        self._set_boolean_metric("is_calibrated", self._ppg_calibrated)
+        self._set_boolean_metric("is_calibrated", is_calibrated)
         self._set_ppg_value("rr_mean", self._fmt_seconds(metrics.get("rr_mean")))
         self._set_ppg_value("sdnn", self._fmt_milliseconds(metrics.get("sdnn")))
         self._set_boolean_metric("skin_contact_artifacts", not bool(cardio.get("skinContact", True)))

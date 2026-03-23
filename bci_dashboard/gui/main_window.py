@@ -192,6 +192,24 @@ class AsyncSessionRecorder:
             channels[ch_idx] = values
         self._call_async("record_raw_eeg_snapshot", {"timestampsMs": timestamps, "channels": channels})
 
+    def record_raw_eeg_snapshot(self, snapshot: dict):
+        if not snapshot:
+            return
+        timestamps = list(snapshot.get("timestampsMs", []))
+        channels = {}
+        for ch_idx, values in (snapshot.get("channels", {}) or {}).items():
+            try:
+                normalized_idx = int(ch_idx)
+            except (TypeError, ValueError):
+                normalized_idx = ch_idx
+            channels[normalized_idx] = list(values or [])
+        if not timestamps or not channels:
+            return
+        self._call_async(
+            "record_raw_eeg_snapshot",
+            {"timestampsMs": timestamps, "channels": channels},
+        )
+
     def record_artifacts(self, artifacts):
         # Extract artifact data from the DLL object eagerly in the calling thread
         # (main GUI thread) while the ctypes pointer is still valid.  Passing the
@@ -279,6 +297,7 @@ class MainWindow(QMainWindow):
         self._calibration_return_page = PAGE_CONNECTION
         self._streaming_before_calibration = False
         self._embedded_neuroflow_calibration = False
+        self._quick_background_calibration_active = False
 
         self._latest_emo: dict = {}
         self._latest_prod: dict = {}
@@ -382,9 +401,11 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._phaseon_screen)
         root.addWidget(self._stack, stretch=1)
         self._stack.currentChanged.connect(self._update_live_view_activity)
+        self._conn_screen.filter_signal_changed.connect(self._on_connection_filter_changed)
 
         self._dash_screen.set_iapf_status()
         self._dash_screen.set_eeg_filter_enabled(self._filter_act.isChecked())
+        self._conn_screen.set_filter_signal_checked(self._filter_act.isChecked())
         self._training_screen.neuroflow_quick_calibration_requested.connect(
             self._on_neuroflow_quick_calibration_requested
         )
@@ -560,6 +581,7 @@ class MainWindow(QMainWindow):
             return
 
         self._embedded_neuroflow_calibration = bool(embedded_neuroflow)
+        self._quick_background_calibration_active = False
         self._calibration_return_page = self._stack.currentIndex()
         self._streaming_before_calibration = self._streaming
         serial = self._dm.device_serial or ""
@@ -571,7 +593,7 @@ class MainWindow(QMainWindow):
             self._training_screen.set_streaming_active(True)
             self._training_screen.set_eeg_stream_metadata(
                 sample_rate_hz=self._dm.eeg_sample_rate,
-                channel_names=self._dm.eeg_channel_names,
+                channel_names=self._dm.display_channel_names,
             )
         if not self._embedded_neuroflow_calibration:
             self._stack.setCurrentIndex(PAGE_CALIBRATION)
@@ -592,6 +614,20 @@ class MainWindow(QMainWindow):
         if not embedded_neuroflow:
             self._stack.setCurrentIndex(self._calibration_return_page)
         self._embedded_neuroflow_calibration = False
+
+    def _on_quick_calibration_ready(self, payload: dict):
+        nfb = payload.get("nfb", {}) or {}
+        freq = float(nfb.get("individualFrequency", 0.0) or 0.0)
+        text = f"Calibration finished successfully ({freq:.2f} Hz)"
+        log.info("Quick calibration visible phase finished: %s", text)
+        self._cal_screen.set_result_text(text)
+        self._quick_background_calibration_active = True
+        if self._embedded_neuroflow_calibration:
+            self._training_screen.on_neuroflow_calibration_finished(True, text)
+        else:
+            self._calibration_return_page = PAGE_DASHBOARD
+            self._streaming_before_calibration = True
+        QTimer.singleShot(0, self._finish_calibration_flow)
 
     def _connect_device_signals(self):
         self._dm.connection_changed.connect(self._on_device_connected)
@@ -653,17 +689,17 @@ class MainWindow(QMainWindow):
             )
             self._dash_screen.set_eeg_stream_metadata(
                 sample_rate_hz=self._dm.eeg_sample_rate,
-                channel_names=self._dm.eeg_channel_names,
+                channel_names=self._dm.display_channel_names,
             )
             self._training_screen.set_eeg_stream_metadata(
                 sample_rate_hz=self._dm.eeg_sample_rate,
-                channel_names=self._dm.eeg_channel_names,
+                channel_names=self._dm.display_channel_names,
             )
             self._phaseon_runtime.update_device_status(
                 connected=True,
                 serial=self._dm.device_serial or "",
                 sample_rate_hz=self._dm.eeg_sample_rate,
-                channel_names=self._dm.eeg_channel_names,
+                channel_names=self._dm.display_channel_names,
             )
             self._refresh_battery_now()
 
@@ -673,6 +709,16 @@ class MainWindow(QMainWindow):
             serial = self._dm.device_serial or ""
             if self._cal_mgr and serial and self._cal_mgr.can_import(serial):
                 self._cal_mgr.import_saved(serial)
+            if not self._session_active:
+                self._safe_start_streaming()
+                if self._streaming:
+                    self._begin_session()
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Start Signal Failed",
+                        "The device connected, but live streaming could not be started.",
+                    )
         elif status == 0:
             log.info("Device disconnected signal - starting debounce timer")
             self._phaseon_runtime.update_device_status(connected=False)
@@ -737,6 +783,7 @@ class MainWindow(QMainWindow):
 
         self._cal_mgr.stage_changed.connect(self._cal_screen.set_stage)
         self._cal_mgr.progress_updated.connect(self._cal_screen.set_progress)
+        self._cal_mgr.quick_ready.connect(self._on_quick_calibration_ready)
         self._cal_mgr.calibration_complete.connect(self._on_calibration_done)
         self._cal_mgr.calibration_failed.connect(self._on_calibration_failed)
         self._cal_mgr.iapf_updated.connect(self._on_iapf_updated)
@@ -755,17 +802,30 @@ class MainWindow(QMainWindow):
         if mode == "detect":
             text = f"iAPF detection finished successfully ({freq:.2f} Hz)"
         else:
-            text = f"Calibration finished successfully ({freq:.2f} Hz)"
+            if self._quick_background_calibration_active:
+                text = f"Background baselines ready ({freq:.2f} Hz)"
+            else:
+                text = f"Calibration finished successfully ({freq:.2f} Hz)"
             if self._session_active:
                 self._recorder.record_baselines(cal_data)
         log.info("Calibration finished: %s", text)
         self._cal_screen.set_result_text(text)
+        if mode == "quick" and self._quick_background_calibration_active:
+            self._quick_background_calibration_active = False
+            return
         if self._embedded_neuroflow_calibration:
             self._training_screen.on_neuroflow_calibration_finished(True, text)
-        QTimer.singleShot(1200, self._finish_calibration_flow)
+        else:
+            self._calibration_return_page = PAGE_DASHBOARD
+            self._streaming_before_calibration = True
+        QTimer.singleShot(0, self._finish_calibration_flow)
 
     def _on_calibration_failed(self, reason: str):
         log.warning("Calibration failed: %s", reason)
+        self._cal_screen.set_result_text(reason)
+        if self._quick_background_calibration_active:
+            self._quick_background_calibration_active = False
+            return
         if self._embedded_neuroflow_calibration:
             self._training_screen.on_neuroflow_calibration_finished(False, reason)
         else:
@@ -774,6 +834,7 @@ class MainWindow(QMainWindow):
 
     def _cancel_calibration(self):
         self._cal_screen.set_result_text("Calibration cancelled.")
+        self._quick_background_calibration_active = False
         if self._embedded_neuroflow_calibration:
             self._training_screen.on_neuroflow_calibration_finished(False, "Calibration cancelled.")
         self._finish_calibration_flow()
@@ -821,13 +882,13 @@ class MainWindow(QMainWindow):
         self._dash_screen.reset_session(self._recorder.session_id)
         self._dash_screen.set_eeg_stream_metadata(
             sample_rate_hz=self._dm.eeg_sample_rate,
-            channel_names=self._dm.eeg_channel_names,
+            channel_names=self._dm.display_channel_names,
         )
         self._dash_screen.set_streaming_active(True)
         self._training_screen.set_streaming_active(True)
         self._training_screen.set_eeg_stream_metadata(
             sample_rate_hz=self._dm.eeg_sample_rate,
-            channel_names=self._dm.eeg_channel_names,
+            channel_names=self._dm.display_channel_names,
         )
         self._dash_screen.set_eeg_filter_enabled(self._filter_act.isChecked())
         self._mems_screen.reset_session(self._recorder.session_id)
@@ -837,7 +898,7 @@ class MainWindow(QMainWindow):
         self._phaseon_runtime.update_device_status(
             session_id=self._recorder.session_id,
             sample_rate_hz=self._dm.eeg_sample_rate,
-            channel_names=self._dm.eeg_channel_names,
+            channel_names=self._dm.display_channel_names,
         )
         self._log_timer.start()
         self._session_active = True
@@ -852,8 +913,7 @@ class MainWindow(QMainWindow):
         if self._streaming:
             return
         try:
-            self._dm.start_streaming()
-            self._streaming = True
+            self._streaming = bool(self._dm.start_streaming())
         except Exception as exc:
             log.error("Failed to start streaming: %s", _safe_str(exc))
             self._streaming = False
@@ -914,25 +974,44 @@ class MainWindow(QMainWindow):
     def _on_psd(self, psd_data):
         if not self._streaming:
             return
-        self._latest_psd_t = time.monotonic()
-        self._latest_band_powers, self._latest_peak_freqs = self._extract_psd_summary(psd_data)
+        psd_snapshot = self._extract_psd_snapshot(psd_data)
+        if not psd_snapshot:
+            return
+        self._latest_psd_t = float(psd_snapshot.get("received_at", time.monotonic()))
+        self._latest_band_powers = dict(psd_snapshot.get("band_powers", {}))
+        self._latest_peak_freqs = dict(psd_snapshot.get("peak_frequencies", {}))
         self._training_screen.update_signal_snapshot(
             self._latest_band_powers,
             self._latest_peak_freqs,
             self._latest_psd_t,
         )
         if self._stack.currentIndex() == PAGE_DASHBOARD:
-            self._dash_screen.on_psd(psd_data)
+            if hasattr(self._dash_screen, "on_psd_snapshot"):
+                self._dash_screen.on_psd_snapshot(psd_snapshot)
+            else:
+                self._dash_screen.on_psd(psd_data)
         if self._stack.currentIndex() == PAGE_MEMS:
             self._mems_screen.on_band_powers(self._latest_band_powers)
 
     def _on_eeg(self, eeg_timed_data):
         if not self._streaming:
             return
-        if self._stack.currentIndex() == PAGE_DASHBOARD:
-            self._dash_screen.on_eeg(eeg_timed_data)
+        dashboard_visible = self._stack.currentIndex() == PAGE_DASHBOARD
+        if not dashboard_visible and not self._session_active:
+            return
+        eeg_snapshot = self._extract_eeg_snapshot(eeg_timed_data)
+        if not eeg_snapshot:
+            return
+        if dashboard_visible:
+            if hasattr(self._dash_screen, "on_eeg_snapshot"):
+                self._dash_screen.on_eeg_snapshot(eeg_snapshot)
+            else:
+                self._dash_screen.on_eeg(eeg_timed_data)
         if self._session_active:
-            self._recorder.record_raw_eeg_packet(eeg_timed_data)
+            if hasattr(self._recorder, "record_raw_eeg_snapshot"):
+                self._recorder.record_raw_eeg_snapshot(eeg_snapshot)
+            else:
+                self._recorder.record_raw_eeg_packet(eeg_timed_data)
 
     def _on_artifacts(self, artifacts):
         if not self._streaming:
@@ -973,6 +1052,11 @@ class MainWindow(QMainWindow):
 
     def _on_filter_toggled(self, checked: bool):
         self._dash_screen.set_eeg_filter_enabled(bool(checked))
+        self._conn_screen.set_filter_signal_checked(bool(checked))
+
+    def _on_connection_filter_changed(self, checked: bool):
+        if self._filter_act.isChecked() != bool(checked):
+            self._filter_act.setChecked(bool(checked))
 
     def _on_disconnect_detected(self):
         log.warning("Device disconnected - attempting to reconnect")
@@ -1003,7 +1087,7 @@ class MainWindow(QMainWindow):
         )
         self._training_screen.set_eeg_stream_metadata(
             sample_rate_hz=self._dm.eeg_sample_rate,
-            channel_names=self._dm.eeg_channel_names,
+            channel_names=self._dm.display_channel_names,
         )
         self._mems_screen.set_session_info(
             connected=True, serial=self._dm.device_serial or ""
@@ -1012,7 +1096,7 @@ class MainWindow(QMainWindow):
             connected=True,
             serial=self._dm.device_serial or "",
             sample_rate_hz=self._dm.eeg_sample_rate,
-            channel_names=self._dm.eeg_channel_names,
+            channel_names=self._dm.display_channel_names,
         )
 
     def _on_error(self, msg):
@@ -1047,11 +1131,21 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _extract_psd_summary(psd_data):
+        snapshot = MainWindow._extract_psd_snapshot(psd_data)
+        if not snapshot:
+            return {}, {}
+        return (
+            dict(snapshot.get("band_powers", {})),
+            dict(snapshot.get("peak_frequencies", {})),
+        )
+
+    @staticmethod
+    def _extract_psd_snapshot(psd_data):
         try:
             n_freq = psd_data.get_frequencies_count()
             n_channels = psd_data.get_channels_count()
             if n_freq <= 0 or n_channels <= 0:
-                return {}, {}
+                return None
             freqs = np.asarray(
                 [float(psd_data.get_frequency(idx)) for idx in range(n_freq)],
                 dtype=float,
@@ -1061,12 +1155,84 @@ class MainWindow(QMainWindow):
                 for f_idx in range(n_freq):
                     avg_power[f_idx] += float(psd_data.get_psd(ch_idx, f_idx))
             avg_power /= float(n_channels)
-            return (
-                compute_band_powers(freqs, avg_power),
-                compute_peak_frequencies(freqs, avg_power),
-            )
+            band_powers = compute_band_powers(freqs, avg_power)
+            peak_frequencies = compute_peak_frequencies(freqs, avg_power)
+            return {
+                "freqs": freqs.tolist(),
+                "avg_power": avg_power.tolist(),
+                "band_powers": dict(band_powers),
+                "peak_frequencies": dict(peak_frequencies),
+                "received_at": time.monotonic(),
+            }
         except Exception:
-            return {}, {}
+            return None
+
+    @staticmethod
+    def _extract_eeg_snapshot(eeg_timed_data):
+        try:
+            n_channels = eeg_timed_data.get_channels_count()
+            n_samples = eeg_timed_data.get_samples_count()
+        except Exception:
+            return None
+        if n_channels <= 0 or n_samples <= 0:
+            return None
+
+        timestamps_ms = []
+        for sample_idx in range(n_samples):
+            try:
+                timestamps_ms.append(float(eeg_timed_data.get_timestamp(sample_idx)))
+            except Exception:
+                timestamps_ms.append(float(sample_idx))
+
+        channels = {}
+        processed_channels = {}
+        for ch_idx in range(n_channels):
+            try:
+                raw = np.asarray(
+                    [
+                        float(eeg_timed_data.get_raw_value(ch_idx, sample_idx))
+                        for sample_idx in range(n_samples)
+                    ],
+                    dtype=float,
+                )
+            except Exception:
+                continue
+            channels[ch_idx] = MainWindow._coerce_eeg_samples_to_microvolts(raw).tolist()
+
+            if hasattr(eeg_timed_data, "get_processed_value"):
+                try:
+                    processed = np.asarray(
+                        [
+                            float(eeg_timed_data.get_processed_value(ch_idx, sample_idx))
+                            for sample_idx in range(n_samples)
+                        ],
+                        dtype=float,
+                    )
+                    processed_channels[ch_idx] = MainWindow._coerce_eeg_samples_to_microvolts(processed).tolist()
+                except Exception:
+                    pass
+
+        if not channels:
+            return None
+        snapshot = {
+            "timestampsMs": timestamps_ms,
+            "channels": channels,
+        }
+        if processed_channels:
+            snapshot["processed_channels"] = processed_channels
+        return snapshot
+
+    @staticmethod
+    def _coerce_eeg_samples_to_microvolts(samples: np.ndarray) -> np.ndarray:
+        if samples.size == 0:
+            return samples.astype(float)
+        finite = np.abs(samples[np.isfinite(samples)])
+        if finite.size == 0:
+            return samples.astype(float)
+        max_abs = float(np.max(finite))
+        if max_abs <= 0.01:
+            return samples * 1_000_000.0
+        return samples.astype(float)
 
 
 def _safe_str(value) -> str:

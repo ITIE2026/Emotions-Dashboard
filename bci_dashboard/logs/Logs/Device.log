@@ -185,3 +185,15 @@
 [2026-03-20 16:03:57.842] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
 [2026-03-20 16:04:58.426] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
 [2026-03-20 16:05:44.784] [Device] [error] Failed to create BLEDevice: Can not read Serial number ErrorCore: 0
+[2026-03-23 15:14:12.250] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-23 15:17:25.395] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-23 15:21:24.535] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-23 15:42:08.053] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-23 16:05:49.415] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-23 16:14:55.764] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-23 16:23:43.246] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-23 16:27:30.712] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-23 16:33:01.429] [Device] [error] Failed to create BLEDevice: Can not read Hardware Revision ErrorCore: 0
+[2026-03-23 16:34:09.037] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-23 17:07:26.153] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]
+[2026-03-23 17:14:50.650] [Device] [critical] Execute command 23 failed: Device error: [UNKNOWN]

@@ -149,12 +149,14 @@ class GuiOverhaulTests(unittest.TestCase):
         self.assertFalse(completed[-1]["applied"])
         self.assertEqual(updates[-1]["source"], "Detected")
 
-    def test_calibration_manager_quick_mode_keeps_baseline_stages(self):
+    def test_calibration_manager_quick_mode_returns_ready_then_runs_background_baselines(self):
         prod = _FakeProdHandler()
         phys = _FakePhysioHandler()
+        ready = []
         completed = []
         with patch("calibration.calibration_manager.Calibrator", _FakeCalibrator):
             manager = CalibrationManager(object(), object(), prod, phys)
+            manager.quick_ready.connect(ready.append)
             manager.calibration_complete.connect(completed.append)
             manager.start_quick("SER456")
 
@@ -171,26 +173,17 @@ class GuiOverhaulTests(unittest.TestCase):
                 upperFrequency=12.0,
             )
             manager._on_nfb_finished(manager._calibrator, nfb)
+            APP.processEvents()
             self.assertTrue(prod.started)
+            self.assertFalse(phys.started)
+            self.assertEqual(ready[-1]["mode"], "quick")
+
+            prod.baselines_updated.emit(SimpleNamespace())
+            APP.processEvents()
             self.assertTrue(phys.started)
 
-            prod.baselines_updated.emit(SimpleNamespace(
-                timestampMilli=1,
-                gravity=1.0,
-                productivity=2.0,
-                fatigue=3.0,
-                reverseFatigue=4.0,
-                relaxation=5.0,
-                concentration=6.0,
-            ))
-            phys.baselines_updated.emit(SimpleNamespace(
-                timestampMilli=1,
-                alpha=1.0,
-                beta=2.0,
-                alphaGravity=3.0,
-                betaGravity=4.0,
-                concentration=5.0,
-            ))
+            phys.baselines_updated.emit(SimpleNamespace())
+            APP.processEvents()
 
         self.assertEqual(completed[-1]["mode"], "quick")
         self.assertTrue(completed[-1]["applied"])

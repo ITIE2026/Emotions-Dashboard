@@ -1,0 +1,11 @@
+{
+  "nfb": {
+    "individualFrequency": 10.0
+  },
+  "prod_baselines": {
+    "focus": 1.0
+  },
+  "phy_baselines": {
+    "relaxation": 1.0
+  }
+}

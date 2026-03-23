@@ -1501,6 +1501,574 @@ class NeuroRacerController(ArcadeTrainingController):
         }
 
 
+class NeonDriftArenaController(ArcadeTrainingController):
+    LEVELS = [
+        TrainingLevel("Glow Grid", 56),
+        TrainingLevel("Pulse Plaza", 66),
+        TrainingLevel("Skyline Rush", 76),
+    ]
+    CONFIGS = [
+        {
+            "arena_length": 720.0,
+            "base_speed": 9.8,
+            "target_score": 430,
+            "target_collectibles": 11,
+            "star_thresholds": [160, 300, 430],
+            "chains": [
+                (46.0, 1.0, 3, 20.0, "violet", 30, 0.08),
+                (138.0, 3.0, 4, 18.0, "lime", 32, 0.14),
+                (244.0, 2.0, 3, 20.0, "cyan", 34, 0.00),
+                (356.0, 0.0, 3, 18.0, "gold", 36, 0.12),
+                (476.0, 4.0, 4, 18.0, "violet", 38, 0.18),
+            ],
+            "sigils": [
+                (104.0, 2.0, "sigil_gold", 56, 0.00),
+                (304.0, 4.0, "sigil_cyan", 64, 0.12),
+                (548.0, 1.0, "sigil_lime", 72, 0.00),
+            ],
+            "hazards": [
+                (188.0, 0.0, 0.78, 0.00, 28),
+                (408.0, 3.0, 0.95, 0.18, 32),
+                (612.0, 2.0, 0.88, 0.00, 36),
+            ],
+            "boosts": [
+                (216.0, 2.0, 24, 0.00),
+                (442.0, 4.0, 28, 0.10),
+            ],
+        },
+        {
+            "arena_length": 860.0,
+            "base_speed": 10.6,
+            "target_score": 620,
+            "target_collectibles": 15,
+            "star_thresholds": [220, 420, 620],
+            "chains": [
+                (44.0, 0.0, 4, 18.0, "gold", 32, 0.16),
+                (148.0, 2.0, 4, 18.0, "violet", 34, 0.00),
+                (268.0, 4.0, 4, 18.0, "cyan", 36, 0.18),
+                (396.0, 1.0, 4, 18.0, "lime", 38, 0.10),
+                (528.0, 3.0, 5, 16.0, "violet", 38, 0.22),
+                (692.0, 2.0, 3, 18.0, "gold", 42, 0.00),
+            ],
+            "sigils": [
+                (118.0, 3.0, "sigil_cyan", 62, 0.10),
+                (332.0, 0.0, "sigil_gold", 68, 0.00),
+                (604.0, 4.0, "sigil_lime", 74, 0.16),
+            ],
+            "hazards": [
+                (204.0, 1.0, 0.85, 0.20, 30),
+                (364.0, 3.0, 0.92, 0.00, 34),
+                (504.0, 2.0, 1.02, 0.25, 38),
+                (736.0, 1.0, 0.90, 0.18, 42),
+            ],
+            "boosts": [
+                (236.0, 4.0, 24, 0.18),
+                (470.0, 0.0, 28, 0.00),
+                (654.0, 2.0, 30, 0.00),
+            ],
+        },
+        {
+            "arena_length": 980.0,
+            "base_speed": 11.4,
+            "target_score": 860,
+            "target_collectibles": 19,
+            "star_thresholds": [320, 560, 860],
+            "chains": [
+                (40.0, 2.0, 4, 16.0, "violet", 34, 0.00),
+                (136.0, 4.0, 5, 16.0, "gold", 36, 0.24),
+                (268.0, 0.0, 5, 16.0, "cyan", 36, 0.20),
+                (404.0, 3.0, 5, 16.0, "lime", 40, 0.18),
+                (560.0, 1.0, 4, 18.0, "violet", 42, 0.10),
+                (704.0, 4.0, 4, 16.0, "gold", 44, 0.16),
+                (840.0, 2.0, 4, 16.0, "cyan", 46, 0.00),
+            ],
+            "sigils": [
+                (108.0, 1.0, "sigil_gold", 66, 0.00),
+                (344.0, 3.0, "sigil_cyan", 72, 0.18),
+                (628.0, 0.0, "sigil_lime", 76, 0.14),
+                (904.0, 4.0, "sigil_prism", 82, 0.00),
+            ],
+            "hazards": [
+                (188.0, 2.0, 0.95, 0.25, 32),
+                (304.0, 0.0, 0.90, 0.12, 36),
+                (472.0, 4.0, 0.98, 0.20, 40),
+                (658.0, 2.0, 1.05, 0.30, 42),
+                (820.0, 1.0, 0.90, 0.18, 46),
+            ],
+            "boosts": [
+                (228.0, 3.0, 24, 0.00),
+                (522.0, 1.0, 30, 0.12),
+                (780.0, 3.0, 34, 0.20),
+            ],
+        },
+    ]
+    LANE_COUNT = 5
+    FIELD_DEPTH = 220.0
+
+    def __init__(self):
+        super().__init__(self.LEVELS)
+
+    def _reset_level_state(self) -> None:
+        config = self.CONFIGS[self._level_index]
+        self._arena_length = float(config["arena_length"])
+        self._base_speed = float(config["base_speed"])
+        self._target_score = int(config["target_score"])
+        self._target_collectibles = int(config["target_collectibles"])
+        self._star_thresholds = list(config["star_thresholds"])
+        self._lane = self.LANE_COUNT // 2
+        self._drift_bias = 0.0
+        self._distance = 0.0
+        self._boost_meter = 28.0
+        self._boost_ticks = 0
+        self._boost_bursts = 0
+        self._boost_pad_hits = 0
+        self._line_lock_ticks = 0
+        self._score = 0
+        self._combo = 0
+        self._best_combo = 0
+        self._drift_chain = 0
+        self._best_drift_chain = 0
+        self._collectibles = 0
+        self._hazard_hits = 0
+        self._popups: list[dict] = []
+        self._overlay_kind: str | None = None
+        self._overlay_title = ""
+        self._overlay_subtitle = ""
+        self._overlay_timer = 0
+        self._pending_outcome: str | None = None
+        self._message = "Glide through the neon floor art, collect the lit chains, and dodge dark pools."
+        self._items = self._build_arena_items(config)
+        self._view_state = self._arena_view_state()
+
+    def update_gameplay(
+        self,
+        concentration: float,
+        relaxation: float,
+        valid: bool,
+        stale: bool,
+        elapsed_seconds: float,
+    ) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation - (self._relax_baseline or 0.0)
+        blocked_reason = ""
+        action = None
+        moved = False
+        level_completed = False
+        run_completed = False
+        control_hint = (
+            "Concentrate to tighten right, relax to widen left, and hold a balanced steady state "
+            "to ignite boost or lock onto the next glowing lane."
+        )
+
+        if self._overlay_kind is not None:
+            level_completed, run_completed = self._tick_overlay(elapsed_seconds)
+        elif stale:
+            blocked_reason = "Metrics are stale. Neon Drift Arena paused."
+        elif not valid:
+            blocked_reason = "Artifacts detected. Neon Drift Arena paused."
+        elif elapsed_seconds >= self.current_level.target_seconds:
+            self._start_failure_overlay("The arena timer expired before the projection target was lit.")
+        else:
+            intent = self._arcade_intent(conc_delta, relax_delta)
+            if intent == "focus":
+                if self._stabilize_intent(intent):
+                    self._lane = min(self.LANE_COUNT - 1, self._lane + 1)
+                    self._drift_bias = min(1.0, self._drift_bias + 0.34)
+                    self._message = "Tightened into the right glow lane."
+                    action = "right"
+                    moved = True
+            elif intent == "relax":
+                if self._stabilize_intent(intent):
+                    self._lane = max(0, self._lane - 1)
+                    self._drift_bias = max(-1.0, self._drift_bias - 0.34)
+                    self._message = "Widened left into the softer drift lane."
+                    action = "left"
+                    moved = True
+            elif intent == "steady":
+                if self._stabilize_intent(intent):
+                    moved = True
+                    if self._boost_meter >= 36.0:
+                        self._boost_meter = max(0.0, self._boost_meter - 36.0)
+                        self._boost_ticks = 5
+                        self._boost_bursts += 1
+                        self._message = "Boost burst ignited."
+                        action = "boost"
+                    else:
+                        self._line_lock_ticks = 3
+                        nearest = self._nearest_collectible_ahead(74.0)
+                        if nearest is not None:
+                            target_lane = int(round(nearest["lane_pos"]))
+                            if target_lane > self._lane:
+                                self._lane = min(self.LANE_COUNT - 1, self._lane + 1)
+                            elif target_lane < self._lane:
+                                self._lane = max(0, self._lane - 1)
+                        self._message = "Locked onto the next neon chain."
+                        action = "steady"
+            else:
+                self._stabilize_intent(None)
+
+            if not moved:
+                self._drift_bias *= 0.82
+            if self._line_lock_ticks > 0:
+                self._line_lock_ticks -= 1
+                self._drift_bias *= 0.9
+
+            self._advance_arena()
+            self._process_items()
+            self._tick_popups()
+
+            if (
+                self._collectibles >= self._target_collectibles
+                and self._score >= self._target_score
+                and self._overlay_kind is None
+            ):
+                self._start_success_overlay()
+
+        self._view_state = self._arena_view_state(
+            message=blocked_reason,
+            music_bias=relax_delta - conc_delta,
+        )
+        return self._arcade_snapshot(
+            phase="neon_drift_arena",
+            phase_label="Neon Drift Arena",
+            direction=action,
+            blocked_reason=blocked_reason,
+            control_hint=control_hint,
+            conc_delta=conc_delta,
+            relax_delta=relax_delta,
+            moved=moved,
+            level_completed=level_completed,
+            run_completed=run_completed,
+            recommended_label=self._arena_recommendation(action),
+        )
+
+    def _build_arena_items(self, config: dict) -> list[dict]:
+        items: list[dict] = []
+        for start, lane, count, spacing, style, value, sway in config["chains"]:
+            for index in range(count):
+                items.append(
+                    {
+                        "type": "tile",
+                        "distance": float(start + (index * spacing)),
+                        "lane": float(lane),
+                        "value": int(value),
+                        "style": style,
+                        "sway": float(sway),
+                        "width": 0.62,
+                        "resolved": False,
+                    }
+                )
+        for distance, lane, style, value, sway in config["sigils"]:
+            items.append(
+                {
+                    "type": "sigil",
+                    "distance": float(distance),
+                    "lane": float(lane),
+                    "value": int(value),
+                    "style": style,
+                    "sway": float(sway),
+                    "width": 0.76,
+                    "resolved": False,
+                }
+            )
+        for distance, lane, width, sway, penalty in config["hazards"]:
+            items.append(
+                {
+                    "type": "hazard",
+                    "distance": float(distance),
+                    "lane": float(lane),
+                    "width": float(width),
+                    "sway": float(sway),
+                    "penalty": int(penalty),
+                    "resolved": False,
+                }
+            )
+        for distance, lane, charge, sway in config["boosts"]:
+            items.append(
+                {
+                    "type": "boost",
+                    "distance": float(distance),
+                    "lane": float(lane),
+                    "charge": int(charge),
+                    "sway": float(sway),
+                    "width": 0.74,
+                    "resolved": False,
+                }
+            )
+        items.sort(key=lambda item: float(item["distance"]))
+        return items
+
+    def _tick_overlay(self, elapsed_seconds: float) -> tuple[bool, bool]:
+        if self._overlay_timer > 0:
+            self._overlay_timer -= 1
+        self._tick_popups()
+        if self._overlay_timer > 0:
+            return False, False
+
+        outcome = self._pending_outcome
+        self._overlay_kind = None
+        self._overlay_title = ""
+        self._overlay_subtitle = ""
+        self._pending_outcome = None
+        if outcome == "failure":
+            self._record_level_result(False, elapsed_seconds, score_override=0)
+            self._finished = True
+            return False, True
+        if outcome == "level_complete":
+            time_penalty = max(0, elapsed_seconds - self.current_level.target_seconds)
+            score = (
+                52
+                + min(28.0, self._score / 26.0)
+                + min(18.0, self._best_combo * 2.0)
+                + min(18.0, self._best_drift_chain * 2.2)
+                + (self._boost_bursts * 4.0)
+                - (self._hazard_hits * 8.0)
+                - time_penalty
+            )
+            self._record_level_result(True, elapsed_seconds, score_override=score)
+            level_completed = True
+            run_completed = self._advance_level()
+            return level_completed, run_completed
+        return False, False
+
+    def _advance_arena(self) -> None:
+        speed = self._base_speed + min(4.2, self._combo * 0.28)
+        if self._boost_ticks > 0:
+            speed += 7.8
+            self._boost_ticks -= 1
+        self._boost_meter = min(
+            100.0,
+            self._boost_meter + 0.75 + min(1.4, self._best_drift_chain * 0.08),
+        )
+        self._distance = min(self._arena_length, self._distance + speed)
+
+    def _process_items(self) -> None:
+        kart_pos = self._kart_track_position()
+        for item in self._items:
+            if item["resolved"]:
+                continue
+            rel = float(item["distance"]) - self._distance
+            lane_pos = self._item_lane_position(item)
+            if item["type"] == "hazard":
+                if abs(rel) <= 13.0 and abs(kart_pos - lane_pos) <= float(item["width"]):
+                    item["resolved"] = True
+                    self._hit_hazard(item, lane_pos)
+                elif rel < -16.0:
+                    item["resolved"] = True
+                continue
+
+            alignment = float(item.get("width", 0.62)) + (0.12 if self._boost_ticks > 0 else 0.0)
+            if abs(rel) <= 11.0 and abs(kart_pos - lane_pos) <= alignment:
+                item["resolved"] = True
+                self._collect_item(item, lane_pos)
+            elif rel < -14.0:
+                item["resolved"] = True
+                if item["type"] in {"tile", "sigil"}:
+                    self._combo = max(0, self._combo - 1)
+                    self._drift_chain = max(0, self._drift_chain - 1)
+
+    def _collect_item(self, item: dict, lane_pos: float) -> None:
+        if item["type"] == "boost":
+            self._boost_pad_hits += 1
+            self._boost_meter = min(100.0, self._boost_meter + float(item.get("charge", 20)))
+            self._score += 14
+            self._popups.append({"lane": lane_pos, "gap": 30.0, "text": "+14", "ticks": 5, "bad": False})
+            self._message = "Boost pad charged."
+            return
+
+        self._collectibles += 1
+        if item["type"] == "sigil":
+            self._combo += 2
+            base_score = int(item["value"])
+            self._drift_chain += 1
+        else:
+            self._combo += 1
+            base_score = int(item["value"])
+            if abs(self._drift_bias) >= 0.22:
+                self._drift_chain += 1
+            else:
+                self._drift_chain = max(0, self._drift_chain - 1)
+        self._best_combo = max(self._best_combo, self._combo)
+        self._best_drift_chain = max(self._best_drift_chain, self._drift_chain)
+        gain = base_score + (self._combo * 3) + (self._drift_chain * 2)
+        self._score += gain
+        self._popups.append({"lane": lane_pos, "gap": 30.0, "text": f"+{gain}", "ticks": 6, "bad": False})
+        if item["type"] == "sigil":
+            self._message = "Projection sigil captured."
+        else:
+            self._message = "Neon chain collected."
+
+    def _hit_hazard(self, item: dict, lane_pos: float) -> None:
+        penalty = int(item.get("penalty", 28))
+        self._hazard_hits += 1
+        self._combo = 0
+        self._drift_chain = 0
+        self._score = max(0, self._score - penalty)
+        self._boost_meter = max(0.0, self._boost_meter - 14.0)
+        self._popups.append({"lane": lane_pos, "gap": 26.0, "text": f"-{penalty}", "ticks": 6, "bad": True})
+        self._message = "Dark hazard pool hit. Rebuild the chain."
+
+    def _tick_popups(self) -> None:
+        trimmed = []
+        for popup in self._popups:
+            updated = dict(popup)
+            updated["ticks"] = max(0, int(updated.get("ticks", 0)) - 1)
+            updated["gap"] = float(updated.get("gap", 0.0)) + 6.0
+            if updated["ticks"] > 0:
+                trimmed.append(updated)
+        self._popups = trimmed
+
+    def _start_success_overlay(self) -> None:
+        self._overlay_kind = "success"
+        self._overlay_title = "Arena lit"
+        self._overlay_subtitle = f"{self._collectibles} projections chained cleanly."
+        self._overlay_timer = 7
+        self._pending_outcome = "level_complete"
+        self._message = self._overlay_title
+
+    def _start_failure_overlay(self, subtitle: str) -> None:
+        self._overlay_kind = "failure"
+        self._overlay_title = "Projection lost"
+        self._overlay_subtitle = subtitle
+        self._overlay_timer = 7
+        self._pending_outcome = "failure"
+        self._message = subtitle
+
+    def _nearest_collectible_ahead(self, max_gap: float) -> dict | None:
+        best = None
+        best_gap = None
+        for item in self._items:
+            if item["resolved"] or item["type"] not in {"tile", "sigil"}:
+                continue
+            rel = float(item["distance"]) - self._distance
+            if rel <= 10.0 or rel > max_gap:
+                continue
+            if best_gap is None or rel < best_gap:
+                best_gap = rel
+                best = {"gap": rel, "lane_pos": self._item_lane_position(item), "item": item}
+        return best
+
+    def _item_lane_position(self, item: dict) -> float:
+        sway = float(item.get("sway", 0.0))
+        if sway <= 0.0:
+            return float(item["lane"])
+        phase = (self._distance + float(item["distance"])) / 54.0
+        lane_pos = float(item["lane"]) + (math.sin(phase) * sway)
+        return max(0.0, min(self.LANE_COUNT - 1.0, lane_pos))
+
+    def _kart_track_position(self) -> float:
+        return max(0.0, min(self.LANE_COUNT - 1.0, self._lane + (self._drift_bias * 0.35)))
+
+    def _arena_recommendation(self, action: str | None) -> str:
+        if action == "right":
+            return "Glide right"
+        if action == "left":
+            return "Drift left"
+        if action == "boost":
+            return "Ignite boost"
+        if action == "steady":
+            return "Hold the lane"
+
+        nearest_hazard = None
+        nearest_collectible = None
+        for item in self._items:
+            if item["resolved"]:
+                continue
+            rel = float(item["distance"]) - self._distance
+            if rel <= 8.0:
+                continue
+            if item["type"] == "hazard" and rel <= 40.0:
+                if nearest_hazard is None or rel < nearest_hazard[0]:
+                    nearest_hazard = (rel, self._item_lane_position(item))
+            if item["type"] in {"tile", "sigil"} and rel <= 80.0:
+                if nearest_collectible is None or rel < nearest_collectible[0]:
+                    nearest_collectible = (rel, self._item_lane_position(item))
+
+        kart_pos = self._kart_track_position()
+        if nearest_hazard is not None and abs(nearest_hazard[1] - kart_pos) <= 0.8:
+            if nearest_hazard[1] >= kart_pos:
+                return "Break left"
+            return "Break right"
+        if nearest_collectible is not None:
+            if nearest_collectible[1] > kart_pos + 0.18:
+                return "Follow the right chain"
+            if nearest_collectible[1] < kart_pos - 0.18:
+                return "Follow the left chain"
+            if self._boost_meter >= 36.0:
+                return "Boost the lit lane"
+            return "Hold the projection line"
+        if self._boost_meter >= 36.0:
+            return "Steady for boost"
+        return "Read the next neon trail"
+
+    def _arena_view_state(self, message: str = "", music_bias: float = 0.0) -> dict:
+        projected_collectibles = []
+        sigils = []
+        hazards = []
+        boosts = []
+        for item in self._items:
+            if item["resolved"]:
+                continue
+            gap = float(item["distance"]) - self._distance
+            if gap < -18.0 or gap > self.FIELD_DEPTH:
+                continue
+            entry = {
+                "lane": self._item_lane_position(item),
+                "gap": gap,
+                "style": item.get("style", "violet"),
+                "width": float(item.get("width", 0.62)),
+            }
+            if item["type"] == "tile":
+                projected_collectibles.append({**entry, "value": int(item["value"])})
+            elif item["type"] == "sigil":
+                sigils.append({**entry, "value": int(item["value"])})
+            elif item["type"] == "hazard":
+                hazards.append({**entry, "penalty": int(item["penalty"])})
+            elif item["type"] == "boost":
+                boosts.append({**entry, "charge": int(item["charge"])})
+
+        star_ceiling = max(1.0, float(self._star_thresholds[-1]))
+        return {
+            "mode": "neon_drift_arena",
+            "lane_count": self.LANE_COUNT,
+            "kart_lane": self._lane,
+            "kart_track_pos": self._kart_track_position(),
+            "drift_bias": self._drift_bias,
+            "boost_meter": self._boost_meter,
+            "boost_ticks": self._boost_ticks,
+            "combo": self._combo,
+            "best_combo": self._best_combo,
+            "drift_chain": self._drift_chain,
+            "best_drift_chain": self._best_drift_chain,
+            "score": self._score,
+            "target_score": self._target_score,
+            "collectibles": self._collectibles,
+            "target_collectibles": self._target_collectibles,
+            "hazard_hits": self._hazard_hits,
+            "boost_bursts": self._boost_bursts,
+            "boost_pad_hits": self._boost_pad_hits,
+            "track_progress": max(0.0, min(1.0, self._distance / max(1.0, self._arena_length))),
+            "field_depth": self.FIELD_DEPTH,
+            "arena_length": self._arena_length,
+            "star_progress": max(0.0, min(1.0, self._score / star_ceiling)),
+            "star_thresholds": list(self._star_thresholds),
+            "projected_collectibles": projected_collectibles,
+            "sigils": sigils,
+            "hazards": hazards,
+            "boost_pads": boosts,
+            "score_popups": [dict(popup) for popup in self._popups],
+            "overlay_kind": self._overlay_kind,
+            "overlay_title": self._overlay_title,
+            "overlay_subtitle": self._overlay_subtitle,
+            "menu_button_rect": [18, 18, 54, 42],
+            "music_scene": "neon_drift",
+            "music_bias": max(-1.0, min(1.0, music_bias / 2.8)),
+            "serenity": max(0.0, min(100.0, 54.0 + (self._best_combo * 3.2) + (self._best_drift_chain * 2.6) - (self._hazard_hits * 9.0))),
+            "restlessness": max(0.0, min(100.0, 22.0 + (self._hazard_hits * 16.0) + max(0.0, -self._drift_bias) * 8.0)),
+            "message": message or self._message,
+        }
+
+
 class BubbleBurstController(ArcadeTrainingController):
     LEVELS = [
         TrainingLevel("Wave 1", 60),
@@ -2917,6 +3485,32 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         enabled=True,
         controller_factory=NeuroRacerController,
         widget_kind="neuro_racer",
+        music_profile="arcade",
+    ),
+    TrainingGameSpec(
+        game_id="neon_drift_arena",
+        section="Arcade neurofeedback",
+        eyebrow="Projection arena",
+        card_title="Neon Drift Arena",
+        detail_title="A neon floor-projection kart arena for drift chains, boost bursts, and collectible runs",
+        duration="10 min",
+        description="Glide through a luminous arena, collect projected chains, and dodge dark hazard pools with EEG-guided drift control.",
+        detail_body=(
+            "Neon Drift Arena turns the projected kart look into a top-down neurofeedback collector. "
+            "Concentration tightens the kart into the right-side glow lanes, relaxation widens the line back left, "
+            "and a balanced steady hold either locks onto the next collectible path or ignites a short boost burst "
+            "when the meter is charged."
+        ),
+        instructions=(
+            "Concentrate to steer right, relax to steer left, and hold a balanced steady state to trigger boost or "
+            "lock onto the brightest projected lane. Collect enough chains and sigils before the stage timer runs out."
+        ),
+        calibration_copy="Settle into a clean baseline so lane shifts and boost timing feel smooth across the arena.",
+        preview_label="DRIFT",
+        colors=("#35185d", "#f0d24d"),
+        enabled=True,
+        controller_factory=NeonDriftArenaController,
+        widget_kind="neon_drift_arena",
         music_profile="arcade",
     ),
     TrainingGameSpec(
