@@ -1,0 +1,25 @@
+{
+  "nfb": {
+    "individualFrequency": 9.76585865020752,
+    "individualPeakFrequency": 10.800000190734863,
+    "lowerFrequency": 7.0,
+    "upperFrequency": 13.0
+  },
+  "prod_baselines": {
+    "timestampMilli": 1774096510160,
+    "gravity": 0.3376811444759369,
+    "productivity": 0.3376811444759369,
+    "fatigue": 2.0999369621276855,
+    "reverseFatigue": 0.4768126606941223,
+    "relaxation": 0.7766296863555908,
+    "concentration": 1.2885968685150146
+  },
+  "phy_baselines": {
+    "timestampMilli": 0,
+    "alpha": 0.20660346746444702,
+    "beta": 0.2617049813270569,
+    "alphaGravity": 0.42514583468437195,
+    "betaGravity": 0.16247667372226715,
+    "concentration": 1.0798265933990479
+  }
+}

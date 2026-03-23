@@ -289,6 +289,7 @@ class MainWindow(QMainWindow):
         self._latest_band_powers: dict = {}
         self._latest_peak_freqs: dict = {}
         self._latest_psd_t: float | None = None
+        self._last_device_error: str | None = None
         self._iapf_status: dict = {
             "frequency": None,
             "source": "Not set",
@@ -528,10 +529,41 @@ class MainWindow(QMainWindow):
     def _on_start_signal(self):
         if self._session_active:
             return
-        self._safe_start_streaming()
-        if self._streaming:
-            self._begin_session()
+        if self._start_live_session(origin="toolbar"):
             log.info("Signal started by user")
+
+    def _start_live_session(self, origin: str, show_failure_dialog: bool = True) -> bool:
+        if self._session_active:
+            return True
+        if not self._safe_start_streaming(show_failure_dialog=show_failure_dialog):
+            return False
+        try:
+            self._begin_session()
+            log.info("Live session started via %s", origin)
+            return True
+        except Exception as exc:
+            log.error("Failed to begin session via %s: %s", origin, _safe_str(exc))
+            try:
+                self._dm.stop_streaming()
+            except Exception:
+                pass
+            self._streaming = False
+            self._dash_screen.set_streaming_active(False)
+            self._training_screen.set_streaming_active(False)
+            self._mems_screen.set_streaming_active(False)
+            self._update_live_view_activity(self._stack.currentIndex())
+            try:
+                self._recorder.stop_session()
+            except Exception:
+                log.exception("Failed to unwind session recorder after startup error")
+            if show_failure_dialog:
+                QMessageBox.warning(
+                    self,
+                    "Start Signal Failed",
+                    "The device connected, but the live session could not be started.\n"
+                    "Please try again.",
+                )
+            return False
 
     def _on_detect_iapf(self):
         self._begin_calibration_flow("detect")
@@ -639,6 +671,7 @@ class MainWindow(QMainWindow):
         if status == 1:
             log.info("Device connected - serial %s", self._dm.device_serial)
             self._disconnect_timer.stop()
+            self._last_device_error = None
             self._dash_screen.set_session_info(
                 connected=True,
                 serial=self._dm.device_serial or "",
@@ -673,6 +706,8 @@ class MainWindow(QMainWindow):
             serial = self._dm.device_serial or ""
             if self._cal_mgr and serial and self._cal_mgr.can_import(serial):
                 self._cal_mgr.import_saved(serial)
+            if not self._session_active and self._stack.currentIndex() == PAGE_CONNECTION:
+                self._start_live_session(origin="auto-connect")
         elif status == 0:
             log.info("Device disconnected signal - starting debounce timer")
             self._phaseon_runtime.update_device_status(connected=False)
@@ -848,15 +883,26 @@ class MainWindow(QMainWindow):
 
         self._stack.setCurrentIndex(PAGE_DASHBOARD)
 
-    def _safe_start_streaming(self):
+    def _safe_start_streaming(self, show_failure_dialog: bool = True) -> bool:
         if self._streaming:
-            return
+            return True
+        self._last_device_error = None
         try:
-            self._dm.start_streaming()
-            self._streaming = True
+            self._streaming = bool(self._dm.start_streaming())
         except Exception as exc:
             log.error("Failed to start streaming: %s", _safe_str(exc))
             self._streaming = False
+        if self._streaming:
+            return True
+        if show_failure_dialog:
+            QMessageBox.warning(
+                self,
+                "Start Signal Failed",
+                self._last_device_error
+                or "The device connected, but the live signal could not be started.\n"
+                "Please try again.",
+            )
+        return False
 
     def _stop_session(self):
         self._dash_screen.set_streaming_active(False)
@@ -1016,7 +1062,8 @@ class MainWindow(QMainWindow):
         )
 
     def _on_error(self, msg):
-        log.error("Error: %s", _safe_str(msg))
+        self._last_device_error = _safe_str(msg)
+        log.error("Error: %s", self._last_device_error)
 
     def _refresh_battery_now(self):
         pct = self._dm.get_battery()

@@ -101,18 +101,22 @@ class DeviceManager(QObject):
         self._device.connect(bipolar)
         self._refresh_eeg_metadata()
 
-    def start_streaming(self):
-        if self._device:
-            try:
-                self._refresh_eeg_metadata()
-                self._device.start()
-            except Exception as exc:
-                msg = str(exc)
-                if isinstance(exc, bytes):
-                    msg = exc.decode('utf-8', errors='replace')
-                elif hasattr(exc, 'message') and isinstance(exc.message, bytes):
-                    msg = exc.message.decode('utf-8', errors='replace')
-                self.error_occurred.emit(msg)
+    def start_streaming(self) -> bool:
+        if not self._device:
+            self.error_occurred.emit("No connected device is available for streaming.")
+            return False
+        try:
+            self._refresh_eeg_metadata()
+            self._device.start()
+            return True
+        except Exception as exc:
+            msg = str(exc)
+            if isinstance(exc, bytes):
+                msg = exc.decode('utf-8', errors='replace')
+            elif hasattr(exc, 'message') and isinstance(exc.message, bytes):
+                msg = exc.message.decode('utf-8', errors='replace')
+            self.error_occurred.emit(msg)
+            return False
 
     def stop_streaming(self):
         if self._device:
