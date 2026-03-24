@@ -140,6 +140,13 @@ class ProductivityHandler(QObject):
             self.indexes_updated.emit({
                 "relaxation_recommendation": rel,
                 "stress_level": stress,
+                "stress": stress,
+                "gravityBaseline": float(idx.gravityBaseline),
+                "productivityBaseline": float(idx.productivityBaseline),
+                "fatigueBaseline": float(idx.fatigueBaseline),
+                "reverseFatigueBaseline": float(idx.reverseFatigueBaseline),
+                "relaxationBaseline": float(idx.relaxationBaseline),
+                "concentrationBaseline": float(idx.concentrationBaseline),
                 "hasArtifacts": bool(idx.hasArtifacts),
                 "timestamp": int(idx.timestampMilli),
             })

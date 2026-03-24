@@ -1365,6 +1365,151 @@ class DashboardMemsFilteringTests(unittest.TestCase):
         finally:
             table.close()
 
+    def test_electrode_table_starts_rows_in_preview_mode_with_flat_trace(self):
+        table = ElectrodeTable()
+        try:
+            timestamps_ms = [index * 4 for index in range(300)]
+            raw = np.sin(np.linspace(0.0, 30.0, 300)) * 90.0
+            packet = _FakeEEGTimedData([raw, raw * 0.5], timestamps_ms)
+
+            table.add_eeg_data(packet)
+            table.refresh()
+
+            self.assertEqual(table.row_trace_view_mode(0), "preview")
+            self.assertEqual(table.row_trace_view_mode(1), "preview")
+            self.assertGreater(table._avg_uv["O1-T3"], 0.0)
+            _, y_data = table._rows[0]["curve"].getData()
+            y_values = np.asarray(y_data, dtype=float)
+            self.assertGreater(y_values.size, 0)
+            self.assertTrue(np.allclose(y_values, 0.0))
+        finally:
+            table.close()
+
+    def test_electrode_table_toggle_reveals_only_target_row_and_hides_on_second_toggle(self):
+        table = ElectrodeTable()
+        try:
+            timestamps_ms = [index * 4 for index in range(300)]
+            raw = np.sin(np.linspace(0.0, 45.0, 300)) * 120.0
+            packet = _FakeEEGTimedData([raw, raw * 0.5], timestamps_ms)
+
+            table.add_eeg_data(packet)
+            table.refresh()
+            _, preview_y_row0 = table._rows[0]["curve"].getData()
+            _, preview_y_row1 = table._rows[1]["curve"].getData()
+            self.assertTrue(np.allclose(np.asarray(preview_y_row0, dtype=float), 0.0))
+            self.assertTrue(np.allclose(np.asarray(preview_y_row1, dtype=float), 0.0))
+
+            table.toggle_row_trace_view_mode(0)
+            _, live_y_row0 = table._rows[0]["curve"].getData()
+            _, still_preview_row1 = table._rows[1]["curve"].getData()
+            self.assertEqual(table.row_trace_view_mode(0), "live")
+            self.assertEqual(table.row_trace_view_mode(1), "preview")
+            self.assertGreater(np.max(np.abs(np.asarray(live_y_row0, dtype=float))), 0.0)
+            self.assertTrue(np.allclose(np.asarray(still_preview_row1, dtype=float), 0.0))
+
+            table.toggle_row_trace_view_mode(0)
+            _, preview_again_y = table._rows[0]["curve"].getData()
+            self.assertEqual(table.row_trace_view_mode(0), "preview")
+            self.assertTrue(np.allclose(np.asarray(preview_again_y, dtype=float), 0.0))
+        finally:
+            table.close()
+
+    def test_electrode_table_preview_mode_supports_four_channel_layout_individually(self):
+        table = ElectrodeTable()
+        try:
+            table.set_channel_names(["O1", "T3", "T4", "O2"])
+            timestamps_ms = [index * 4 for index in range(240)]
+            channels = [
+                np.sin(np.linspace(0.0, 20.0, 240)) * 80.0,
+                np.cos(np.linspace(0.0, 18.0, 240)) * 70.0,
+                np.sin(np.linspace(0.0, 24.0, 240)) * 60.0,
+                np.cos(np.linspace(0.0, 14.0, 240)) * 50.0,
+            ]
+            packet = _FakeEEGTimedData(channels, timestamps_ms)
+
+            table.add_eeg_data(packet)
+            table.refresh()
+
+            self.assertEqual(table.row_trace_view_mode(0), "preview")
+            self.assertEqual(table.row_trace_view_mode(3), "preview")
+            self.assertEqual(len(table._rows), 4)
+            _, preview_y = table._rows[3]["curve"].getData()
+            self.assertTrue(np.allclose(np.asarray(preview_y, dtype=float), 0.0))
+
+            table.toggle_row_trace_view_mode(3)
+            _, live_y = table._rows[3]["curve"].getData()
+            _, row0_y = table._rows[0]["curve"].getData()
+            self.assertGreater(np.max(np.abs(np.asarray(live_y, dtype=float))), 0.0)
+            self.assertTrue(np.allclose(np.asarray(row0_y, dtype=float), 0.0))
+        finally:
+            table.close()
+
+    def test_electrode_table_clear_resets_row_preview_and_zoom(self):
+        table = ElectrodeTable()
+        try:
+            timestamps_ms = [index * 4 for index in range(240)]
+            raw = np.sin(np.linspace(0.0, 24.0, 240)) * 85.0
+            packet = _FakeEEGTimedData([raw, raw * 0.5], timestamps_ms)
+            table.add_eeg_data(packet)
+            table.toggle_row_trace_view_mode(0)
+            table._apply_row_zoom_delta(0, 120)
+            self.assertEqual(table.row_trace_view_mode(0), "live")
+            self.assertNotEqual(table._row_zoom_factors[0], 1.0)
+
+            table.clear()
+
+            self.assertEqual(table.row_trace_view_mode(0), "preview")
+            self.assertEqual(table.row_trace_view_mode(1), "preview")
+            self.assertEqual(table._row_zoom_factors[0], 1.0)
+            self.assertEqual(table._row_zoom_factors[1], 1.0)
+        finally:
+            table.close()
+
+    def test_electrode_table_plot_double_click_signal_toggles_only_clicked_row(self):
+        table = ElectrodeTable()
+        try:
+            self.assertEqual(table.row_trace_view_mode(0), "preview")
+            self.assertEqual(table.row_trace_view_mode(1), "preview")
+
+            table._rows[0]["plot"].trace_double_clicked.emit(0)
+            self.assertEqual(table.row_trace_view_mode(0), "live")
+            self.assertEqual(table.row_trace_view_mode(1), "preview")
+
+            table._rows[1]["plot"].trace_double_clicked.emit(1)
+            self.assertEqual(table.row_trace_view_mode(0), "live")
+            self.assertEqual(table.row_trace_view_mode(1), "live")
+
+            table._rows[0]["plot"].trace_double_clicked.emit(0)
+            self.assertEqual(table.row_trace_view_mode(0), "preview")
+            self.assertEqual(table.row_trace_view_mode(1), "live")
+        finally:
+            table.close()
+
+    def test_electrode_table_plot_wheel_zoom_changes_only_target_row(self):
+        table = ElectrodeTable()
+        try:
+            timestamps_ms = [index * 4 for index in range(300)]
+            raw = np.sin(np.linspace(0.0, 40.0, 300)) * 95.0
+            packet = _FakeEEGTimedData([raw, raw * 0.5], timestamps_ms)
+
+            table.add_eeg_data(packet)
+            table.toggle_row_trace_view_mode(0)
+            table.refresh()
+
+            before_row0 = table._rows[0]["plot"].getViewBox().viewRange()[1]
+            before_row1 = table._rows[1]["plot"].getViewBox().viewRange()[1]
+
+            table._rows[0]["plot"].trace_wheel_zoom_requested.emit(0, 120)
+
+            after_row0 = table._rows[0]["plot"].getViewBox().viewRange()[1]
+
+            self.assertLess(after_row0[1] - after_row0[0], before_row0[1] - before_row0[0])
+            self.assertLess(table._row_zoom_factors[0], 1.0)
+            self.assertEqual(table._row_zoom_factors[1], 1.0)
+            self.assertEqual(table.row_trace_view_mode(1), "preview")
+        finally:
+            table.close()
+
     def test_main_window_extract_eeg_snapshot_preserves_microvolt_values(self):
         timestamps_ms = [0.0, 4.0, 8.0, 12.0]
         raw = np.asarray([12.0, -18.0, 24.0, -9.0], dtype=float)

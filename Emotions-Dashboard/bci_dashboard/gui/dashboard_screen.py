@@ -409,6 +409,7 @@ class DashboardScreen(QWidget):
         if not self._streaming_active:
             self._eeg_dirty = False
             self._psd_dirty = False
+            self._electrode_table.reset_interaction_state()
             self._eeg_timer.stop()
             return
         if self._view_active and not self._eeg_timer.isActive():
@@ -721,6 +722,7 @@ class DashboardScreen(QWidget):
         self._eeg_display_filter.reset()
         self._electrode_table.set_session_start(self._session_start_wall)
         self._electrode_table.clear()
+        self._electrode_table.reset_interaction_state()
         self._update_ppg_metrics_panel()
         self._refresh_filter_label()
         if self._streaming_active and self._view_active:

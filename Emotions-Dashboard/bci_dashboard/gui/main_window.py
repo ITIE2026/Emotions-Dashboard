@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 from queue import Queue
 
 import numpy as np
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from calibration.calibration_manager import CalibrationManager
+from calibration.calibration_store import load_calibration
 from classifiers.cardio_handler import CardioHandler
 from classifiers.emotions_handler import EmotionsHandler
 from classifiers.mems_handler import MemsHandler
@@ -35,6 +37,7 @@ from device.device_status_monitor import DeviceStatusMonitor
 from gui.calibration_screen import CalibrationScreen
 from gui.connection_screen import ConnectionScreen
 from gui.dashboard_screen import DashboardScreen
+from gui.metric_graph_windows import CognitiveStatesWindow, TimeSeriesGraphWindow, graph_spec
 from gui.mems_screen import MemsScreen
 from gui.phaseon_screen import PhaseonScreen
 from gui.sessions_screen import SessionsScreen
@@ -56,6 +59,8 @@ from utils.helpers import compute_band_powers, compute_peak_frequencies
 
 
 log = logging.getLogger(__name__)
+
+GRAPH_HISTORY_RETENTION_SEC = 15.0 * 60.0
 
 PAGE_CONNECTION = 0
 PAGE_CALIBRATION = 1
@@ -307,6 +312,11 @@ class MainWindow(QMainWindow):
         self._latest_band_powers: dict = {}
         self._latest_peak_freqs: dict = {}
         self._latest_psd_t: float | None = None
+        self._graph_windows: dict[str, QWidget] = {}
+        self._active_graphs: set[str] = set()
+        self._graph_histories: dict[str, dict[str, deque]] = {}
+        self._graph_references: dict[str, float | None] = {}
+        self._graph_session_starts: dict[str, float] = {}
         self._iapf_status: dict = {
             "frequency": None,
             "source": "Not set",
@@ -436,6 +446,15 @@ class MainWindow(QMainWindow):
         file_menu.addAction(exit_act)
 
         eeg_menu = mb.addMenu("EEG")
+        eeg_graph_map = {
+            "Frequency Peaks": "frequency_peaks",
+            "Concentration Index": "concentration_index",
+            "Relaxation Index": "relaxation_index",
+            "Fatigue Score": "fatigue_score",
+            "Reverse Fatigue Score": "reverse_fatigue_score",
+            "Accumulated Fatigue": "accumulated_fatigue",
+            "EEG Quality": "eeg_quality",
+        }
         for name in [
             "Frequency Peaks",
             "Concentration Index",
@@ -446,7 +465,7 @@ class MainWindow(QMainWindow):
             "EEG Quality",
         ]:
             act = QAction(name, self)
-            act.triggered.connect(lambda checked, n=name: self._show_dashboard(n))
+            act.triggered.connect(lambda checked=False, gid=eeg_graph_map[name]: self._show_metric_graph(gid))
             eeg_menu.addAction(act)
 
         ppg_menu = mb.addMenu("PPG")
@@ -466,6 +485,13 @@ class MainWindow(QMainWindow):
         mems_menu.addAction(rhythms_act)
 
         prod_menu = mb.addMenu("Productivity")
+        productivity_graph_map = {
+            "Concentration Index": "concentration_index",
+            "Fatigue Score": "fatigue_score",
+            "Reverse Fatigue Score": "reverse_fatigue_score",
+            "Alpha Gravity": "alpha_gravity",
+            "Productivity Score": "productivity_score",
+        }
         for name in [
             "Productivity Tab",
             "Concentration Index",
@@ -475,12 +501,15 @@ class MainWindow(QMainWindow):
             "Productivity Score",
         ]:
             act = QAction(name, self)
-            act.triggered.connect(lambda checked, n=name: self._show_dashboard(n))
+            if name == "Productivity Tab":
+                act.triggered.connect(lambda checked=False, n=name: self._show_dashboard(n))
+            else:
+                act.triggered.connect(lambda checked=False, gid=productivity_graph_map[name]: self._show_metric_graph(gid))
             prod_menu.addAction(act)
 
         emo_menu = mb.addMenu("Emotions")
         cog_act = QAction("Cognitive States", self)
-        cog_act.triggered.connect(lambda: self._show_dashboard("Emotions"))
+        cog_act.triggered.connect(lambda: self._show_metric_graph("cognitive_states"))
         emo_menu.addAction(cog_act)
 
         phaseon_menu = mb.addMenu("Phaseon")
@@ -519,6 +548,21 @@ class MainWindow(QMainWindow):
         if section_id:
             QTimer.singleShot(0, lambda sid=section_id: self._dash_screen.show_section(sid))
 
+    def _show_metric_graph(self, graph_id: str):
+        window = self._graph_windows.get(graph_id)
+        if window is None:
+            window = self._create_metric_graph_window(graph_id)
+            if window is None:
+                return
+            self._graph_windows[graph_id] = window
+        if not self.is_graph_active(graph_id):
+            self.activate_graph(graph_id)
+        else:
+            self._refresh_metric_graph_window(graph_id)
+        window.show()
+        window.raise_()
+        window.activateWindow()
+
     def _show_mems(self, section: str = ""):
         self._stack.setCurrentIndex(PAGE_MEMS)
         section_map = {
@@ -534,6 +578,207 @@ class MainWindow(QMainWindow):
 
     def _show_phaseon(self):
         self._stack.setCurrentIndex(PAGE_PHASEON)
+
+    @staticmethod
+    def _build_graph_history_store(graph_id: str):
+        spec = graph_spec(graph_id)
+        if spec is None:
+            return {}
+        return {series.key: deque() for series in spec.series}
+
+    def _create_metric_graph_window(self, graph_id: str):
+        if graph_id == "cognitive_states":
+            window = CognitiveStatesWindow(self)
+        else:
+            spec = graph_spec(graph_id)
+            if spec is None:
+                return None
+            window = TimeSeriesGraphWindow(spec, self)
+        window.setAttribute(Qt.WA_DeleteOnClose, False)
+        window.window_closed.connect(lambda gid=graph_id: self.deactivate_graph(gid))
+        return window
+
+    def is_graph_active(self, graph_id: str) -> bool:
+        return graph_id in self._active_graphs
+
+    def activate_graph(self, graph_id: str):
+        if graph_id not in self._graph_windows:
+            return
+        self._active_graphs.add(graph_id)
+        self.reset_graph_history(graph_id)
+        self._seed_graph_history(graph_id)
+        self._refresh_metric_graph_window(graph_id)
+
+    def deactivate_graph(self, graph_id: str):
+        self._active_graphs.discard(graph_id)
+        self._graph_histories.pop(graph_id, None)
+        self._graph_session_starts.pop(graph_id, None)
+
+    def reset_graph_history(self, graph_id: str):
+        self._graph_session_starts[graph_id] = time.monotonic()
+        self._graph_histories[graph_id] = self._build_graph_history_store(graph_id)
+
+    def append_graph_point(self, graph_id: str, series_key: str, value, timestamp: float | None = None):
+        if not self.is_graph_active(graph_id):
+            return
+        history_store = self._graph_histories.setdefault(
+            graph_id,
+            self._build_graph_history_store(graph_id),
+        )
+        if series_key not in history_store or value is None:
+            return
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return
+        ts = float(timestamp if timestamp is not None else time.monotonic())
+        history = history_store[series_key]
+        history.append((ts, numeric))
+        cutoff = ts - GRAPH_HISTORY_RETENTION_SEC
+        while history and history[0][0] < cutoff:
+            history.popleft()
+
+    def _seed_graph_history(self, graph_id: str):
+        timestamp = time.monotonic()
+        if graph_id == "frequency_peaks":
+            self.append_graph_point(graph_id, "alpha_peak", self._latest_peak_freqs.get("alpha_peak"), timestamp)
+            self.append_graph_point(graph_id, "beta_peak", self._latest_peak_freqs.get("beta_peak"), timestamp)
+            self.append_graph_point(graph_id, "theta_peak", self._latest_peak_freqs.get("theta_peak"), timestamp)
+            return
+
+        graph_seed_values = {
+            "concentration_index": ("concentrationScore", self._latest_prod.get("concentrationScore")),
+            "relaxation_index": ("relaxationScore", self._latest_prod.get("relaxationScore")),
+            "fatigue_score": ("fatigueScore", self._latest_prod.get("fatigueScore")),
+            "reverse_fatigue_score": ("reverseFatigueScore", self._latest_prod.get("reverseFatigueScore")),
+            "alpha_gravity": ("gravityScore", self._latest_prod.get("gravityScore")),
+            "productivity_score": ("currentValue", self._latest_prod.get("currentValue")),
+            "accumulated_fatigue": ("accumulatedFatigue", self._latest_prod.get("accumulatedFatigue")),
+            "eeg_quality": ("eegQuality", self._latest_eeg_quality_value()),
+        }
+        series = graph_seed_values.get(graph_id)
+        if series is not None:
+            self.append_graph_point(graph_id, series[0], series[1], timestamp)
+
+    def _refresh_metric_graph_window(self, graph_id: str):
+        window = self._graph_windows.get(graph_id)
+        if window is None or not self.is_graph_active(graph_id):
+            return
+        if graph_id == "cognitive_states":
+            window.set_bar_values(
+                {
+                    "Attention": float(self._latest_emo.get("attention", 0.0) or 0.0),
+                    "Relaxation": float(self._latest_emo.get("relaxation", 0.0) or 0.0),
+                    "Cognitive Load": float(self._latest_emo.get("cognitiveLoad", 0.0) or 0.0),
+                    "Cognitive Control": float(self._latest_emo.get("cognitiveControl", 0.0) or 0.0),
+                }
+            )
+            return
+
+        spec = graph_spec(graph_id)
+        if spec is None:
+            return
+        history = {
+            series.key: list(self._graph_histories.get(graph_id, {}).get(series.key, ()))
+            for series in spec.series
+        }
+        window.set_session_start(self._graph_session_starts.get(graph_id, time.monotonic()))
+        window.set_history_data(history, references=self._graph_references)
+
+    def _refresh_all_metric_graphs(self):
+        for graph_id in list(self._active_graphs):
+            self._refresh_metric_graph_window(graph_id)
+
+    def _append_graph_history(self, key: str, value, timestamp: float | None = None):
+        raise NotImplementedError("Use append_graph_point(graph_id, series_key, value, timestamp) instead.")
+
+    def _reset_metric_graph_history(self):
+        for graph_id in list(self._active_graphs):
+            self.reset_graph_history(graph_id)
+            self._seed_graph_history(graph_id)
+        self._refresh_all_metric_graphs()
+
+    def _load_saved_graph_references(self, serial: str):
+        self._graph_references.clear()
+        if not serial:
+            self._refresh_all_metric_graphs()
+            return
+        try:
+            data = load_calibration(serial) or {}
+        except Exception:
+            data = {}
+        prod = data.get("prod_baselines") or {}
+        if prod:
+            self._graph_references.update(
+                {
+                    "gravityBaseline": float(prod.get("gravity")) if prod.get("gravity") is not None else None,
+                    "productivityBaseline": float(prod.get("productivity")) if prod.get("productivity") is not None else None,
+                    "fatigueBaseline": float(prod.get("fatigue")) if prod.get("fatigue") is not None else None,
+                    "reverseFatigueBaseline": float(prod.get("reverseFatigue")) if prod.get("reverseFatigue") is not None else None,
+                    "relaxationBaseline": float(prod.get("relaxation")) if prod.get("relaxation") is not None else None,
+                    "concentrationBaseline": float(prod.get("concentration")) if prod.get("concentration") is not None else None,
+                }
+            )
+        self._refresh_all_metric_graphs()
+
+    def _update_graph_references_from_prod_baselines(self, data: dict):
+        if not data:
+            return
+        mapping = {
+            "gravity": "gravityBaseline",
+            "productivity": "productivityBaseline",
+            "fatigue": "fatigueBaseline",
+            "reverseFatigue": "reverseFatigueBaseline",
+            "relaxation": "relaxationBaseline",
+            "concentration": "concentrationBaseline",
+        }
+        for source_key, target_key in mapping.items():
+            value = data.get(source_key)
+            if value is None:
+                continue
+            try:
+                self._graph_references[target_key] = float(value)
+            except (TypeError, ValueError):
+                continue
+        self._refresh_all_metric_graphs()
+
+    def _update_graph_references_from_indexes(self, data: dict):
+        if not data:
+            return
+        for key in (
+            "gravityBaseline",
+            "productivityBaseline",
+            "fatigueBaseline",
+            "reverseFatigueBaseline",
+            "relaxationBaseline",
+            "concentrationBaseline",
+        ):
+            value = data.get(key)
+            if value is None:
+                continue
+            try:
+                self._graph_references[key] = float(value)
+            except (TypeError, ValueError):
+                continue
+        self._refresh_all_metric_graphs()
+
+    def _append_eeg_quality_history(self, timestamp: float | None = None):
+        self.append_graph_point(
+            "eeg_quality",
+            "eegQuality",
+            self._latest_eeg_quality_value(),
+            timestamp=timestamp,
+        )
+
+    def _latest_eeg_quality_value(self) -> float | None:
+        has_prod_artifacts = bool(self._latest_indexes.get("hasArtifacts", False))
+        has_physio_artifacts = bool(
+            self._latest_physio.get("nfbArtifacts", False)
+            or self._latest_physio.get("cardioArtifacts", False)
+        )
+        if not self._latest_indexes and not self._latest_physio:
+            return None
+        return 0.0 if (has_prod_artifacts or has_physio_artifacts) else 100.0
 
     def _on_stop_signal(self):
         if self._streaming:
@@ -693,6 +938,9 @@ class MainWindow(QMainWindow):
             serial = self._dm.device_serial or ""
             if self._cal_mgr and serial and self._cal_mgr.can_import(serial):
                 self._cal_mgr.import_saved(serial)
+                self._load_saved_graph_references(serial)
+            else:
+                self._load_saved_graph_references("")
             if not self._session_active:
                 self._safe_start_streaming()
                 if self._streaming:
@@ -782,6 +1030,7 @@ class MainWindow(QMainWindow):
         mode = cal_data.get("mode", "quick")
         nfb = cal_data.get("nfb", {})
         freq = float(nfb.get("individualFrequency", 0.0) or 0.0) if nfb else 0.0
+        self._update_graph_references_from_prod_baselines(cal_data.get("prod_baselines", {}))
         if mode == "detect":
             text = f"iAPF detection finished successfully ({freq:.2f} Hz)"
         else:
@@ -838,6 +1087,7 @@ class MainWindow(QMainWindow):
         if self._session_active:
             return
 
+        self._reset_metric_graph_history()
         metadata = {
             "deviceInfo": {
                 "deviceType": self._conn_screen.selected_device_type_value,
@@ -907,6 +1157,8 @@ class MainWindow(QMainWindow):
         self._latest_emo = data or {}
         self._dash_screen.on_emotions(data)
         self._training_screen.on_emotions(data)
+        if self.is_graph_active("cognitive_states"):
+            self._refresh_metric_graph_window("cognitive_states")
         if self._session_active:
             self._recorder.record_emotions(self._latest_emo)
 
@@ -915,12 +1167,41 @@ class MainWindow(QMainWindow):
         self._dash_screen.on_productivity(data)
         self._phaseon_runtime.ingest_productivity(data)
         self._training_screen.on_productivity(data)
+        now = time.monotonic()
+        self.append_graph_point("concentration_index", "concentrationScore", self._latest_prod.get("concentrationScore"), timestamp=now)
+        self.append_graph_point("relaxation_index", "relaxationScore", self._latest_prod.get("relaxationScore"), timestamp=now)
+        self.append_graph_point("fatigue_score", "fatigueScore", self._latest_prod.get("fatigueScore"), timestamp=now)
+        self.append_graph_point("reverse_fatigue_score", "reverseFatigueScore", self._latest_prod.get("reverseFatigueScore"), timestamp=now)
+        self.append_graph_point("alpha_gravity", "gravityScore", self._latest_prod.get("gravityScore"), timestamp=now)
+        self.append_graph_point("productivity_score", "currentValue", self._latest_prod.get("currentValue"), timestamp=now)
+        self.append_graph_point("accumulated_fatigue", "accumulatedFatigue", self._latest_prod.get("accumulatedFatigue"), timestamp=now)
+        for graph_id in (
+            "concentration_index",
+            "relaxation_index",
+            "fatigue_score",
+            "reverse_fatigue_score",
+            "alpha_gravity",
+            "productivity_score",
+            "accumulated_fatigue",
+        ):
+            self._refresh_metric_graph_window(graph_id)
         if self._session_active:
             self._recorder.record_productivity_metrics(self._latest_prod)
 
     def _on_productivity_indexes(self, data: dict):
         self._latest_indexes = data or {}
         self._dash_screen.on_indexes(data)
+        self._update_graph_references_from_indexes(self._latest_indexes)
+        self._append_eeg_quality_history(timestamp=time.monotonic())
+        for graph_id in (
+            "concentration_index",
+            "relaxation_index",
+            "fatigue_score",
+            "reverse_fatigue_score",
+            "alpha_gravity",
+            "eeg_quality",
+        ):
+            self._refresh_metric_graph_window(graph_id)
         if self._session_active:
             self._recorder.record_productivity_indexes(self._latest_indexes)
 
@@ -940,6 +1221,8 @@ class MainWindow(QMainWindow):
         self._latest_physio = data or {}
         self._dash_screen.on_physio_states(data)
         self._training_screen.on_physio_states(data)
+        self._append_eeg_quality_history(timestamp=time.monotonic())
+        self._refresh_metric_graph_window("eeg_quality")
 
     def _on_psd(self, psd_data):
         if not self._streaming:
@@ -950,11 +1233,15 @@ class MainWindow(QMainWindow):
         self._latest_psd_t = float(psd_snapshot.get("received_at", time.monotonic()))
         self._latest_band_powers = dict(psd_snapshot.get("band_powers", {}))
         self._latest_peak_freqs = dict(psd_snapshot.get("peak_frequencies", {}))
+        self.append_graph_point("frequency_peaks", "alpha_peak", self._latest_peak_freqs.get("alpha_peak"), timestamp=self._latest_psd_t)
+        self.append_graph_point("frequency_peaks", "beta_peak", self._latest_peak_freqs.get("beta_peak"), timestamp=self._latest_psd_t)
+        self.append_graph_point("frequency_peaks", "theta_peak", self._latest_peak_freqs.get("theta_peak"), timestamp=self._latest_psd_t)
         self._training_screen.update_signal_snapshot(
             self._latest_band_powers,
             self._latest_peak_freqs,
             self._latest_psd_t,
         )
+        self._refresh_metric_graph_window("frequency_peaks")
         if self._stack.currentIndex() == PAGE_DASHBOARD:
             if hasattr(self._dash_screen, "on_psd_snapshot"):
                 self._dash_screen.on_psd_snapshot(psd_snapshot)
@@ -1081,6 +1368,11 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         log.info("Application closing")
         self._stop_session()
+        for window in self._graph_windows.values():
+            try:
+                window.close()
+            except Exception:
+                pass
         self._training_screen.shutdown()
         self._phaseon_runtime.shutdown()
         self._dm.disconnect()

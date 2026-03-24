@@ -1,3 +1,7 @@
 bci_dashboard/logs/
 bci_dashboard/sessions/
 *.log
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

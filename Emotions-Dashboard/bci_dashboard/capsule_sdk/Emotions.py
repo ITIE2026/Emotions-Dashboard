@@ -6,10 +6,10 @@ from CapsulePointersImpl import capsule_pointers
 class Emotions_States(ctypes.Structure):
     _fields_ = [
         ("timestampMilli", ctypes.c_int64),
-        ("focus", ctypes.c_float),
-        ("chill", ctypes.c_float),
-        ("stress", ctypes.c_float),
-        ("anger", ctypes.c_float),
+        ("attention", ctypes.c_float),
+        ("relaxation", ctypes.c_float),
+        ("cognitiveLoad", ctypes.c_float),
+        ("cognitiveControl", ctypes.c_float),
         ("selfControl", ctypes.c_float),
     ]
 

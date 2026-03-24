@@ -12,7 +12,7 @@ import time
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -43,6 +43,10 @@ _HEADER_BG = "#5E70B7"
 _ROW_BG = "#2A2E48"
 _MIN_HEIGHT_BASE = 78
 _MIN_HEIGHT_PER_ROW = 82
+_DEFAULT_ROW_ZOOM = 1.0
+_MIN_ROW_ZOOM = 0.35
+_MAX_ROW_ZOOM = 4.0
+_ROW_ZOOM_STEP = 1.15
 
 
 class _SessionAxisItem(pg.AxisItem):
@@ -65,6 +69,32 @@ class _SessionAxisItem(pg.AxisItem):
         return labels
 
 
+class _TracePlotWidget(pg.PlotWidget):
+    trace_double_clicked = Signal(int)
+    trace_wheel_zoom_requested = Signal(int, int)
+
+    def __init__(self, row_index: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._row_index = int(row_index)
+
+    def mouseDoubleClickEvent(self, event):  # noqa: N802 - Qt API
+        self.trace_double_clicked.emit(self._row_index)
+        if event is not None:
+            event.accept()
+
+    def wheelEvent(self, event):  # noqa: N802 - Qt API
+        delta_y = 0
+        if event is not None:
+            try:
+                delta_y = int(event.angleDelta().y())
+            except Exception:
+                delta_y = 0
+        if delta_y:
+            self.trace_wheel_zoom_requested.emit(self._row_index, delta_y)
+        if event is not None:
+            event.accept()
+
+
 class ElectrodeTable(QWidget):
     """Live EEG summary table used by the dashboard."""
 
@@ -83,6 +113,8 @@ class ElectrodeTable(QWidget):
         self._has_artifacts: dict[str, bool] = {}
         self._plot_half_ranges: dict[int, float] = {}
         self._dirty = False
+        self._row_trace_modes: dict[int, str] = {}
+        self._row_zoom_factors: dict[int, float] = {}
         self._rows: dict[int, dict] = {}
         self._build_ui()
         self.set_channel_names(_DEFAULT_BIPOLAR_CHANNEL_NAMES)
@@ -173,6 +205,52 @@ class ElectrodeTable(QWidget):
         self._rebuild_display_buffers()
         self._dirty = True
 
+    def set_row_trace_view_mode(self, row_index: int, mode: str):
+        if row_index not in self._rows:
+            return
+        normalized = "live" if str(mode).lower() == "live" else "preview"
+        if normalized == self._row_trace_modes.get(row_index, "preview"):
+            return
+        self._row_trace_modes[row_index] = normalized
+        self._dirty = True
+        self.refresh()
+
+    def toggle_row_trace_view_mode(self, row_index: int):
+        next_mode = (
+            "live"
+            if self._row_trace_modes.get(row_index, "preview") == "preview"
+            else "preview"
+        )
+        self.set_row_trace_view_mode(row_index, next_mode)
+
+    def row_trace_view_mode(self, row_index: int) -> str:
+        return self._row_trace_modes.get(row_index, "preview")
+
+    def reset_interaction_state(self):
+        self._row_trace_modes = {index: "preview" for index in self._rows}
+        self._row_zoom_factors = {
+            index: _DEFAULT_ROW_ZOOM for index in self._rows
+        }
+        self._dirty = True
+        if self._rows:
+            self.refresh()
+
+    def _apply_row_zoom_delta(self, row_index: int, delta_y: int):
+        if row_index not in self._rows:
+            return
+        if self.row_trace_view_mode(row_index) != "live":
+            return
+        factor = self._row_zoom_factors.get(row_index, _DEFAULT_ROW_ZOOM)
+        if delta_y > 0:
+            factor /= _ROW_ZOOM_STEP
+        else:
+            factor *= _ROW_ZOOM_STEP
+        self._row_zoom_factors[row_index] = float(
+            np.clip(factor, _MIN_ROW_ZOOM, _MAX_ROW_ZOOM)
+        )
+        self._dirty = True
+        self.refresh()
+
     def set_channel_names(self, channel_names=None):
         if not channel_names:
             channel_names = list(_DEFAULT_BIPOLAR_CHANNEL_NAMES)
@@ -200,6 +278,7 @@ class ElectrodeTable(QWidget):
             index: 70.0 for index in range(len(self._channel_names))
         }
         self._rebuild_row_widgets()
+        self.reset_interaction_state()
         min_height = _MIN_HEIGHT_BASE + (len(self._channel_names) * _MIN_HEIGHT_PER_ROW)
         self.setMinimumHeight(max(220, min_height))
         self._dirty = True
@@ -399,6 +478,7 @@ class ElectrodeTable(QWidget):
                 continue
 
             visible_y = y[visible_mask]
+            visible_t = t[visible_mask]
             baseline = float(np.median(visible_y))
             centered_visible = visible_y - baseline
             avg_uv = float(np.mean(np.abs(centered_visible))) if centered_visible.size else 0.0
@@ -415,11 +495,24 @@ class ElectrodeTable(QWidget):
             centered_all = y - baseline
             plot_limit = half_range * 2.5
             centered_all = np.clip(centered_all, -plot_limit, plot_limit)
-            plot_t, plot_y = self._downsample_for_plot(t, centered_all)
+            row_zoom = self._row_zoom_factors.get(ch_idx, _DEFAULT_ROW_ZOOM)
+            display_half_range = float(
+                np.clip(
+                    half_range * row_zoom,
+                    _MIN_HALF_RANGE_UV * _MIN_ROW_ZOOM,
+                    _MAX_HALF_RANGE_UV * _MAX_ROW_ZOOM,
+                )
+            )
+
+            if self.row_trace_view_mode(ch_idx) == "live":
+                plot_t, plot_y = self._downsample_for_plot(t, centered_all)
+            else:
+                preview_y = np.zeros_like(visible_t, dtype=float)
+                plot_t, plot_y = self._downsample_for_plot(visible_t, preview_y)
 
             row["curve"].setData(plot_t, plot_y)
             row["plot"].setXRange(t_start, t_end, padding=0)
-            row["plot"].setYRange(-half_range, half_range, padding=0)
+            row["plot"].setYRange(-display_half_range, display_half_range, padding=0)
             display_name = self._channel_names[ch_idx]
             self._avg_uv[display_name] = avg_uv
             row["avg_lbl"].setText(f"{avg_uv:.3f}")
@@ -431,6 +524,10 @@ class ElectrodeTable(QWidget):
         self._avg_uv = {name: 0.0 for name in self._channel_names}
         self._has_artifacts = {name: False for name in self._channel_names}
         self._plot_half_ranges = {index: 70.0 for index in self._rows}
+        self._row_trace_modes = {index: "preview" for index in self._rows}
+        self._row_zoom_factors = {
+            index: _DEFAULT_ROW_ZOOM for index in self._rows
+        }
         if hasattr(self._display_filter, "reset"):
             self._display_filter.reset()
         self._dirty = False
@@ -505,7 +602,7 @@ class ElectrodeTable(QWidget):
 
             axis = _SessionAxisItem(orientation="bottom")
             axis.set_session_start(self._session_start)
-            plot = pg.PlotWidget(axisItems={"bottom": axis})
+            plot = _TracePlotWidget(index, axisItems={"bottom": axis})
             plot.setBackground(_GRAPH_BG)
             plot.setFixedHeight(82 if index == last_index else 72)
             plot.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -537,6 +634,8 @@ class ElectrodeTable(QWidget):
                     width=1.4,
                 )
             )
+            plot.trace_double_clicked.connect(self.toggle_row_trace_view_mode)
+            plot.trace_wheel_zoom_requested.connect(self._apply_row_zoom_delta)
 
             row.addWidget(name_lbl)
             row.addWidget(art_lbl)

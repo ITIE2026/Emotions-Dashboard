@@ -2,10 +2,12 @@
 EmotionsHandler – wraps the Capsule Emotions classifier.
 
 Emits a Qt signal every time Emotions_States are received:
-  focus, chill, stress, anger, selfControl  (all 0–100 floats)
+  attention, relaxation, cognitiveLoad, cognitiveControl, selfControl
+  plus compatibility aliases used elsewhere in the app:
+  focus, chill, stress, anger
 
-Values from the SDK are raw floats (typically 0–1 but can exceed 1).
-We apply *100, clamp to [0,100], and smooth with EMA to prevent jitter.
+Values from the SDK are expected in 0–100 range.
+We clamp to [0,100] and smooth with EMA to prevent jitter.
 """
 import sys
 import logging
@@ -47,8 +49,11 @@ class EmotionsHandler(QObject):
 
         # EMA state per emotion (None = first sample)
         self._ema = {
-            "focus": None, "chill": None, "stress": None,
-            "anger": None, "selfControl": None,
+            "attention": None,
+            "relaxation": None,
+            "cognitiveLoad": None,
+            "cognitiveControl": None,
+            "selfControl": None,
         }
 
     # ── Capsule callbacks ─────────────────────────────────────────────
@@ -56,11 +61,11 @@ class EmotionsHandler(QObject):
         try:
             # Emotions SDK values are already in 0–100 range – use directly.
             raw = {
-                "focus":       _clamp(float(states.focus)),
-                "chill":       _clamp(float(states.chill)),
-                "stress":      _clamp(float(states.stress)),
-                "anger":       _clamp(float(states.anger)),
-                "selfControl": _clamp(float(states.selfControl)),
+                "attention":        _clamp(float(states.attention)),
+                "relaxation":       _clamp(float(states.relaxation)),
+                "cognitiveLoad":    _clamp(float(states.cognitiveLoad)),
+                "cognitiveControl": _clamp(float(states.cognitiveControl)),
+                "selfControl":      _clamp(float(states.selfControl)),
             }
 
             data = {}
@@ -68,11 +73,17 @@ class EmotionsHandler(QObject):
                 self._ema[key] = _ema(self._ema[key], val)
                 data[key] = round(self._ema[key], 1)
 
+            # Backward-compatible aliases used by the existing dashboard and trackers.
+            data["focus"] = data["attention"]
+            data["chill"] = data["relaxation"]
+            data["stress"] = data["cognitiveLoad"]
+            data["anger"] = data["cognitiveControl"]
+
             data["timestamp"] = int(states.timestampMilli)
 
             log.debug(
-                "Emotions → focus=%.1f%% chill=%.1f%% stress=%.1f%%",
-                data["focus"], data["chill"], data["stress"],
+                "Emotions → attention=%.1f%% relaxation=%.1f%% load=%.1f%%",
+                data["attention"], data["relaxation"], data["cognitiveLoad"],
             )
             self.states_updated.emit(data)
         except Exception as exc:
