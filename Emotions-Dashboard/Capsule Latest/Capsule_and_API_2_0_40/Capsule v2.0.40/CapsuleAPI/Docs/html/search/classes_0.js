@@ -1,0 +1,22 @@
+var searchData=
+[
+  ['classification_0',['Classification',['../classcapsule_1_1client_1_1_classification.html',1,'capsule::client']]],
+  ['classificationcardio_1',['ClassificationCardio',['../classcapsule_1_1client_1_1_classification_cardio.html',1,'capsule::client']]],
+  ['classificationemotions_2',['ClassificationEmotions',['../classcapsule_1_1client_1_1_classification_emotions.html',1,'capsule::client']]],
+  ['classificationmems_3',['ClassificationMEMS',['../classcapsule_1_1client_1_1_classification_m_e_m_s.html',1,'capsule::client']]],
+  ['classificationnfb_4',['ClassificationNFB',['../classcapsule_1_1client_1_1_classification_n_f_b.html',1,'capsule::client']]],
+  ['classificationphysiologicalstates_5',['ClassificationPhysiologicalStates',['../classcapsule_1_1client_1_1_classification_physiological_states.html',1,'capsule::client']]],
+  ['classificationproductivity_6',['ClassificationProductivity',['../classcapsule_1_1client_1_1_classification_productivity.html',1,'capsule::client']]],
+  ['clccardio_5fdata_7',['clCCardio_Data',['../structcl_c_cardio___data.html',1,'']]],
+  ['clcemotions_5fstates_8',['clCEmotions_States',['../structcl_c_emotions___states.html',1,'']]],
+  ['clcerror_9',['clCError',['../structcl_c_error.html',1,'']]],
+  ['clcindividualnfbdata_10',['clCIndividualNFBData',['../structcl_c_individual_n_f_b_data.html',1,'']]],
+  ['clcnfb_5fuserstate_11',['clCNFB_UserState',['../structcl_c_n_f_b___user_state.html',1,'']]],
+  ['clcphysiologicalstates_5fbaselines_12',['clCPhysiologicalStates_Baselines',['../structcl_c_physiological_states___baselines.html',1,'']]],
+  ['clcphysiologicalstates_5fvalue_13',['clCPhysiologicalStates_Value',['../structcl_c_physiological_states___value.html',1,'']]],
+  ['clcpoint3d_14',['clCPoint3d',['../structcl_c_point3d.html',1,'']]],
+  ['clcproductivity_5fbaselines_15',['clCProductivity_Baselines',['../structcl_c_productivity___baselines.html',1,'']]],
+  ['clcproductivity_5findexes_16',['clCProductivity_Indexes',['../structcl_c_productivity___indexes.html',1,'']]],
+  ['clcproductivity_5fmetrics_17',['clCProductivity_Metrics',['../structcl_c_productivity___metrics.html',1,'']]],
+  ['clientexception_18',['ClientException',['../classcapsule_1_1client_1_1_client_exception.html',1,'capsule::client']]]
+];

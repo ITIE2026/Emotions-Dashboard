@@ -1,0 +1,27 @@
+var searchData=
+[
+  ['get_20accelerometer_20and_20gyroscope_20readings_20from_20mems_20event_3a_0',['Get accelerometer and gyroscope readings from MEMS event:',['../work_with_accelerometer_and_gyroscope_readings.html#autotoc_md48',1,'']]],
+  ['get_20channel_20info_3a_1',['Get channel info:',['../devices_modes.html#autotoc_md21',1,'']]],
+  ['get_20data_20readings_20from_20ppg_20event_3a_2',['Get data readings from PPG event:',['../work_with_cardio_metrics.html#autotoc_md51',1,'']]],
+  ['get_20data_20stream_3',['Get Data stream',['../raw_and_raw_filtered_signal.html#autotoc_md45',1,'']]],
+  ['get_20started_4',['Get Started',['../get_started.html',1,'']]],
+  ['get_20started_2emd_5',['Get Started.md',['../_get_01_started_8md.html',1,'']]],
+  ['getbatterycharge_6',['GetBatteryCharge',['../classcapsule_1_1client_1_1_device.html#a99749107c0d577a2abf0e231ed6481aa',1,'capsule::client::Device']]],
+  ['getchannelnames_7',['GetChannelNames',['../classcapsule_1_1client_1_1_device.html#ac181745e758d6b69ba5255be39a34af7',1,'capsule::client::Device']]],
+  ['geteegsamplerate_8',['GetEEGSampleRate',['../classcapsule_1_1client_1_1_device.html#ac8495384e0ab074cf1cec328a5234aa9',1,'capsule::client::Device']]],
+  ['getindividualnfb_9',['GetIndividualNFB',['../classcapsule_1_1client_1_1_n_f_b_calibrator.html#a17a52cf1e8a93d568a25ba7f0a8fba14',1,'capsule::client::NFBCalibrator']]],
+  ['getinfo_10',['GetInfo',['../classcapsule_1_1client_1_1_device.html#aab9d269eca564764c7371c77f9b802fc',1,'capsule::client::Device']]],
+  ['getmemssamplerate_11',['GetMEMSSampleRate',['../classcapsule_1_1client_1_1_device.html#a15ac71df796d5812b93bfb9a51cf20bc',1,'capsule::client::Device']]],
+  ['getmode_12',['GetMode',['../classcapsule_1_1client_1_1_device.html#a2119cd241f1f4b271e4583a378c78ae9',1,'capsule::client::Device']]],
+  ['getppgiramplitude_13',['GetPPGIrAmplitude',['../classcapsule_1_1client_1_1_device.html#afdd6f33c5b3deda57ec297a18984089d',1,'capsule::client::Device']]],
+  ['getppgredamplitude_14',['GetPPGRedAmplitude',['../classcapsule_1_1client_1_1_device.html#a6f174e32d4c6551fc607624d73dd64cb',1,'capsule::client::Device']]],
+  ['getppgsamplerate_15',['GetPPGSampleRate',['../classcapsule_1_1client_1_1_device.html#a12894be24c8fa35ef51b5f37aa9ba563',1,'capsule::client::Device']]],
+  ['glossary_16',['Glossary',['../glossary.html',1,'']]],
+  ['glossary_2emd_17',['Glossary.md',['../_glossary_8md.html',1,'']]],
+  ['gravity_18',['gravity',['../structcl_c_productivity___baselines.html#a66484e4b6b30c204991e6a601a22e648',1,'clCProductivity_Baselines']]],
+  ['gravitybaseline_19',['gravityBaseline',['../structcl_c_productivity___indexes.html#af32b3fcb001b611b34d4dd1c6573c490',1,'clCProductivity_Indexes']]],
+  ['gravityscore_20',['gravityScore',['../structcl_c_productivity___metrics.html#a98d97d4b2f3aae21e4ee8f78ca03d06e',1,'clCProductivity_Metrics']]],
+  ['growth_20rate_20values_3a_21',['Fatigue Growth Rate values:',['../productivity_metrics.html#autotoc_md38',1,'']]],
+  ['gyroscope_20readings_22',['Work With Accelerometer And Gyroscope Readings',['../work_with_accelerometer_and_gyroscope_readings.html',1,'device_connection']]],
+  ['gyroscope_20readings_20from_20mems_20event_3a_23',['Get accelerometer and gyroscope readings from MEMS event:',['../work_with_accelerometer_and_gyroscope_readings.html#autotoc_md48',1,'']]]
+];

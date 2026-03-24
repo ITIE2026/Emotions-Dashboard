@@ -1,0 +1,9 @@
+var searchData=
+[
+  ['the_20calibration_20process_20failed_20you_20will_20receive_20the_20following_20responses_20_3a_0',['FailReason values (if the calibration process failed you will receive the following responses):',['../calibration.html#autotoc_md1',1,'']]],
+  ['the_20following_20responses_20_3a_1',['FailReason values (if the calibration process failed you will receive the following responses):',['../calibration.html#autotoc_md1',1,'']]],
+  ['theta_2',['theta',['../structcl_c_n_f_b___user_state.html#a1bbe29cecdf755cb3287be09e33bbc54',1,'clCNFB_UserState']]],
+  ['timestampmilli_3',['timestampMilli',['../structcl_c_cardio___data.html#ae7722a0dbe6bba34c739bffc1f37815f',1,'clCCardio_Data::timestampMilli'],['../structcl_c_emotions___states.html#af8b26e2e582a8837e9951c7d101ca77c',1,'clCEmotions_States::timestampMilli'],['../structcl_c_n_f_b___user_state.html#ad48810021f41e02897d140e7f53ec3b6',1,'clCNFB_UserState::timestampMilli'],['../structcl_c_individual_n_f_b_data.html#a7f69dbd4c2d47df7b46e8be970c55ae0',1,'clCIndividualNFBData::timestampMilli'],['../structcl_c_physiological_states___value.html#a513279307ed67ee3d8fb0456abc269a0',1,'clCPhysiologicalStates_Value::timestampMilli'],['../structcl_c_physiological_states___baselines.html#affb60243c4870737aefe5ce99ced6dcf',1,'clCPhysiologicalStates_Baselines::timestampMilli'],['../structcl_c_productivity___metrics.html#aae522e96f71f3270504aa0c4c4efc4f6',1,'clCProductivity_Metrics::timestampMilli'],['../structcl_c_productivity___indexes.html#abe1e366d5bbe338eb311effc4c52d079',1,'clCProductivity_Indexes::timestampMilli'],['../structcl_c_productivity___baselines.html#a620dbbc4c2e38e02052947fadfe86a44',1,'clCProductivity_Baselines::timestampMilli']]],
+  ['to_20device_4',['Connect To Device',['../connect_to_device.html',1,'device_connection']]],
+  ['type_20values_3a_5',['Device Type values:',['../connect_to_device.html#autotoc_md13',1,'']]]
+];

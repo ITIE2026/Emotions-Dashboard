@@ -1,0 +1,31 @@
+{
+  "nfb": {
+    "timestampMilli": 1,
+    "failReason": 0,
+    "individualFrequency": 9.8,
+    "individualPeakFrequency": 10.0,
+    "individualPeakFrequencyPower": 1.1,
+    "individualPeakFrequencySuppression": 0.3,
+    "individualBandwidth": 4.0,
+    "individualNormalizedPower": 0.6,
+    "lowerFrequency": 8.0,
+    "upperFrequency": 12.0
+  },
+  "prod_baselines": {
+    "timestampMilli": 1,
+    "gravity": 1.0,
+    "productivity": 2.0,
+    "fatigue": 3.0,
+    "reverseFatigue": 4.0,
+    "relaxation": 5.0,
+    "concentration": 6.0
+  },
+  "phy_baselines": {
+    "timestampMilli": 1,
+    "alpha": 1.0,
+    "beta": 2.0,
+    "alphaGravity": 3.0,
+    "betaGravity": 4.0,
+    "concentration": 5.0
+  }
+}

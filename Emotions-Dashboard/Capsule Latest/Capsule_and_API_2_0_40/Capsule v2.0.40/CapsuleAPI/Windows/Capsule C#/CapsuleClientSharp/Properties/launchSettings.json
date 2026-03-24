@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "CapsuleClientSharp": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}
