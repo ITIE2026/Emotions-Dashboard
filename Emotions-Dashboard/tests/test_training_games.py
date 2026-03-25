@@ -1895,6 +1895,45 @@ class CalibrationStabilityTests(unittest.TestCase):
         finally:
             screen.close()
 
+    def test_training_screen_neuro_music_flow_uses_guitar_soundtrack_catalog(self):
+        runtime = _SharedRuntimeStub()
+        with patch("gui.training_screen.AdaptiveMusicEngine.ensure_assets", return_value=None):
+            screen = TrainingScreen(runtime=runtime)
+        try:
+            screen._show_detail("neuro_music_flow")
+            screen._show_settings()
+
+            self.assertEqual(screen._settings_heading_lbl.text(), "Choose a guitar pack")
+            self.assertEqual(
+                {card.name for card in screen._soundtrack_cards},
+                set(screen.MUSIC_FLOW_SOUNDTRACKS.keys()),
+            )
+            self.assertEqual(screen._selected_soundtrack_name(), screen._selected_music_flow_soundtrack)
+        finally:
+            screen.close()
+
+    def test_training_screen_music_flow_selection_stays_separate_from_general_soundtrack(self):
+        runtime = _SharedRuntimeStub()
+        with patch("gui.training_screen.AdaptiveMusicEngine.ensure_assets", return_value=None):
+            screen = TrainingScreen(runtime=runtime)
+        try:
+            original_general = screen._selected_soundtrack
+            screen._show_detail("neuro_music_flow")
+            screen._select_soundtrack("Saffron Sunset")
+            self.assertEqual(screen._selected_music_flow_soundtrack, "Saffron Sunset")
+            self.assertEqual(screen._selected_soundtrack, original_general)
+
+            screen._show_detail("calm_current")
+            screen._show_settings()
+            self.assertEqual(screen._settings_heading_lbl.text(), "Choose a soundtrack")
+            self.assertEqual(
+                {card.name for card in screen._soundtrack_cards},
+                set(screen.SOUNDTRACKS.keys()),
+            )
+            self.assertEqual(screen._selected_soundtrack_name(), original_general)
+        finally:
+            screen.close()
+
 
 if __name__ == "__main__":
     unittest.main()

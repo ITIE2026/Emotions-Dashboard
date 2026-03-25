@@ -92,6 +92,19 @@ class TrainingAudioTests(unittest.TestCase):
             self.assertTrue(os.path.exists(path))
             self.assertTrue(os.path.normpath(path).startswith(os.path.normpath(TRAINING_AUDIO_ASSET_DIR)))
 
+    def test_packaged_guitar_assets_resolve_from_repo(self):
+        engine = AdaptiveMusicEngine(
+            None,
+            TRAINING_AUDIO_ASSET_DIR,
+            {"Monsoon Strings": {"bundle": "monsoon_strings"}},
+        )
+        resolved = engine.resolve_soundtrack_paths("Monsoon Strings")
+        self.assertEqual(set(resolved.keys()), set(STEM_NAMES))
+        for stem, path in resolved.items():
+            self.assertTrue(path.endswith(f"{stem}.wav"))
+            self.assertTrue(os.path.exists(path))
+            self.assertTrue(os.path.normpath(path).startswith(os.path.normpath(TRAINING_AUDIO_ASSET_DIR)))
+
     def test_missing_packaged_assets_use_fallback_generation(self):
         with tempfile.TemporaryDirectory() as asset_dir, tempfile.TemporaryDirectory() as fallback_dir:
             engine = AdaptiveMusicEngine(

@@ -3522,21 +3522,22 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
     TrainingGameSpec(
         game_id="neuro_music_flow",
         section="Reduce stress and tension",
-        eyebrow="Adaptive soundtrack",
+        eyebrow="Adaptive guitar flow",
         card_title="Neuro Music Flow",
-        detail_title="A live music flow session driven by concentration, relaxation, and EEG bands",
+        detail_title="A live guitar flow session driven by concentration, relaxation, and EEG bands",
         duration="10 min",
-        description="Let the soundtrack, pulse field, and ambient ribbons reshape themselves around your live EEG state.",
+        description="Let warm acoustic guitar layers, pulse field, and ambient ribbons reshape themselves around your live EEG state.",
         detail_body=(
-            "Neuro Music Flow is a continuous music-reactive training session. Concentration and relaxation shape the "
-            "main direction of the mix, while Delta, Theta, Alpha, SMR, and Beta add ambient depth, clarity, and pulse "
-            "so the soundtrack feels alive instead of static."
+            "Neuro Music Flow is a continuous guitar-reactive training session. Concentration and relaxation shape the "
+            "main direction of the mix, while Delta, Theta, Alpha, SMR, and Beta push the guitar layers between warm "
+            "fingerstyle calm, bright picked rhythm, and gentle melodic motion."
         ),
         instructions=(
-            "Calibrate first, then settle into a comfortable state. Concentration brightens and energizes the music, "
-            "relaxation deepens and softens it, and the live EEG bands reshape the texture in the background."
+            "Calibrate first, then settle into a comfortable state. Concentration brings out brighter picking and "
+            "rhythmic drive, relaxation deepens the warmer acoustic layers, and the live EEG bands reshape the "
+            "guitar texture in the background."
         ),
-        calibration_copy="Relax into a stable baseline so the music can respond smoothly once the live session begins.",
+        calibration_copy="Relax into a stable baseline so the guitar layers can respond smoothly once the live session begins.",
         preview_label="MUSIC",
         colors=("#13273f", "#7dc8d7"),
         enabled=True,

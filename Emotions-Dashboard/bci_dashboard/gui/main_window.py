@@ -445,6 +445,10 @@ class MainWindow(QMainWindow):
         exit_act.triggered.connect(self.close)
         file_menu.addAction(exit_act)
 
+        home_act = QAction("Home", self)
+        home_act.triggered.connect(self._go_home)
+        mb.addAction(home_act)
+
         eeg_menu = mb.addMenu("EEG")
         eeg_graph_map = {
             "Frequency Peaks": "frequency_peaks",
@@ -1042,6 +1046,20 @@ class MainWindow(QMainWindow):
         if self._embedded_neuroflow_calibration:
             self._training_screen.on_neuroflow_calibration_finished(True, text)
         QTimer.singleShot(1200, self._finish_calibration_flow)
+
+    def _go_home(self):
+        current_index = self._stack.currentIndex()
+        if current_index == PAGE_DASHBOARD:
+            return
+        if current_index == PAGE_TRAINING:
+            self._training_screen.stop_active_flow()
+            self._stack.setCurrentIndex(PAGE_DASHBOARD)
+            return
+        if current_index == PAGE_CALIBRATION:
+            self._calibration_return_page = PAGE_DASHBOARD
+            self._cancel_calibration()
+            return
+        self._stack.setCurrentIndex(PAGE_DASHBOARD)
 
     def _on_calibration_failed(self, reason: str):
         log.warning("Calibration failed: %s", reason)

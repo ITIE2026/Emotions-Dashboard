@@ -199,6 +199,29 @@ class TrainingScreen(QWidget):
         },
     }
 
+    MUSIC_FLOW_SOUNDTRACKS = {
+        "Monsoon Strings": {
+            "description": "Warm fingerstyle guitar and soft drone textures that deepen beautifully when relaxation rises.",
+            "colors": ("#24443c", "#d8c27a"),
+            "bundle": "monsoon_strings",
+            "stem_bias": {"base": 1.04, "relax": 1.10, "focus": 0.96, "concentration": 0.94, "sleep": 1.03},
+        },
+        "Saffron Sunset": {
+            "description": "A brighter picked-acoustic pack with gentle melodic lift for focused, balanced sessions.",
+            "colors": ("#5a2e1d", "#f0b56a"),
+            "bundle": "saffron_sunset",
+            "stem_bias": {"base": 1.00, "relax": 0.96, "focus": 1.08, "concentration": 1.10, "sleep": 0.92},
+        },
+        "Mehfil Glow": {
+            "description": "Intimate late-evening guitar loops with mellow resonance and smooth lead phrases.",
+            "colors": ("#352a4f", "#caa9e5"),
+            "bundle": "mehfil_glow",
+            "stem_bias": {"base": 1.02, "relax": 1.06, "focus": 1.00, "concentration": 0.98, "sleep": 1.00},
+        },
+    }
+
+    ALL_SOUNDTRACKS = {**SOUNDTRACKS, **MUSIC_FLOW_SOUNDTRACKS}
+
     PREVIEW_CARDS = [
         {
             "section": "Improve concentration",
@@ -236,6 +259,7 @@ class TrainingScreen(QWidget):
         self._eeg_sample_rate_hz: float | None = None
         self._eeg_channel_names: list[str] = []
         self._selected_soundtrack = "Aurora Drift"
+        self._selected_music_flow_soundtrack = "Monsoon Strings"
         self._level_started_at = 0.0
         self._audio_dir = TRAINING_AUDIO_ASSET_DIR
         self._settings = QSettings("BCI Dashboard", "EEGTrainingSuite")
@@ -243,7 +267,7 @@ class TrainingScreen(QWidget):
         self._active_specs = active_training_specs()
         self._current_game_id = "mind_maze"
         self._controller = self._game_specs[self._current_game_id].controller_factory()
-        self._music_engine = AdaptiveMusicEngine(self, self._audio_dir, self.SOUNDTRACKS)
+        self._music_engine = AdaptiveMusicEngine(self, self._audio_dir, self.ALL_SOUNDTRACKS)
         self._arm_backend_mode = "capsule"
         self._arm_backend_status = "Using live Capsule productivity metrics."
         self._arm_live_metrics = {
@@ -277,7 +301,7 @@ class TrainingScreen(QWidget):
         self._wire_arm_lab()
         self._load_settings()
         self._ensure_audio_assets()
-        self._refresh_soundtrack_cards()
+        self._rebuild_soundtrack_cards()
         self._refresh_live_labels()
         self._show_catalog()
 
@@ -465,19 +489,18 @@ class TrainingScreen(QWidget):
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(24, 24, 24, 24)
         card_layout.setSpacing(18)
-        heading = QLabel("Choose a soundtrack")
-        heading.setStyleSheet("font-size: 28px; font-weight: bold; color: #f8fafc;")
+        self._settings_heading_lbl = QLabel("Choose a soundtrack")
+        self._settings_heading_lbl.setStyleSheet("font-size: 28px; font-weight: bold; color: #f8fafc;")
         self._settings_copy_lbl = QLabel("")
         self._settings_copy_lbl.setWordWrap(True)
         self._settings_copy_lbl.setStyleSheet(f"font-size: 14px; color: {TEXT_SECONDARY};")
-        card_layout.addWidget(heading)
+        card_layout.addWidget(self._settings_heading_lbl)
         card_layout.addWidget(self._settings_copy_lbl)
 
         self._soundtrack_cards = []
-        for name, spec in self.SOUNDTRACKS.items():
-            option = SoundtrackCard(name, spec["description"], spec["colors"], self._select_soundtrack)
-            self._soundtrack_cards.append(option)
-            card_layout.addWidget(option)
+        self._soundtrack_cards_layout = QVBoxLayout()
+        self._soundtrack_cards_layout.setSpacing(18)
+        card_layout.addLayout(self._soundtrack_cards_layout)
 
         layout.addWidget(card)
         buttons = QHBoxLayout()
@@ -935,18 +958,49 @@ class TrainingScreen(QWidget):
         saved = self._settings.value("soundtrack", self._selected_soundtrack)
         if saved in self.SOUNDTRACKS:
             self._selected_soundtrack = saved
+        saved_music_flow = self._settings.value("music_flow_soundtrack", self._selected_music_flow_soundtrack)
+        if saved_music_flow in self.MUSIC_FLOW_SOUNDTRACKS:
+            self._selected_music_flow_soundtrack = saved_music_flow
 
     def _save_settings(self):
         self._settings.setValue("soundtrack", self._selected_soundtrack)
+        self._settings.setValue("music_flow_soundtrack", self._selected_music_flow_soundtrack)
         self._show_detail(self._current_game_id)
 
+    def _soundtrack_catalog(self) -> dict[str, dict]:
+        if self._current_game_id == "neuro_music_flow":
+            return self.MUSIC_FLOW_SOUNDTRACKS
+        return self.SOUNDTRACKS
+
+    def _selected_soundtrack_name(self) -> str:
+        if self._current_game_id == "neuro_music_flow":
+            return self._selected_music_flow_soundtrack
+        return self._selected_soundtrack
+
     def _select_soundtrack(self, name: str):
-        self._selected_soundtrack = name
+        if self._current_game_id == "neuro_music_flow":
+            self._selected_music_flow_soundtrack = name
+        else:
+            self._selected_soundtrack = name
+        self._refresh_soundtrack_cards()
+
+    def _rebuild_soundtrack_cards(self):
+        while self._soundtrack_cards_layout.count():
+            item = self._soundtrack_cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._soundtrack_cards = []
+        for name, spec in self._soundtrack_catalog().items():
+            option = SoundtrackCard(name, spec["description"], spec["colors"], self._select_soundtrack)
+            self._soundtrack_cards.append(option)
+            self._soundtrack_cards_layout.addWidget(option)
         self._refresh_soundtrack_cards()
 
     def _refresh_soundtrack_cards(self):
+        selected_name = self._selected_soundtrack_name()
         for card in getattr(self, "_soundtrack_cards", []):
-            card.set_selected(card.name == self._selected_soundtrack)
+            card.set_selected(card.name == selected_name)
 
     def _refresh_live_labels(self):
         concentration, relaxation = self._current_metric_pair()
@@ -1009,12 +1063,21 @@ class TrainingScreen(QWidget):
             self._show_detail(self._current_game_id)
             return
         self._settings_subtitle_lbl.setText(self._current_spec.detail_title)
-        self._settings_copy_lbl.setText(
-            f"Select the adaptive soundtrack used during calibration and {self._current_spec.card_title} gameplay. "
-            "The chosen preset is saved between runs, and its layers respond live to your EEG state."
-        )
+        if self._current_game_id == "neuro_music_flow":
+            self._settings_heading_lbl.setText("Choose a guitar pack")
+            self._settings_copy_lbl.setText(
+                "Select the original Hindi-acoustic inspired guitar pack used during Neuro Music Flow. "
+                "Relaxation deepens the warmer fingerstyle layers, concentration brings out brighter picking and lead motion, "
+                "and the selection is saved separately from the rest of Training Lab."
+            )
+        else:
+            self._settings_heading_lbl.setText("Choose a soundtrack")
+            self._settings_copy_lbl.setText(
+                f"Select the adaptive soundtrack used during calibration and {self._current_spec.card_title} gameplay. "
+                "The chosen preset is saved between runs, and its layers respond live to your EEG state."
+            )
+        self._rebuild_soundtrack_cards()
         self._stack.setCurrentWidget(self._settings_page)
-        self._refresh_soundtrack_cards()
 
     def _update_detail_content(self):
         spec = self._current_spec
@@ -1046,7 +1109,7 @@ class TrainingScreen(QWidget):
         self._calibration_subtitle_lbl.setText(self._current_spec.calibration_copy)
         self._update_calibration_ui(None)
         if self._current_spec.soundtrack_enabled:
-            self._music_engine.start(self._selected_soundtrack)
+            self._music_engine.start(self._selected_soundtrack_name())
         self._stack.setCurrentWidget(self._calibration_page)
         self._calibration_timer.start()
 
@@ -1470,6 +1533,12 @@ class TrainingScreen(QWidget):
 
     def stop_audio(self):
         self._music_engine.stop()
+
+    def stop_active_flow(self):
+        self._stop_runtime_loops()
+        if hasattr(self._controller, "reset_run"):
+            self._controller.reset_run()
+        self._show_catalog()
 
     def shutdown(self):
         if self._owns_arm_runtime:

@@ -25,6 +25,9 @@ FALLBACK_BUNDLE_TONES = {
     "aurora_drift": (174.0, 208.0, 0.10),
     "velvet_horizon": (160.0, 196.0, 0.08),
     "ember_pulse": (148.0, 192.0, 0.18),
+    "monsoon_strings": (146.0, 219.0, 0.11),
+    "saffron_sunset": (164.0, 246.0, 0.09),
+    "mehfil_glow": (156.0, 234.0, 0.12),
 }
 
 PROFILE_DEFAULTS = {
@@ -34,7 +37,7 @@ PROFILE_DEFAULTS = {
     "concentration": {"base": 0.18, "relax": 0.04, "focus": 0.26, "concentration": 0.30, "sleep": 0.02},
     "memory": {"base": 0.22, "relax": 0.13, "focus": 0.20, "concentration": 0.18, "sleep": 0.05},
     "arcade": {"base": 0.16, "relax": 0.07, "focus": 0.23, "concentration": 0.25, "sleep": 0.02},
-    "music_flow": {"base": 0.24, "relax": 0.20, "focus": 0.16, "concentration": 0.12, "sleep": 0.14},
+    "music_flow": {"base": 0.22, "relax": 0.23, "focus": 0.15, "concentration": 0.11, "sleep": 0.15},
 }
 
 STEM_LIMITS = {
@@ -103,29 +106,43 @@ def compute_adaptive_mix(
             normalized_bands = {band: 0.0 for band in band_values}
 
         calm_drive = (
-            (normalized_bands["delta"] * 0.95)
-            + (normalized_bands["theta"] * 0.88)
-            + (normalized_bands["alpha"] * 0.35)
+            (normalized_bands["delta"] * 1.02)
+            + (normalized_bands["theta"] * 0.90)
+            + (normalized_bands["alpha"] * 0.38)
         )
         focus_drive = (
-            (normalized_bands["beta"] * 1.00)
-            + (normalized_bands["smr"] * 0.82)
-            + (normalized_bands["alpha"] * 0.28)
+            (normalized_bands["beta"] * 0.98)
+            + (normalized_bands["smr"] * 0.86)
+            + (normalized_bands["alpha"] * 0.24)
         )
-        balance_drive = normalized_bands["alpha"] + (steady_bias * 0.55)
+        balance_drive = (normalized_bands["alpha"] * 0.75) + (steady_bias * 0.58)
 
-        base["relax"] += (calm_bias * 0.12) + (calm_drive * 0.18) + (serenity * 0.06)
-        base["sleep"] += (normalized_bands["delta"] * 0.16) + (normalized_bands["theta"] * 0.09) + (serenity * 0.05)
-        base["focus"] += (focus_bias * 0.09) + (focus_drive * 0.14) + (balance_drive * 0.03)
-        base["concentration"] += (focus_bias * 0.10) + (normalized_bands["beta"] * 0.18) + (normalized_bands["smr"] * 0.09)
-        base["base"] += (normalized_bands["alpha"] * 0.08) + (balance_drive * 0.05)
+        # Neuro Music Flow uses guitar-oriented stems: warm fingerstyle for calm,
+        # brighter picked rhythm and melodic lead for concentration.
+        base["relax"] += (calm_bias * 0.15) + (calm_drive * 0.22) + (serenity * 0.08) + (balance_drive * 0.03)
+        base["sleep"] += (
+            (normalized_bands["delta"] * 0.20)
+            + (normalized_bands["theta"] * 0.12)
+            + (serenity * 0.06)
+            + (max(0.0, calm_bias - focus_bias) * 0.04)
+        )
+        base["focus"] += (focus_bias * 0.12) + (focus_drive * 0.17) + (balance_drive * 0.04)
+        base["concentration"] += (
+            (focus_bias * 0.13)
+            + (normalized_bands["beta"] * 0.21)
+            + (normalized_bands["smr"] * 0.11)
+            + (restlessness * 0.02)
+        )
+        base["base"] += (normalized_bands["alpha"] * 0.10) + (balance_drive * 0.06) + (steady_bias * 0.03)
 
         if calm_drive > focus_drive:
-            base["focus"] *= 1.0 - min(0.24, (calm_drive - focus_drive) * 0.28)
-            base["concentration"] *= 1.0 - min(0.30, (calm_drive - focus_drive) * 0.34)
+            calm_margin = calm_drive - focus_drive
+            base["focus"] *= 1.0 - min(0.26, calm_margin * 0.30)
+            base["concentration"] *= 1.0 - min(0.32, calm_margin * 0.35)
         elif focus_drive > calm_drive:
-            base["relax"] *= 1.0 - min(0.20, (focus_drive - calm_drive) * 0.24)
-            base["sleep"] *= 1.0 - min(0.26, (focus_drive - calm_drive) * 0.30)
+            focus_margin = focus_drive - calm_drive
+            base["relax"] *= 1.0 - min(0.20, focus_margin * 0.22)
+            base["sleep"] *= 1.0 - min(0.24, focus_margin * 0.28)
 
     if restlessness > 0.45:
         base["focus"] += restlessness * 0.04
