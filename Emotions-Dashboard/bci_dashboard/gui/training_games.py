@@ -552,6 +552,216 @@ class FullRebootController(BaseTrainingController):
         }
 
 
+class NeuroMusicFlowController(BaseTrainingController):
+    LEVELS = [TrainingLevel("Neuro Music Flow", 600)]
+    BANDS = ("delta", "theta", "alpha", "smr", "beta")
+
+    def __init__(self):
+        self._latest_band_powers = {band: 0.0 for band in self.BANDS}
+        super().__init__(self.LEVELS)
+
+    def reset_run(self) -> None:
+        self._latest_band_powers = {band: 0.0 for band in self.BANDS}
+        self._band_totals = {band: 0.0 for band in self.BANDS}
+        self._dominant_band_counts = {band: 0 for band in self.BANDS}
+        self._sample_count = 0
+        self._conc_sum = 0.0
+        self._relax_sum = 0.0
+        self._serenity_sum = 0.0
+        self._restlessness_sum = 0.0
+        self._focus_balance_sum = 0.0
+        super().reset_run()
+
+    def ingest_band_powers(self, band_powers: dict | None) -> None:
+        band_powers = band_powers or {}
+        for band in self.BANDS:
+            incoming = max(0.0, float(band_powers.get(band, 0.0)))
+            previous = self._latest_band_powers.get(band, 0.0)
+            self._latest_band_powers[band] = (previous * 0.72) + (incoming * 0.28)
+
+    def session_summary(self, total_seconds: int | float | None = None) -> dict:
+        total_seconds = max(0, int(round(float(total_seconds or 0.0))))
+        samples = max(1, self._sample_count)
+        dominant_band = max(self._dominant_band_counts, key=self._dominant_band_counts.get)
+        if self._dominant_band_counts[dominant_band] <= 0:
+            dominant_band = max(self._band_totals, key=self._band_totals.get)
+        return {
+            "total_seconds": total_seconds,
+            "avg_concentration": self._conc_sum / samples,
+            "avg_relaxation": self._relax_sum / samples,
+            "avg_serenity": self._serenity_sum / samples,
+            "avg_restlessness": self._restlessness_sum / samples,
+            "focus_balance": self._focus_balance_sum / samples,
+            "dominant_band": dominant_band,
+            "dominant_band_label": dominant_band.replace("_", " ").title(),
+            "dominant_mode": self._dominant_mode if self._sample_count else "Balanced flow",
+        }
+
+    def finish_run(
+        self,
+        current_elapsed_seconds: float | None,
+        aborted: bool,
+    ) -> TrainingRunResult:
+        elapsed_seconds = float(current_elapsed_seconds or 0.0)
+        if not elapsed_seconds and self._finished:
+            elapsed_seconds = float(self.current_level.target_seconds)
+        elapsed_int = max(0, int(round(elapsed_seconds)))
+        completion = min(1.0, elapsed_int / max(1, self.current_level.target_seconds))
+        summary = self.session_summary(elapsed_int)
+        score = max(0, min(100, int(round(summary["avg_serenity"]))))
+        level_result = LevelResult(
+            level_number=1,
+            title=self.current_level.title,
+            completed=bool(not aborted and elapsed_int >= self.current_level.target_seconds),
+            elapsed_seconds=elapsed_int,
+            target_seconds=self.current_level.target_seconds,
+            score=score,
+        )
+        return TrainingRunResult(
+            level_results=[level_result],
+            final_score=score,
+            completion_pct=int(round(completion * 100)),
+            total_seconds=elapsed_int,
+        )
+
+    def _reset_level_state(self) -> None:
+        self._serenity = 52.0
+        self._restlessness = 18.0
+        self._focus_balance = 0.0
+        self._pulse_phase = 0.0
+        self._dominant_mode = "Balanced flow"
+        self._message = "Hold a steady, comfortable state and let the music adapt."
+        self._view_state = self._music_view_state()
+
+    def update_gameplay(
+        self,
+        concentration: float,
+        relaxation: float,
+        valid: bool,
+        stale: bool,
+        elapsed_seconds: float,
+    ) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation - (self._relax_baseline or 0.0)
+        balance = conc_delta - relax_delta
+        blocked_reason = ""
+        moved = False
+        direction = None
+        recommended_label = "Balanced flow"
+        control_hint = "Concentration brightens the track. Relaxation softens and deepens it."
+        level_completed = False
+        run_completed = False
+
+        band_total = sum(max(0.0, value) for value in self._latest_band_powers.values())
+        if band_total > 1e-9:
+            normalized_bands = {band: value / band_total for band, value in self._latest_band_powers.items()}
+        else:
+            normalized_bands = {band: 0.0 for band in self.BANDS}
+
+        focus_drive = (
+            max(0.0, conc_delta) * 0.15
+            + (normalized_bands["beta"] * 0.78)
+            + (normalized_bands["smr"] * 0.54)
+            + (normalized_bands["alpha"] * 0.16)
+        )
+        calm_drive = (
+            max(0.0, relax_delta) * 0.15
+            + (normalized_bands["theta"] * 0.74)
+            + (normalized_bands["delta"] * 0.62)
+            + (normalized_bands["alpha"] * 0.20)
+        )
+
+        self._pulse_phase = (math.sin(elapsed_seconds / 2.3) + 1.0) / 2.0
+
+        if stale:
+            blocked_reason = "Metrics are stale. Holding the current music texture."
+        elif not valid:
+            blocked_reason = "Artifacts detected. Holding the current music texture."
+        else:
+            serenity_target = 42.0 + (calm_drive * 54.0) - (focus_drive * 10.0)
+            restlessness_target = 16.0 + (focus_drive * 44.0) - (calm_drive * 10.0)
+            self._serenity += (max(0.0, min(100.0, serenity_target)) - self._serenity) * 0.16
+            self._restlessness += (max(0.0, min(100.0, restlessness_target)) - self._restlessness) * 0.16
+            self._focus_balance = max(-100.0, min(100.0, (focus_drive - calm_drive) * 100.0))
+            if focus_drive > calm_drive + 0.08:
+                self._dominant_mode = "Focused lift"
+                self._message = "The mix is brightening. Stay clear and steady to keep the pulse alive."
+                direction = "flow"
+                recommended_label = "Focus lift"
+            elif calm_drive > focus_drive + 0.08:
+                self._dominant_mode = "Calm drift"
+                self._message = "The mix is deepening. Softer breathing will keep the texture warm and wide."
+                direction = "steady"
+                recommended_label = "Calm drift"
+            else:
+                self._dominant_mode = "Balanced flow"
+                self._message = "You are holding a balanced blend. Keep the state comfortable and stable."
+                direction = "steady"
+                recommended_label = "Balanced flow"
+
+            dominant_band = max(self._latest_band_powers, key=self._latest_band_powers.get)
+            self._dominant_band_counts[dominant_band] += 1
+            for band, value in self._latest_band_powers.items():
+                self._band_totals[band] += value
+            self._sample_count += 1
+            self._conc_sum += concentration
+            self._relax_sum += relaxation
+            self._serenity_sum += self._serenity
+            self._restlessness_sum += self._restlessness
+            self._focus_balance_sum += self._focus_balance
+            moved = True
+
+            if elapsed_seconds >= self.current_level.target_seconds:
+                level_completed = True
+                run_completed = True
+                self._finished = True
+                self._message = "Session complete. The music flow has been captured."
+
+        self._view_state = self._music_view_state(message=blocked_reason)
+        return GameplaySnapshot(
+            level_number=self.current_level_number,
+            phase="music_flow",
+            phase_label=self.current_level.title,
+            recommended_direction=direction,
+            recommended_label=recommended_label,
+            control_hint=blocked_reason or control_hint,
+            direction=direction,
+            direction_label=DIR_LABELS.get(direction, "Hold steady"),
+            moved=moved,
+            blocked_reason=blocked_reason,
+            conc_delta=conc_delta,
+            relax_delta=relax_delta,
+            balance=balance,
+            level_completed=level_completed,
+            run_completed=run_completed,
+            view_state=self._view_state,
+        )
+
+    def _music_view_state(self, message: str = "") -> dict:
+        total = sum(max(0.0, value) for value in self._latest_band_powers.values())
+        if total > 1e-9:
+            band_profile = {band: value / total for band, value in self._latest_band_powers.items()}
+        else:
+            band_profile = {band: 0.0 for band in self.BANDS}
+        dominant_band = max(self._latest_band_powers, key=self._latest_band_powers.get)
+        return {
+            "mode": "music_flow",
+            "headline": self.current_level.title,
+            "serenity": self._serenity,
+            "restlessness": self._restlessness,
+            "focus_balance": self._focus_balance,
+            "dominant_mode": self._dominant_mode,
+            "dominant_band": dominant_band,
+            "band_powers": dict(self._latest_band_powers),
+            "band_profile": band_profile,
+            "pulse_phase": self._pulse_phase,
+            "session_progress": min(1.0, self._sample_count / max(1.0, self.current_level.target_seconds * 4.0)),
+            "music_scene": "music_flow",
+            "music_bias": max(-1.0, min(1.0, -self._focus_balance / 100.0)),
+            "message": message or self._message,
+        }
+
+
 class ArcadeTrainingController(BaseTrainingController):
     def _arcade_intent(self, conc_delta: float, relax_delta: float) -> str | None:
         balance = conc_delta - relax_delta
@@ -3308,6 +3518,31 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         controller_factory=CalmCurrentController,
         widget_kind="calm_current",
         music_profile="calm",
+    ),
+    TrainingGameSpec(
+        game_id="neuro_music_flow",
+        section="Reduce stress and tension",
+        eyebrow="Adaptive soundtrack",
+        card_title="Neuro Music Flow",
+        detail_title="A live music flow session driven by concentration, relaxation, and EEG bands",
+        duration="10 min",
+        description="Let the soundtrack, pulse field, and ambient ribbons reshape themselves around your live EEG state.",
+        detail_body=(
+            "Neuro Music Flow is a continuous music-reactive training session. Concentration and relaxation shape the "
+            "main direction of the mix, while Delta, Theta, Alpha, SMR, and Beta add ambient depth, clarity, and pulse "
+            "so the soundtrack feels alive instead of static."
+        ),
+        instructions=(
+            "Calibrate first, then settle into a comfortable state. Concentration brightens and energizes the music, "
+            "relaxation deepens and softens it, and the live EEG bands reshape the texture in the background."
+        ),
+        calibration_copy="Relax into a stable baseline so the music can respond smoothly once the live session begins.",
+        preview_label="MUSIC",
+        colors=("#13273f", "#7dc8d7"),
+        enabled=True,
+        controller_factory=NeuroMusicFlowController,
+        widget_kind="neuro_music_flow",
+        music_profile="music_flow",
     ),
     TrainingGameSpec(
         game_id="neuroflow",

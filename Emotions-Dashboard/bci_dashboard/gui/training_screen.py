@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import math
 import os
-import tempfile
 import time
 
 from PySide6.QtCore import QSettings, Qt, QTimer, Signal
@@ -23,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from gui.eeg_game_base import READY_STREAK_TARGET, TrainingGameSpec
 from gui.neuroflow_training_page import NeuroflowTrainingPage
-from gui.training_audio import AdaptiveMusicEngine
+from gui.training_audio import AdaptiveMusicEngine, TRAINING_AUDIO_ASSET_DIR
 from gui.training_games import TRAINING_SPECS, active_training_specs
 from gui.widgets.mind_maze_board import MindMazeBoard, MindMazeControlBar
 from gui.widgets.training_game_widgets import (
@@ -33,6 +32,7 @@ from gui.widgets.training_game_widgets import (
     FullRebootWidget,
     JumpBallWidget,
     NeonDriftArenaWidget,
+    NeuroMusicFlowWidget,
     NeuroRacerWidget,
     PatternRecallWidget,
     ProstheticArmWidget,
@@ -179,20 +179,23 @@ class TrainingScreen(QWidget):
     IMMERSIVE_GAME_IDS = {"space_shooter", "neuro_racer", "bubble_burst", "neon_drift_arena"}
 
     SOUNDTRACKS = {
-        "Central Park": {
-            "description": "Wide, airy pads with a calm city-park pulse.",
-            "colors": ("#235d4c", "#7ec28b"),
-            "tone": (174.0, 208.0, 0.10),
+        "Aurora Drift": {
+            "description": "Glassy ambient pads with a cool cinematic horizon and gentle focus lift.",
+            "colors": ("#21405b", "#8fd8e8"),
+            "bundle": "aurora_drift",
+            "stem_bias": {"base": 1.03, "relax": 1.06, "focus": 0.98, "concentration": 0.95, "sleep": 1.02},
         },
-        "Kitten": {
-            "description": "Soft warm chimes for the gentlest concentration game.",
-            "colors": ("#65463b", "#e8d0be"),
-            "tone": (232.0, 278.0, 0.08),
+        "Velvet Horizon": {
+            "description": "Deep warm cinematic beds with softer edges for calm and sleep-oriented sessions.",
+            "colors": ("#3a304f", "#c1b7e5"),
+            "bundle": "velvet_horizon",
+            "stem_bias": {"base": 1.02, "relax": 1.10, "focus": 0.92, "concentration": 0.90, "sleep": 1.10},
         },
-        "Campfire": {
-            "description": "Low amber drones with a slightly deeper breathing cadence.",
-            "colors": ("#4a1d17", "#c87432"),
-            "tone": (148.0, 192.0, 0.18),
+        "Ember Pulse": {
+            "description": "A warmer pulse-driven cinematic blend with brighter motion for focus and arcade play.",
+            "colors": ("#5b271d", "#ef9c5f"),
+            "bundle": "ember_pulse",
+            "stem_bias": {"base": 0.98, "relax": 0.94, "focus": 1.06, "concentration": 1.08, "sleep": 0.92},
         },
     }
 
@@ -232,9 +235,9 @@ class TrainingScreen(QWidget):
         }
         self._eeg_sample_rate_hz: float | None = None
         self._eeg_channel_names: list[str] = []
-        self._selected_soundtrack = "Kitten"
+        self._selected_soundtrack = "Aurora Drift"
         self._level_started_at = 0.0
-        self._audio_dir = os.path.join(tempfile.gettempdir(), "bci_training_audio")
+        self._audio_dir = TRAINING_AUDIO_ASSET_DIR
         self._settings = QSettings("BCI Dashboard", "EEGTrainingSuite")
         self._game_specs = {spec.game_id: spec for spec in TRAINING_SPECS}
         self._active_specs = active_training_specs()
@@ -774,6 +777,7 @@ class TrainingScreen(QWidget):
         self._game_views = QStackedWidget()
         self._maze_board = MindMazeBoard()
         self._current_widget = CalmCurrentWidget()
+        self._neuro_music_flow_widget = NeuroMusicFlowWidget()
         self._full_reboot_widget = FullRebootWidget()
         self._space_shooter_widget = SpaceShooterWidget()
         self._jump_ball_widget = JumpBallWidget()
@@ -791,6 +795,7 @@ class TrainingScreen(QWidget):
         self._game_widget_map = {
             "mind_maze": self._maze_board,
             "calm_current": self._current_widget,
+            "neuro_music_flow": self._neuro_music_flow_widget,
             "full_reboot": self._full_reboot_widget,
             "space_shooter": self._space_shooter_widget,
             "jump_ball": self._jump_ball_widget,
@@ -826,16 +831,16 @@ class TrainingScreen(QWidget):
         layout.setSpacing(18)
 
         layout.addWidget(self._device_badge())
-        title = QLabel("Result")
-        title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("font-size: 48px; font-weight: bold; color: #f8fafc;")
+        self._result_title_lbl = QLabel("Result")
+        self._result_title_lbl.setAlignment(Qt.AlignCenter)
+        self._result_title_lbl.setStyleSheet("font-size: 48px; font-weight: bold; color: #f8fafc;")
         self._result_score_lbl = QLabel("0%")
         self._result_score_lbl.setAlignment(Qt.AlignCenter)
         self._result_score_lbl.setStyleSheet("font-size: 58px; font-weight: bold; color: #f8fafc;")
         self._result_completion_lbl = QLabel("Training summary")
         self._result_completion_lbl.setAlignment(Qt.AlignCenter)
         self._result_completion_lbl.setStyleSheet(f"font-size: 16px; color: {TEXT_SECONDARY};")
-        layout.addWidget(title)
+        layout.addWidget(self._result_title_lbl)
         layout.addWidget(self._result_score_lbl)
         layout.addWidget(self._result_completion_lbl)
 
@@ -1079,6 +1084,45 @@ class TrainingScreen(QWidget):
             self._update_gameplay_labels()
 
     def _show_result(self, result):
+        if self._current_game_id == "neuro_music_flow" and hasattr(self._controller, "session_summary"):
+            summary = self._controller.session_summary(result.total_seconds)
+            self._result_title_lbl.setText("Session Summary")
+            self._result_score_lbl.setText(self._format_seconds(summary["total_seconds"]))
+            self._result_completion_lbl.setText(
+                f"Average concentration {summary['avg_concentration']:.1f}   "
+                f"Average relaxation {summary['avg_relaxation']:.1f}"
+            )
+            cards = [
+                (
+                    "Serenity",
+                    f"{summary['avg_serenity']:.0f}",
+                    "Average calm response",
+                    f"Restlessness {summary['avg_restlessness']:.0f}",
+                ),
+                (
+                    "Dominant Band",
+                    summary["dominant_band_label"],
+                    summary["dominant_mode"],
+                    "Live band trend",
+                ),
+                (
+                    "Flow Balance",
+                    f"{summary['focus_balance']:+.1f}",
+                    "Focus minus calm",
+                    f"Completion {result.completion_pct}%",
+                ),
+            ]
+            for index, card in enumerate(self._result_cards):
+                name_lbl, score_lbl, time_lbl, target_lbl = card
+                name, score, time_text, target_text = cards[index]
+                name_lbl.setText(name)
+                score_lbl.setText(score)
+                time_lbl.setText(time_text)
+                target_lbl.setText(target_text)
+            self._stack.setCurrentWidget(self._result_page)
+            return
+
+        self._result_title_lbl.setText("Result")
         self._result_score_lbl.setText(f"{result.final_score}%")
         self._result_completion_lbl.setText(
             f"{self._current_spec.card_title}   {result.completion_pct}% complete   Total time {self._format_seconds(result.total_seconds)}"
@@ -1119,6 +1163,8 @@ class TrainingScreen(QWidget):
             self._gameplay_timer.start()
 
     def _tick_gameplay(self):
+        if hasattr(self._controller, "ingest_band_powers"):
+            self._controller.ingest_band_powers(self._latest_band_powers)
         concentration, relaxation = self._current_metric_pair()
         stale = not self._current_metrics_fresh()
         snapshot = self._controller.update_gameplay(
@@ -1246,6 +1292,10 @@ class TrainingScreen(QWidget):
             relax_delta = snapshot.relax_delta
             balance = snapshot.balance
             view_state = dict(snapshot.view_state or {})
+        if self._current_game_id == "neuro_music_flow":
+            concentration, relaxation = self._current_metric_pair()
+            view_state["concentration"] = concentration
+            view_state["relaxation"] = relaxation
         if self._current_game_id == "prosthetic_arm":
             view_state["arm_connected"] = self._arduino_arm.is_connected
             view_state["backend_mode"] = self._arm_backend_mode
@@ -1273,11 +1323,15 @@ class TrainingScreen(QWidget):
     def _update_audio_mix(self, conc_delta: float, relax_delta: float, view_state: dict | None):
         if not self._current_spec.soundtrack_enabled:
             return
+        band_powers = None
+        if self._current_game_id == "neuro_music_flow" and self._stack.currentWidget() is self._gameplay_page:
+            band_powers = self._latest_band_powers
         self._music_engine.update_mix(
             self._current_spec.music_profile,
             conc_delta,
             relax_delta,
             view_state or {},
+            band_powers=band_powers,
         )
 
     def _stop_runtime_loops(self):

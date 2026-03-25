@@ -1521,6 +1521,183 @@ class CalmCurrentWidget(QWidget):
         _draw_widget_balance_panel(self, painter, self._state, top=18.0)
 
 
+class NeuroMusicFlowWidget(QWidget):
+    _BAND_COLORS = {
+        "delta": QColor("#8E6DFF"),
+        "theta": QColor("#5D7CFF"),
+        "alpha": QColor("#6EE7D8"),
+        "smr": QColor("#B9F27C"),
+        "beta": QColor("#F7B35F"),
+    }
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._state: dict = {}
+        self.setMinimumHeight(400)
+
+    def sizeHint(self):
+        return QSize(560, 500)
+
+    def set_state(self, view_state: dict):
+        self._state = view_state or {}
+        self.update()
+
+    def paintEvent(self, event):  # noqa: N802 - Qt API
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#04060d"))
+
+        balance_rect = _balance_panel_rect(self, 18.0) if self._state.get("balance_panel") else None
+        content_top = (balance_rect.bottom() + 18.0) if balance_rect is not None else 28.0
+
+        background = QLinearGradient(0, 0, 0, self.height())
+        background.setColorAt(0.0, QColor("#0b1221"))
+        background.setColorAt(0.5, QColor("#07101b"))
+        background.setColorAt(1.0, QColor("#05070d"))
+        painter.fillRect(self.rect(), background)
+
+        serenity = float(self._state.get("serenity", 50.0))
+        restlessness = float(self._state.get("restlessness", 20.0))
+        focus_balance = float(self._state.get("focus_balance", 0.0))
+        pulse_phase = float(self._state.get("pulse_phase", 0.0))
+        dominant_mode = str(self._state.get("dominant_mode", "Balanced flow"))
+        dominant_band = str(self._state.get("dominant_band", "alpha")).replace("_", " ").title()
+        band_profile = dict(self._state.get("band_profile", {}))
+        message = str(self._state.get("message", ""))
+        progress = max(0.0, min(1.0, float(self._state.get("session_progress", 0.0))))
+
+        center = QPointF(self.width() * 0.5, content_top + (self.height() - content_top) * 0.40)
+        aura_radius = min(self.width(), self.height()) * (0.30 + (serenity / 1000.0))
+        orb_gradient = QRadialGradient(center, aura_radius)
+        if focus_balance >= 8.0:
+            orb_gradient.setColorAt(0.0, QColor(246, 187, 83, 215))
+            orb_gradient.setColorAt(0.45, QColor(246, 187, 83, 80))
+        elif focus_balance <= -8.0:
+            orb_gradient.setColorAt(0.0, QColor(110, 231, 216, 215))
+            orb_gradient.setColorAt(0.45, QColor(110, 231, 216, 80))
+        else:
+            orb_gradient.setColorAt(0.0, QColor(138, 179, 255, 215))
+            orb_gradient.setColorAt(0.45, QColor(138, 179, 255, 80))
+        orb_gradient.setColorAt(1.0, QColor(0, 0, 0, 0))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(orb_gradient)
+        painter.drawEllipse(center, aura_radius, aura_radius)
+
+        for ring_index in range(4):
+            ring_radius = 52 + (ring_index * 28) + (pulse_phase * 10.0 * (ring_index + 1))
+            ring_alpha = 135 - (ring_index * 20) + int((serenity - restlessness) * 0.35)
+            ring_color = QColor("#93c5fd")
+            if focus_balance > 8.0:
+                ring_color = QColor("#f6bd60")
+            elif focus_balance < -8.0:
+                ring_color = QColor("#72f1d7")
+            ring_color.setAlpha(max(20, min(180, ring_alpha)))
+            painter.setPen(QPen(ring_color, 2.2))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(center, ring_radius, ring_radius)
+
+        for particle_index in range(18):
+            orbit = 86 + ((particle_index % 6) * 24)
+            wobble = (pulse_phase * 0.9) + (particle_index * 0.32)
+            angle = wobble + (particle_index * 0.44)
+            x = center.x() + (math.cos(angle) * orbit)
+            y = center.y() + (math.sin(angle * 1.2) * (orbit * 0.55))
+            radius = 3.0 + ((particle_index % 3) * 1.4)
+            glow = QColor("#dbeafe")
+            if particle_index % 5 == 0:
+                glow = QColor("#f6bd60")
+            elif particle_index % 4 == 0:
+                glow = QColor("#72f1d7")
+            glow.setAlpha(70 + int((serenity / 100.0) * 120))
+            painter.setBrush(glow)
+            painter.setPen(Qt.NoPen)
+            painter.drawEllipse(QPointF(x, y), radius, radius)
+
+        title_font = QFont()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        painter.setPen(QColor("#f8fafc"))
+        painter.drawText(QRectF(0, content_top, self.width(), 28), Qt.AlignCenter, "Neuro Music Flow")
+
+        body_font = QFont()
+        body_font.setPointSize(11)
+        painter.setFont(body_font)
+        painter.setPen(QColor("#cdd7e7"))
+        painter.drawText(
+            QRectF(0, content_top + 28, self.width(), 22),
+            Qt.AlignCenter,
+            f"{dominant_mode}   •   Dominant band {dominant_band}",
+        )
+
+        progress_rect = QRectF(self.width() * 0.19, content_top + 66, self.width() * 0.62, 12)
+        painter.setBrush(QColor(255, 255, 255, 28))
+        painter.drawRoundedRect(progress_rect, 6, 6)
+        fill_rect = QRectF(progress_rect.left(), progress_rect.top(), progress_rect.width() * progress, progress_rect.height())
+        fill_gradient = QLinearGradient(fill_rect.topLeft(), fill_rect.topRight())
+        fill_gradient.setColorAt(0.0, QColor("#72f1d7"))
+        fill_gradient.setColorAt(1.0, QColor("#f6bd60"))
+        painter.setBrush(fill_gradient)
+        painter.drawRoundedRect(fill_rect, 6, 6)
+
+        stat_card = QRectF(self.width() * 0.16, self.height() - 170, self.width() * 0.68, 92)
+        painter.setPen(QPen(QColor(132, 148, 175, 90), 1.6))
+        painter.setBrush(QColor(13, 18, 29, 196))
+        painter.drawRoundedRect(stat_card, 24, 24)
+
+        stat_font = QFont()
+        stat_font.setPointSize(11)
+        stat_font.setBold(True)
+        painter.setFont(stat_font)
+        painter.setPen(QColor("#f8fafc"))
+        concentration = float(self._state.get("concentration", 0.0))
+        relaxation = float(self._state.get("relaxation", 0.0))
+        painter.drawText(
+            QRectF(stat_card.left() + 18, stat_card.top() + 18, stat_card.width() - 36, 18),
+            Qt.AlignLeft,
+            f"Concentration {concentration:.1f}   Relaxation {relaxation:.1f}",
+        )
+        stat_font.setBold(False)
+        painter.setFont(stat_font)
+        painter.setPen(QColor("#d4deee"))
+        painter.drawText(
+            QRectF(stat_card.left() + 18, stat_card.top() + 42, stat_card.width() - 36, 18),
+            Qt.AlignLeft,
+            f"Serenity {serenity:.0f}   Restlessness {restlessness:.0f}   Balance {focus_balance:+.1f}",
+        )
+        painter.drawText(
+            QRectF(stat_card.left() + 18, stat_card.top() + 64, stat_card.width() - 36, 18),
+            Qt.AlignLeft | Qt.TextWordWrap,
+            message,
+        )
+
+        bar_base_y = self.height() - 56
+        bar_width = 34.0
+        gap = 18.0
+        total_width = (bar_width * len(self._BAND_COLORS)) + (gap * (len(self._BAND_COLORS) - 1))
+        start_x = (self.width() - total_width) / 2.0
+        label_font = QFont()
+        label_font.setPointSize(9)
+        label_font.setBold(True)
+        painter.setFont(label_font)
+        for index, band in enumerate(("delta", "theta", "alpha", "smr", "beta")):
+            left = start_x + (index * (bar_width + gap))
+            ratio = max(0.0, min(1.0, float(band_profile.get(band, 0.0)) * 2.4))
+            height = 22.0 + (ratio * 84.0)
+            rect = QRectF(left, bar_base_y - height, bar_width, height)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 18))
+            painter.drawRoundedRect(QRectF(left, bar_base_y - 92, bar_width, 92), 14, 14)
+            color = QColor(self._BAND_COLORS[band])
+            color.setAlpha(210)
+            painter.setBrush(color)
+            painter.drawRoundedRect(rect, 14, 14)
+            painter.setPen(QColor("#ecf2ff"))
+            painter.drawText(QRectF(left - 8, bar_base_y + 6, bar_width + 16, 16), Qt.AlignCenter, band.upper())
+
+        _draw_widget_balance_panel(self, painter, self._state, top=18.0)
+
+
 class ProstheticArmWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)

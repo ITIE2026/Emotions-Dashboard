@@ -1,5 +1,6 @@
 bci_dashboard/logs/
 bci_dashboard/sessions/
+calibration_data/
 *.log
 __pycache__/
 *.pyc

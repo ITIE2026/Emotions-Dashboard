@@ -30,6 +30,7 @@ from gui.training_games import (  # noqa: E402
     FullRebootController,
     JumpBallController,
     NeonDriftArenaController,
+    NeuroMusicFlowController,
     NeuroRacerController,
     PatternRecallController,
     ProstheticArmController,
@@ -585,6 +586,7 @@ class TrainingGameControllerTests(unittest.TestCase):
         active_ids = {spec.game_id for spec in active_training_specs()}
         self.assertTrue({"space_shooter", "jump_ball", "neuro_racer", "neon_drift_arena", "bubble_burst"}.issubset(active_ids))
         self.assertIn("full_reboot", active_ids)
+        self.assertIn("neuro_music_flow", active_ids)
         self.assertIn("candy_cascade", active_ids)
         self.assertIn("prosthetic_arm", active_ids)
 
@@ -638,6 +640,30 @@ class TrainingGameControllerTests(unittest.TestCase):
 
         self.assertGreater(controller.view_state["restlessness"], start_restlessness)
         self.assertIn("soften", snapshot.control_hint.lower())
+
+    def test_neuro_music_flow_uses_band_powers_and_finishes_at_target(self):
+        controller = NeuroMusicFlowController()
+        self._calibrate(controller)
+        controller.ingest_band_powers({"delta": 0.02, "theta": 0.03, "alpha": 0.11, "smr": 0.21, "beta": 0.63})
+
+        snapshot = controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=600.0)
+
+        self.assertTrue(snapshot.level_completed)
+        self.assertTrue(snapshot.run_completed)
+        self.assertEqual(controller.view_state["dominant_band"], "beta")
+        self.assertIn("focus", controller.view_state["dominant_mode"].lower())
+
+    def test_neuro_music_flow_stale_metrics_hold_scene_state(self):
+        controller = NeuroMusicFlowController()
+        self._calibrate(controller)
+        controller.ingest_band_powers({"delta": 0.28, "theta": 0.32, "alpha": 0.14, "smr": 0.08, "beta": 0.06})
+        controller.update_gameplay(49.0, 52.0, valid=True, stale=False, elapsed_seconds=12.0)
+        serenity_before = controller.view_state["serenity"]
+
+        snapshot = controller.update_gameplay(49.0, 52.0, valid=False, stale=True, elapsed_seconds=13.0)
+
+        self.assertIn("stale", snapshot.blocked_reason.lower())
+        self.assertAlmostEqual(serenity_before, controller.view_state["serenity"], places=5)
 
     def test_space_shooter_focus_and_relax_move_ship(self):
         controller = SpaceShooterController()

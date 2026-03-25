@@ -1,11 +1,12 @@
 """
-Adaptive soundtrack generation and mixing for EEG training modes.
+Adaptive soundtrack loading and mixing for EEG training modes.
 """
 from __future__ import annotations
 
 import math
 import os
 import struct
+import tempfile
 import wave
 from typing import Any
 
@@ -18,6 +19,13 @@ except ImportError:  # pragma: no cover - depends on local Qt multimedia install
 
 
 STEM_NAMES = ("base", "relax", "focus", "concentration", "sleep")
+TRAINING_AUDIO_ASSET_DIR = os.path.join(os.path.dirname(__file__), "assets", "training_audio")
+
+FALLBACK_BUNDLE_TONES = {
+    "aurora_drift": (174.0, 208.0, 0.10),
+    "velvet_horizon": (160.0, 196.0, 0.08),
+    "ember_pulse": (148.0, 192.0, 0.18),
+}
 
 PROFILE_DEFAULTS = {
     "sleep": {"base": 0.34, "relax": 0.22, "focus": 0.04, "concentration": 0.03, "sleep": 0.26},
@@ -26,6 +34,7 @@ PROFILE_DEFAULTS = {
     "concentration": {"base": 0.18, "relax": 0.04, "focus": 0.26, "concentration": 0.30, "sleep": 0.02},
     "memory": {"base": 0.22, "relax": 0.13, "focus": 0.20, "concentration": 0.18, "sleep": 0.05},
     "arcade": {"base": 0.16, "relax": 0.07, "focus": 0.23, "concentration": 0.25, "sleep": 0.02},
+    "music_flow": {"base": 0.24, "relax": 0.20, "focus": 0.16, "concentration": 0.12, "sleep": 0.14},
 }
 
 STEM_LIMITS = {
@@ -42,8 +51,10 @@ def compute_adaptive_mix(
     conc_delta: float,
     relax_delta: float,
     view_state: dict[str, Any] | None = None,
+    band_powers: dict[str, float] | None = None,
 ) -> dict[str, float]:
     view_state = view_state or {}
+    band_powers = band_powers or {}
     base = dict(PROFILE_DEFAULTS.get(profile, PROFILE_DEFAULTS["focus"]))
 
     calm_bias = max(0.0, min(1.0, (relax_delta - conc_delta + 3.0) / 6.0))
@@ -80,6 +91,41 @@ def compute_adaptive_mix(
         base["concentration"] += focus_bias * 0.14
         base["relax"] += calm_bias * 0.06
         base["sleep"] *= 1.0 - (0.85 * max(focus_bias, steady_bias * 0.3))
+    elif profile == "music_flow":
+        band_values = {
+            band: max(0.0, float(band_powers.get(band, 0.0)))
+            for band in ("delta", "theta", "alpha", "smr", "beta")
+        }
+        band_total = sum(band_values.values())
+        if band_total > 1e-9:
+            normalized_bands = {band: value / band_total for band, value in band_values.items()}
+        else:
+            normalized_bands = {band: 0.0 for band in band_values}
+
+        calm_drive = (
+            (normalized_bands["delta"] * 0.95)
+            + (normalized_bands["theta"] * 0.88)
+            + (normalized_bands["alpha"] * 0.35)
+        )
+        focus_drive = (
+            (normalized_bands["beta"] * 1.00)
+            + (normalized_bands["smr"] * 0.82)
+            + (normalized_bands["alpha"] * 0.28)
+        )
+        balance_drive = normalized_bands["alpha"] + (steady_bias * 0.55)
+
+        base["relax"] += (calm_bias * 0.12) + (calm_drive * 0.18) + (serenity * 0.06)
+        base["sleep"] += (normalized_bands["delta"] * 0.16) + (normalized_bands["theta"] * 0.09) + (serenity * 0.05)
+        base["focus"] += (focus_bias * 0.09) + (focus_drive * 0.14) + (balance_drive * 0.03)
+        base["concentration"] += (focus_bias * 0.10) + (normalized_bands["beta"] * 0.18) + (normalized_bands["smr"] * 0.09)
+        base["base"] += (normalized_bands["alpha"] * 0.08) + (balance_drive * 0.05)
+
+        if calm_drive > focus_drive:
+            base["focus"] *= 1.0 - min(0.24, (calm_drive - focus_drive) * 0.28)
+            base["concentration"] *= 1.0 - min(0.30, (calm_drive - focus_drive) * 0.34)
+        elif focus_drive > calm_drive:
+            base["relax"] *= 1.0 - min(0.20, (focus_drive - calm_drive) * 0.24)
+            base["sleep"] *= 1.0 - min(0.26, (focus_drive - calm_drive) * 0.30)
 
     if restlessness > 0.45:
         base["focus"] += restlessness * 0.04
@@ -94,10 +140,17 @@ def compute_adaptive_mix(
 
 
 class AdaptiveMusicEngine:
-    def __init__(self, parent, audio_dir: str, soundtracks: dict[str, dict[str, Any]]):
+    def __init__(
+        self,
+        parent,
+        audio_dir: str,
+        soundtracks: dict[str, dict[str, Any]],
+        fallback_dir: str | None = None,
+    ):
         self._parent = parent
         self._audio_dir = audio_dir
         self._soundtracks = soundtracks
+        self._fallback_dir = fallback_dir or os.path.join(tempfile.gettempdir(), "bci_training_audio_fallback")
         self._effects: dict[str, QSoundEffect] = {}
         self._current_soundtrack: str | None = None
         self._enabled = QSoundEffect is not None
@@ -107,17 +160,48 @@ class AdaptiveMusicEngine:
         return self._enabled
 
     def ensure_assets(self) -> None:
-        os.makedirs(self._audio_dir, exist_ok=True)
-        for soundtrack_name, spec in self._soundtracks.items():
-            for stem in STEM_NAMES:
-                path = self._stem_path(soundtrack_name, stem)
-                if not os.path.exists(path):
-                    self._write_stem(path, spec["tone"], stem)
+        for soundtrack_name in self._soundtracks:
+            self.resolve_soundtrack_paths(soundtrack_name)
+
+    def resolve_soundtrack_paths(self, soundtrack_name: str) -> dict[str, str]:
+        spec = self._soundtracks.get(soundtrack_name, {})
+        bundle = str(spec.get("bundle", soundtrack_name.lower().replace(" ", "_")))
+        resolved = {}
+        for stem in STEM_NAMES:
+            resolved[stem] = self._resolve_stem_path(bundle, stem)
+        return resolved
+
+    def _resolve_stem_path(self, bundle: str, stem: str) -> str:
+        packaged = self._packaged_stem_path(bundle, stem)
+        if os.path.exists(packaged):
+            return packaged
+        os.makedirs(os.path.join(self._fallback_dir, bundle), exist_ok=True)
+        fallback = self._fallback_stem_path(bundle, stem)
+        if not os.path.exists(fallback):
+            tone = FALLBACK_BUNDLE_TONES.get(bundle, FALLBACK_BUNDLE_TONES["aurora_drift"])
+            self._write_stem(fallback, tone, stem)
+        return fallback
+
+    def _packaged_stem_path(self, bundle: str, stem: str) -> str:
+        return os.path.join(self._audio_dir, bundle, f"{stem}.wav")
+
+    def _fallback_stem_path(self, bundle: str, stem: str) -> str:
+        return os.path.join(self._fallback_dir, bundle, f"{stem}.wav")
+
+    def _current_stem_bias(self) -> dict[str, float]:
+        if not self._current_soundtrack:
+            return {}
+        spec = self._soundtracks.get(self._current_soundtrack, {})
+        return dict(spec.get("stem_bias", {}))
+
+    def _apply_stem_bias(self, stem: str, volume: float) -> float:
+        bias = float(self._current_stem_bias().get(stem, 1.0))
+        return min(STEM_LIMITS[stem], max(0.0, volume * bias))
 
     def start(self, soundtrack_name: str) -> None:
         if not self._enabled or soundtrack_name not in self._soundtracks:
             return
-        self.ensure_assets()
+        stem_paths = self.resolve_soundtrack_paths(soundtrack_name)
         if self._current_soundtrack != soundtrack_name:
             self.stop()
             self._current_soundtrack = soundtrack_name
@@ -126,7 +210,7 @@ class AdaptiveMusicEngine:
                 # Some PySide6 builds expose Loop.Infinite but still bind int.
                 effect.setLoopCount(int(QSoundEffect.Loop.Infinite.value))
                 effect.setVolume(0.0)
-                effect.setSource(QUrl.fromLocalFile(self._stem_path(soundtrack_name, stem)))
+                effect.setSource(QUrl.fromLocalFile(stem_paths[stem]))
                 effect.play()
                 self._effects[stem] = effect
         else:
@@ -140,22 +224,19 @@ class AdaptiveMusicEngine:
         conc_delta: float,
         relax_delta: float,
         view_state: dict[str, Any] | None = None,
+        band_powers: dict[str, float] | None = None,
     ) -> None:
         if not self._enabled or not self._effects:
             return
-        mix = compute_adaptive_mix(profile, conc_delta, relax_delta, view_state)
+        mix = compute_adaptive_mix(profile, conc_delta, relax_delta, view_state, band_powers=band_powers)
         for stem, effect in self._effects.items():
-            effect.setVolume(mix.get(stem, 0.0))
+            effect.setVolume(self._apply_stem_bias(stem, mix.get(stem, 0.0)))
 
     def stop(self) -> None:
         for effect in self._effects.values():
             effect.stop()
         self._effects.clear()
         self._current_soundtrack = None
-
-    def _stem_path(self, soundtrack_name: str, stem: str) -> str:
-        safe_name = soundtrack_name.lower().replace(" ", "_")
-        return os.path.join(self._audio_dir, f"{safe_name}_{stem}.wav")
 
     def _write_stem(self, path: str, tone: tuple[float, float, float], stem: str) -> None:
         carrier, accent, depth = tone
