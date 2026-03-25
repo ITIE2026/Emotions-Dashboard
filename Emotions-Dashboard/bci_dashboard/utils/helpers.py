@@ -117,3 +117,61 @@ def compute_peak_frequencies(freqs, psd_values):
         else:
             peaks[name] = 0.0
     return peaks
+
+
+def resolve_hemisphere_channel_groups(channel_count: int) -> tuple[list[int], list[int]]:
+    """Map PSD channels into left/right hemisphere groups.
+
+    Current defaults:
+    - 4 channels: O1/T3 = left, T4/O2 = right
+    - 2 channels: first = left, second = right
+    - 1 channel: mirror to both sides
+    - other counts: split the list in half as a safe fallback
+    """
+    try:
+        count = int(channel_count)
+    except (TypeError, ValueError):
+        count = 0
+    if count <= 0:
+        return [], []
+    if count == 1:
+        return [0], [0]
+    if count == 2:
+        return [0], [1]
+    if count >= 4:
+        return [0, 1], [2, 3]
+    split = int(math.ceil(count / 2.0))
+    left = list(range(split))
+    right = list(range(split, count))
+    if not right:
+        right = [left[-1]]
+    return left, right
+
+
+def compute_hemisphere_band_powers(freqs, channel_psd_values):
+    """Compute left/right hemisphere band powers from per-channel PSD arrays."""
+    freqs = np.asarray(freqs, dtype=float)
+    channel_psd_values = np.asarray(channel_psd_values, dtype=float)
+    if freqs.size == 0 or channel_psd_values.size == 0:
+        return {}, {}
+
+    if channel_psd_values.ndim == 1:
+        channel_psd_values = channel_psd_values.reshape(1, -1)
+
+    width = min(freqs.size, channel_psd_values.shape[1])
+    if width <= 0:
+        return {}, {}
+
+    freqs = freqs[:width]
+    channel_psd_values = channel_psd_values[:, :width]
+    left_indices, right_indices = resolve_hemisphere_channel_groups(channel_psd_values.shape[0])
+
+    def _mean_power(indices):
+        valid = [index for index in indices if 0 <= index < channel_psd_values.shape[0]]
+        if not valid:
+            return np.zeros_like(freqs, dtype=float)
+        return np.mean(channel_psd_values[valid], axis=0)
+
+    left_power = _mean_power(left_indices)
+    right_power = _mean_power(right_indices)
+    return compute_band_powers(freqs, left_power), compute_band_powers(freqs, right_power)

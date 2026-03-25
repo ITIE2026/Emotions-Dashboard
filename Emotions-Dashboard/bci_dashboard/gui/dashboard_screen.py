@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from gui.raw_metrics import aggregate_band_history, derive_ppg_metrics
 from gui.widgets.electrode_table import ElectrodeTable
+from gui.widgets.eeg_graph_panel import ToggleableEegGraphPanel
 from gui.widgets.fatigue_panel import FatiguePanel
 from gui.widgets.metric_card import MetricCard
 from gui.widgets.raw_data_widgets import (
@@ -31,7 +32,6 @@ from gui.widgets.raw_data_widgets import (
     RhythmsPieChartWidget,
     TriAxisChartWidget,
 )
-from gui.widgets.spectrum_chart import SpectrumChart
 from utils.config import (
     ACCENT_CYAN,
     ACCENT_GREEN,
@@ -47,6 +47,7 @@ from utils.config import (
 )
 from utils.eeg_filter import EEGDisplayFilter
 from utils.helpers import (
+    compute_hemisphere_band_powers,
     compute_band_powers,
     compute_peak_frequencies,
     recommendation_label,
@@ -100,6 +101,8 @@ class DashboardScreen(QWidget):
         self._latest_indexes = {}
         self._latest_physio = {}
         self._latest_band_powers = {}
+        self._latest_left_band_powers = {}
+        self._latest_right_band_powers = {}
         self._latest_peaks = {}
         self._latest_ppg_metrics = {}
 
@@ -226,7 +229,7 @@ class DashboardScreen(QWidget):
             f"QSplitter::handle {{ background: {BORDER_SUBTLE}; height: 2px; }}"
         )
 
-        self._spectrum = SpectrumChart()
+        self._spectrum = ToggleableEegGraphPanel()
         self._spectrum.setMinimumHeight(300)
         left_splitter.addWidget(self._spectrum)
 
@@ -548,13 +551,26 @@ class DashboardScreen(QWidget):
             n_channels = psd_data.get_channels_count()
             freqs = [float(psd_data.get_frequency(idx)) for idx in range(n_freq)]
             avg_power = [0.0] * n_freq
+            channel_powers = [[0.0] * n_freq for _ in range(n_channels)]
             for ch_idx in range(n_channels):
                 for f_idx in range(n_freq):
-                    avg_power[f_idx] += float(psd_data.get_psd(ch_idx, f_idx))
+                    value = float(psd_data.get_psd(ch_idx, f_idx))
+                    channel_powers[ch_idx][f_idx] = value
+                    avg_power[f_idx] += value
             if n_channels > 0:
                 avg_power = [value / n_channels for value in avg_power]
 
             self._spectrum.update_psd(freqs, avg_power)
+            left_band_powers, right_band_powers = compute_hemisphere_band_powers(
+                np.asarray(freqs, dtype=float),
+                np.asarray(channel_powers if n_channels > 0 else [], dtype=float),
+            )
+            self._latest_left_band_powers = dict(left_band_powers)
+            self._latest_right_band_powers = dict(right_band_powers)
+            self._spectrum.update_hemisphere_band_powers(
+                self._latest_left_band_powers,
+                self._latest_right_band_powers,
+            )
 
             f_arr = np.asarray(freqs, dtype=float)
             p_arr = np.asarray(avg_power, dtype=float)
@@ -587,7 +603,13 @@ class DashboardScreen(QWidget):
         try:
             self._spectrum.update_psd(freqs, avg_power)
             self._latest_band_powers = dict(psd_snapshot.get("band_powers", {}))
+            self._latest_left_band_powers = dict(psd_snapshot.get("left_band_powers", {}))
+            self._latest_right_band_powers = dict(psd_snapshot.get("right_band_powers", {}))
             self._latest_peaks = dict(psd_snapshot.get("peak_frequencies", {}))
+            self._spectrum.update_hemisphere_band_powers(
+                self._latest_left_band_powers,
+                self._latest_right_band_powers,
+            )
             self._band_history.append((now, dict(self._latest_band_powers)))
 
             for name in ["alpha", "beta", "theta", "smr"]:
@@ -710,6 +732,8 @@ class DashboardScreen(QWidget):
         self._ppg_state = {}
         self._latest_ppg_metrics = {}
         self._latest_band_powers = {}
+        self._latest_left_band_powers = {}
+        self._latest_right_band_powers = {}
         self._latest_peaks = {}
         self._ppg_samples.clear()
         self._ppg_timestamps.clear()
@@ -723,6 +747,8 @@ class DashboardScreen(QWidget):
         self._electrode_table.set_session_start(self._session_start_wall)
         self._electrode_table.clear()
         self._electrode_table.reset_interaction_state()
+        self._spectrum.clear_data()
+        self._spectrum.reset_view()
         self._update_ppg_metrics_panel()
         self._refresh_filter_label()
         if self._streaming_active and self._view_active:

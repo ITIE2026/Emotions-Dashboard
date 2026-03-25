@@ -1557,7 +1557,9 @@ class DashboardMemsFilteringTests(unittest.TestCase):
             [4.0, 6.0, 8.0, 10.0, 12.0, 18.0],
             [
                 [1.0, 2.0, 6.0, 4.0, 2.0, 1.0],
-                [1.0, 4.0, 8.0, 6.0, 4.0, 2.0],
+                [2.0, 5.0, 7.0, 5.0, 2.0, 1.0],
+                [4.0, 3.0, 2.0, 1.0, 4.0, 6.0],
+                [5.0, 4.0, 1.0, 1.0, 6.0, 8.0],
             ],
         )
 
@@ -1566,6 +1568,9 @@ class DashboardMemsFilteringTests(unittest.TestCase):
         self.assertEqual(snapshot["freqs"], [4.0, 6.0, 8.0, 10.0, 12.0, 18.0])
         self.assertEqual(len(snapshot["avg_power"]), 6)
         self.assertIn("alpha", snapshot["band_powers"])
+        self.assertIn("left_band_powers", snapshot)
+        self.assertIn("right_band_powers", snapshot)
+        self.assertNotEqual(snapshot["left_band_powers"]["beta"], snapshot["right_band_powers"]["beta"])
         self.assertIn("alpha_peak", snapshot["peak_frequencies"])
         self.assertAlmostEqual(snapshot["peak_frequencies"]["alpha_peak"], 8.0)
 
@@ -1578,6 +1583,8 @@ class DashboardMemsFilteringTests(unittest.TestCase):
                 "freqs": [4.0, 6.0, 8.0, 10.0, 12.0],
                 "avg_power": [1.0, 2.0, 6.0, 4.0, 2.0],
                 "band_powers": {"alpha": 10.0, "beta": 3.0, "theta": 2.0, "smr": 1.0},
+                "left_band_powers": {"delta": 1.0, "theta": 2.0, "alpha": 3.0, "smr": 4.0, "beta": 5.0},
+                "right_band_powers": {"delta": 5.0, "theta": 4.0, "alpha": 3.0, "smr": 2.0, "beta": 1.0},
                 "peak_frequencies": {"alpha_peak": 8.0, "beta_peak": 18.0, "theta_peak": 6.0},
                 "received_at": time.monotonic(),
             }
@@ -1589,7 +1596,22 @@ class DashboardMemsFilteringTests(unittest.TestCase):
                 screen.on_psd_snapshot(snapshot)
 
             self.assertEqual(screen._latest_band_powers["alpha"], 10.0)
+            self.assertEqual(screen._latest_left_band_powers["beta"], 5.0)
+            self.assertEqual(screen._latest_right_band_powers["theta"], 4.0)
+            self.assertEqual(screen._spectrum.hemisphere_band_powers()[0]["alpha"], 3.0)
             self.assertEqual(screen._peak_labels["alpha_peak"].text(), "8.0 Hz")
+        finally:
+            screen.close()
+
+    def test_dashboard_reset_session_restores_spectrum_view(self):
+        screen = DashboardScreen()
+        try:
+            screen._spectrum.set_view_mode(screen._spectrum.VIEW_HEMISPHERE_RADAR)
+            self.assertEqual(screen._spectrum.view_mode(), screen._spectrum.VIEW_HEMISPHERE_RADAR)
+
+            screen.reset_session("session-new")
+
+            self.assertEqual(screen._spectrum.view_mode(), screen._spectrum.VIEW_SPECTRUM)
         finally:
             screen.close()
 

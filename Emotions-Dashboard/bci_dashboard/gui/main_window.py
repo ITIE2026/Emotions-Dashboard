@@ -55,7 +55,11 @@ from utils.config import (
     WINDOW_MIN_WIDTH,
     WINDOW_TITLE,
 )
-from utils.helpers import compute_band_powers, compute_peak_frequencies
+from utils.helpers import (
+    compute_band_powers,
+    compute_hemisphere_band_powers,
+    compute_peak_frequencies,
+)
 
 
 log = logging.getLogger(__name__)
@@ -1430,17 +1434,20 @@ class MainWindow(QMainWindow):
                 [float(psd_data.get_frequency(idx)) for idx in range(n_freq)],
                 dtype=float,
             )
-            avg_power = np.zeros(n_freq, dtype=float)
+            channel_powers = np.zeros((n_channels, n_freq), dtype=float)
             for ch_idx in range(n_channels):
                 for f_idx in range(n_freq):
-                    avg_power[f_idx] += float(psd_data.get_psd(ch_idx, f_idx))
-            avg_power /= float(n_channels)
+                    channel_powers[ch_idx, f_idx] = float(psd_data.get_psd(ch_idx, f_idx))
+            avg_power = np.mean(channel_powers, axis=0)
             band_powers = compute_band_powers(freqs, avg_power)
+            left_band_powers, right_band_powers = compute_hemisphere_band_powers(freqs, channel_powers)
             peak_frequencies = compute_peak_frequencies(freqs, avg_power)
             return {
                 "freqs": freqs.tolist(),
                 "avg_power": avg_power.tolist(),
                 "band_powers": dict(band_powers),
+                "left_band_powers": dict(left_band_powers),
+                "right_band_powers": dict(right_band_powers),
                 "peak_frequencies": dict(peak_frequencies),
                 "received_at": time.monotonic(),
             }

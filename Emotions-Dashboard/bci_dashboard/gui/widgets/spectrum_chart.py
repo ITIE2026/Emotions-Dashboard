@@ -87,31 +87,43 @@ class SpectrumChart(QWidget):
             region = pg.LinearRegionItem(
                 values=[lo, hi], orientation="vertical", movable=False,
                 brush=pg.mkBrush(QColor(colour).red(), QColor(colour).green(),
-                                 QColor(colour).blue(), 12),
+                                 QColor(colour).blue(), 8),
                 pen=pg.mkPen(None),
             )
             region.setZValue(-20)
             self._plot.addItem(region)
 
+        base_curve_colour = QColor("#7fd9ff")
+        self._main_curve = self._plot.plot(
+            pen=pg.mkPen(
+                color=(base_curve_colour.red(), base_curve_colour.green(), base_curve_colour.blue(), 170),
+                width=1.6,
+            ),
+        )
+        self._main_curve.setZValue(0)
+        self._main_zero_curve = self._plot.plot([], [], pen=pg.mkPen(None))
+        self._main_fill = pg.FillBetweenItem(
+            self._main_curve,
+            self._main_zero_curve,
+            brush=pg.mkBrush(
+                base_curve_colour.red(),
+                base_curve_colour.green(),
+                base_curve_colour.blue(),
+                28,
+            ),
+        )
+        self._main_fill.setZValue(-5)
+        self._plot.addItem(self._main_fill)
+
         self._band_items = {}
         for band_key, _name, _band_range, colour in _BAND_SPECS:
-            qcolor = QColor(colour)
             curve = self._plot.plot(
                 pen=pg.mkPen(color=colour, width=2),
             )
-            zero_curve = self._plot.plot([], [], pen=pg.mkPen(None))
-            fill = pg.FillBetweenItem(
-                curve,
-                zero_curve,
-                brush=pg.mkBrush(qcolor.red(), qcolor.green(), qcolor.blue(), 58),
-            )
-            fill.setZValue(-1)
-            self._plot.addItem(fill)
+            curve.setZValue(3)
             self._band_items[band_key] = {
                 "range": _band_range,
                 "curve": curve,
-                "zero_curve": zero_curve,
-                "fill": fill,
             }
 
         layout.addWidget(self._plot, stretch=1)
@@ -145,9 +157,10 @@ class SpectrumChart(QWidget):
 
     def _clear_segments(self):
         empty = np.array([], dtype=float)
+        self._main_curve.setData(empty, empty)
+        self._main_zero_curve.setData(empty, empty)
         for item in self._band_items.values():
             item["curve"].setData(empty, empty)
-            item["zero_curve"].setData(empty, empty)
         self._plot.setYRange(0, _DEFAULT_Y_MAX, padding=0.02)
 
     def update_psd(self, freqs, powers):
@@ -169,6 +182,9 @@ class SpectrumChart(QWidget):
             self._clear_segments()
             return
 
+        self._main_curve.setData(freqs, powers)
+        self._main_zero_curve.setData(freqs, np.zeros_like(powers))
+
         for index, (band_key, _name, (lo, hi), _colour) in enumerate(_BAND_SPECS):
             seg_freqs, seg_powers = self._slice_band_segment(
                 freqs,
@@ -178,10 +194,6 @@ class SpectrumChart(QWidget):
                 include_hi=(index == len(_BAND_SPECS) - 1),
             )
             self._band_items[band_key]["curve"].setData(seg_freqs, seg_powers)
-            self._band_items[band_key]["zero_curve"].setData(
-                seg_freqs,
-                np.zeros_like(seg_powers),
-            )
 
         # Auto-scale Y
         y_max = float(np.max(powers)) * 1.15
