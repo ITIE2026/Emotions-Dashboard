@@ -258,33 +258,24 @@ class DashboardScreen(QWidget):
         right_layout.setContentsMargins(8, 8, 8, 12)
         right_layout.setSpacing(6)
 
-        right_layout.addWidget(_section_header("PPG Metrics", ACCENT_CYAN))
-        ppg_grid = QGridLayout()
-        ppg_grid.setHorizontalSpacing(12)
-        ppg_grid.setVerticalSpacing(6)
-        ppg_items = [
-            ("Perfusion", "perfusion", 0, 0),
-            ("PPG signal quality avg", "ppg_quality", 0, 1),
-            ("HR", "ppg_hr", 0, 2),
-            ("SI", "ppg_si", 0, 3),
-            ("SAT", "sat", 0, 4),
-            ("CV", "cv", 1, 0),
-            ("Is Calibrated", "is_calibrated", 1, 1),
-            ("RR(M)", "rr_mean", 1, 2),
-            ("SDNN", "sdnn", 1, 3),
-            ("Skin Contact Artifacts", "skin_contact_artifacts", 1, 4),
-            ("Mo", "mo", 2, 0),
-            ("AMo", "amo", 2, 1),
-            ("MxDMn", "mxdmn", 2, 2),
-            ("MxDMn(total)", "mxdmn_total", 2, 3),
-            ("Motion Artifacts", "motion_artifacts", 2, 4),
-        ]
-        self._ppg_labels = {}
-        for title, key, row, col in ppg_items:
-            tile, value_lbl = _metric_tile(title, "Calculating")
-            ppg_grid.addWidget(tile, row, col)
-            self._ppg_labels[key] = value_lbl
-        right_layout.addLayout(ppg_grid)
+        emotions_header = _section_header("Emotions", "#B388FF")
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(6)
+        self._card_focus = MetricCard("Focus", "#B388FF")
+        self._card_chill = MetricCard("Calmness", "#81C784")
+        self._card_stress = MetricCard("Tension", "#FF8A65")
+        self._card_anger = MetricCard("Anger", "#E57373")
+        self._card_self_ctrl = MetricCard("Self-ctrl", "#4DD0E1")
+        for card in (
+            self._card_focus,
+            self._card_chill,
+            self._card_stress,
+            self._card_anger,
+            self._card_self_ctrl,
+        ):
+            cards_row.addWidget(card)
+        right_layout.addWidget(emotions_header)
+        right_layout.addLayout(cards_row)
 
         right_layout.addWidget(_section_header("Indices and Scores", ACCENT_GREEN))
         idx_grid = QGridLayout()
@@ -380,23 +371,33 @@ class DashboardScreen(QWidget):
         self._fatigue_panel = FatiguePanel()
         right_layout.addWidget(self._fatigue_panel)
 
-        right_layout.addWidget(_section_header("Emotions", "#B388FF"))
-        cards_row = QHBoxLayout()
-        cards_row.setSpacing(6)
-        self._card_focus = MetricCard("Focus", "#B388FF")
-        self._card_chill = MetricCard("Calmness", "#81C784")
-        self._card_stress = MetricCard("Tension", "#FF8A65")
-        self._card_anger = MetricCard("Anger", "#E57373")
-        self._card_self_ctrl = MetricCard("Self-ctrl", "#4DD0E1")
-        for card in (
-            self._card_focus,
-            self._card_chill,
-            self._card_stress,
-            self._card_anger,
-            self._card_self_ctrl,
-        ):
-            cards_row.addWidget(card)
-        right_layout.addLayout(cards_row)
+        right_layout.addWidget(_section_header("PPG Metrics", ACCENT_CYAN))
+        ppg_grid = QGridLayout()
+        ppg_grid.setHorizontalSpacing(12)
+        ppg_grid.setVerticalSpacing(6)
+        ppg_items = [
+            ("Perfusion", "perfusion", 0, 0),
+            ("PPG signal quality avg", "ppg_quality", 0, 1),
+            ("HR", "ppg_hr", 0, 2),
+            ("SI", "ppg_si", 0, 3),
+            ("SAT", "sat", 0, 4),
+            ("CV", "cv", 1, 0),
+            ("Is Calibrated", "is_calibrated", 1, 1),
+            ("RR(M)", "rr_mean", 1, 2),
+            ("SDNN", "sdnn", 1, 3),
+            ("Skin Contact Artifacts", "skin_contact_artifacts", 1, 4),
+            ("Mo", "mo", 2, 0),
+            ("AMo", "amo", 2, 1),
+            ("MxDMn", "mxdmn", 2, 2),
+            ("MxDMn(total)", "mxdmn_total", 2, 3),
+            ("Motion Artifacts", "motion_artifacts", 2, 4),
+        ]
+        self._ppg_labels = {}
+        for title, key, row, col in ppg_items:
+            tile, value_lbl = _metric_tile(title, "Calculating")
+            ppg_grid.addWidget(tile, row, col)
+            self._ppg_labels[key] = value_lbl
+        right_layout.addLayout(ppg_grid)
 
         right_layout.addStretch()
         right_scroll.setWidget(right_widget)

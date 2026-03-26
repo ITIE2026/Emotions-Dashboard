@@ -15,7 +15,7 @@ if APP_ROOT not in sys.path:
     sys.path.insert(0, APP_ROOT)
 
 from PySide6.QtCore import QObject, Signal  # noqa: E402
-from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel, QWidget  # noqa: E402
 
 from calibration.calibration_manager import CalibrationManager  # noqa: E402
 from device.device_manager import DeviceManager  # noqa: E402
@@ -1380,6 +1380,39 @@ class TrainingGameControllerTests(unittest.TestCase):
 
 
 class DashboardMemsFilteringTests(unittest.TestCase):
+    def test_dashboard_swaps_emotions_and_ppg_sections(self):
+        screen = DashboardScreen()
+        try:
+            layout = screen._right_widget.layout()
+            header_texts = []
+            expected_headers = {
+                "Emotions",
+                "Indices and Scores",
+                "Rhythms",
+                "Instant Frequency Peaks",
+                "State Characteristics",
+                "PPG Metrics",
+            }
+            for index in range(layout.count()):
+                item = layout.itemAt(index)
+                widget = item.widget()
+                if isinstance(widget, QLabel) and widget.text() in expected_headers:
+                    header_texts.append(widget.text())
+
+            self.assertEqual(
+                header_texts,
+                [
+                    "Emotions",
+                    "Indices and Scores",
+                    "Rhythms",
+                    "Instant Frequency Peaks",
+                    "State Characteristics",
+                    "PPG Metrics",
+                ],
+            )
+        finally:
+            screen.close()
+
     def test_dashboard_no_longer_exposes_mems_panels(self):
         screen = DashboardScreen()
         try:
