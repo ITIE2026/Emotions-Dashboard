@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from gui.widgets.electrode_diagram import ElectrodeDiagram
 from utils.config import (
     ACCENT_GREEN,
+    ACCENT_CYAN,
     ACCENT_RED,
     BG_CARD,
     BG_INPUT,
@@ -36,19 +37,13 @@ from utils.config import (
     WRITE_OPTION_SPECS,
 )
 from utils.helpers import resist_color, resist_label
+from utils.ui_effects import gradient_button_style, danger_button_style
 
 
-_BTN_PRIMARY = (
-    f"QPushButton {{ background: {ACCENT_GREEN}; color: #111; font-weight: bold; "
-    f"border: none; border-radius: 10px; padding: 10px; font-size: 14px; }}"
-    f"QPushButton:hover {{ background: #7DFFC4; }}"
-    f"QPushButton:disabled {{ background: #333; color: #666; }}"
+_BTN_PRIMARY = gradient_button_style(
+    ACCENT_GREEN, ACCENT_CYAN, "#0A0A14", border_radius=10, padding="10px", font_size=14
 )
-_BTN_DANGER = (
-    f"QPushButton {{ background: transparent; color: {ACCENT_RED}; "
-    f"border: 1px solid {ACCENT_RED}; border-radius: 10px; padding: 8px; font-size: 13px; }}"
-    f"QPushButton:hover {{ background: #2a1515; }}"
-)
+_BTN_DANGER = danger_button_style(ACCENT_RED)
 
 
 class ConnectionScreen(QWidget):
@@ -77,14 +72,30 @@ class ConnectionScreen(QWidget):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
-        title = QLabel("Authorization")
-        title.setStyleSheet(f"font-size: 22px; font-weight: bold; color: {TEXT_PRIMARY};")
-        root.addWidget(title)
+        # ── Gradient header banner ───────────────────────────────────
+        header = QWidget()
+        header.setStyleSheet(
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f" stop:0 #0D1926, stop:0.5 #112234, stop:1 #0D1926);"
+            f" border: 1px solid {BORDER_SUBTLE}; border-radius: 14px;"
+        )
+        header.setMinimumHeight(70)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(20, 12, 20, 12)
 
-        subtitle = QLabel("Select the device type, choose what to record, then scan and connect.")
-        subtitle.setStyleSheet(f"font-size: 13px; color: {TEXT_SECONDARY};")
+        title_col = QVBoxLayout()
+        title_col.setSpacing(2)
+        title = QLabel("\U0001F9E0  Device Connection")
+        title.setStyleSheet(
+            f"font-size: 20px; font-weight: bold; color: {TEXT_PRIMARY}; background: transparent;"
+        )
+        subtitle = QLabel("Select device type, configure recording options, then scan and connect.")
+        subtitle.setStyleSheet(f"font-size: 12px; color: {TEXT_SECONDARY}; background: transparent;")
         subtitle.setWordWrap(True)
-        root.addWidget(subtitle)
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        header_layout.addLayout(title_col, stretch=1)
+        root.addWidget(header)
 
         root.addWidget(self._build_write_options_panel())
 
@@ -173,7 +184,7 @@ class ConnectionScreen(QWidget):
         post_layout.setContentsMargins(16, 14, 16, 14)
         post_layout.setSpacing(10)
 
-        conn_header = QLabel("Connected")
+        conn_header = QLabel("\u2705  Connected")
         conn_header.setStyleSheet(
             f"font-size: 16px; font-weight: bold; color: {ACCENT_GREEN}; background: transparent;"
         )

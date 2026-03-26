@@ -66,7 +66,8 @@ def main():
     # ── Global dark stylesheet ────────────────────────────────────────
     from utils.config import (
         BG_PRIMARY, BG_CARD, BG_INPUT, BG_NAV, BORDER_SUBTLE,
-        TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_GREEN,
+        TEXT_PRIMARY, TEXT_SECONDARY, ACCENT_GREEN, ACCENT_CYAN,
+        ACCENT_RED,
     )
 
     app.setStyleSheet(f"""
@@ -77,64 +78,255 @@ def main():
             background-color: {BG_PRIMARY};
             color: {TEXT_PRIMARY};
         }}
+
+        /* ── Scroll areas ── */
         QScrollArea {{
             background: transparent;
             border: none;
         }}
         QScrollBar:vertical {{
             background: {BG_PRIMARY};
-            width: 6px;
+            width: 5px;
             border: none;
+            border-radius: 2px;
         }}
         QScrollBar::handle:vertical {{
-            background: #444;
-            border-radius: 3px;
-            min-height: 20px;
+            background: #3A3E5A;
+            border-radius: 2px;
+            min-height: 24px;
+        }}
+        QScrollBar::handle:vertical:hover {{
+            background: #5A5E7A;
         }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
             height: 0px;
         }}
         QScrollBar:horizontal {{
             background: {BG_PRIMARY};
-            height: 6px;
+            height: 5px;
             border: none;
         }}
         QScrollBar::handle:horizontal {{
-            background: #444;
-            border-radius: 3px;
-            min-width: 20px;
+            background: #3A3E5A;
+            border-radius: 2px;
+            min-width: 24px;
+        }}
+        QScrollBar::handle:horizontal:hover {{
+            background: #5A5E7A;
         }}
         QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
             width: 0px;
         }}
+
+        /* ── Group boxes ── */
         QGroupBox {{
             background: {BG_CARD};
             border: 1px solid {BORDER_SUBTLE};
-            border-radius: 12px;
-            padding: 14px 12px 10px 12px;
-            margin-top: 8px;
+            border-radius: 14px;
+            padding: 16px 14px 12px 14px;
+            margin-top: 10px;
             font-weight: bold;
             color: {TEXT_SECONDARY};
+            font-size: 12px;
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
-            left: 14px;
-            padding: 0 4px;
+            left: 16px;
+            padding: 0 6px;
             color: {TEXT_SECONDARY};
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }}
+
+        /* ── Buttons – primary ── */
+        QPushButton[class="primary"] {{
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 {ACCENT_GREEN}, stop:1 {ACCENT_CYAN});
+            color: #0A0A14;
+            font-weight: bold;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 22px;
+            font-size: 14px;
+        }}
+        QPushButton[class="primary"]:hover {{
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 {ACCENT_CYAN}, stop:1 {ACCENT_GREEN});
+        }}
+        QPushButton[class="primary"]:disabled {{
+            background: #2A2E48;
+            color: #555;
+        }}
+
+        /* ── Buttons – ghost/secondary ── */
+        QPushButton[class="secondary"] {{
+            background: transparent;
+            color: {TEXT_PRIMARY};
+            border: 1px solid {BORDER_SUBTLE};
+            border-radius: 8px;
+            padding: 7px 16px;
+            font-size: 13px;
+        }}
+        QPushButton[class="secondary"]:hover {{
+            background: #242842;
+            border-color: #4A4E6A;
+        }}
+
+        /* ── Combo boxes ── */
+        QComboBox {{
+            background: {BG_INPUT};
+            border: 1px solid {BORDER_SUBTLE};
+            border-radius: 8px;
+            padding: 7px 12px;
+            color: {TEXT_PRIMARY};
+            font-size: 13px;
+            selection-background-color: #2A2E48;
+        }}
+        QComboBox:focus {{
+            border-color: {ACCENT_GREEN};
+        }}
+        QComboBox::drop-down {{
+            border: none;
+            width: 24px;
+        }}
+        QComboBox QAbstractItemView {{
+            background: {BG_INPUT};
+            color: {TEXT_PRIMARY};
+            border: 1px solid {BORDER_SUBTLE};
+            border-radius: 6px;
+            selection-background-color: #2A2E48;
+            outline: none;
+        }}
+
+        /* ── Line edits / inputs ── */
+        QLineEdit {{
+            background: {BG_INPUT};
+            border: 1px solid {BORDER_SUBTLE};
+            border-radius: 8px;
+            padding: 7px 12px;
+            color: {TEXT_PRIMARY};
+            font-size: 13px;
+        }}
+        QLineEdit:focus {{
+            border-color: {ACCENT_GREEN};
+        }}
+
+        /* ── List widgets ── */
+        QListWidget {{
+            background: {BG_INPUT};
+            border: 1px solid {BORDER_SUBTLE};
+            border-radius: 10px;
+            color: {TEXT_PRIMARY};
+            font-size: 13px;
+            outline: none;
+        }}
+        QListWidget::item {{
+            padding: 10px 14px;
+            border-radius: 6px;
+        }}
+        QListWidget::item:selected {{
+            background: #2A2E48;
+            color: {TEXT_PRIMARY};
+        }}
+        QListWidget::item:hover {{
+            background: #1E2238;
+        }}
+
+        /* ── Tab widget ── */
+        QTabWidget::pane {{
+            border: 1px solid {BORDER_SUBTLE};
+            border-radius: 8px;
+            background: {BG_CARD};
+        }}
+        QTabBar::tab {{
+            background: transparent;
+            color: {TEXT_SECONDARY};
+            padding: 8px 18px;
+            font-size: 12px;
+            border-bottom: 2px solid transparent;
+        }}
+        QTabBar::tab:selected {{
+            color: {ACCENT_GREEN};
+            border-bottom: 2px solid {ACCENT_GREEN};
+        }}
+        QTabBar::tab:hover {{
+            color: {TEXT_PRIMARY};
+        }}
+
+        /* ── Check boxes ── */
+        QCheckBox {{
+            color: {TEXT_PRIMARY};
+            font-size: 13px;
+            spacing: 8px;
+        }}
+        QCheckBox::indicator {{
+            width: 16px;
+            height: 16px;
+            border: 1px solid {BORDER_SUBTLE};
+            border-radius: 4px;
+            background: {BG_INPUT};
+        }}
+        QCheckBox::indicator:checked {{
+            background: {ACCENT_GREEN};
+            border-color: {ACCENT_GREEN};
+            image: none;
+        }}
+        QCheckBox::indicator:hover {{
+            border-color: {ACCENT_GREEN};
+        }}
+
+        /* ── Progress bars (global thin style) ── */
+        QProgressBar {{
+            background: #1E2238;
+            border: none;
+            border-radius: 3px;
+            height: 5px;
+        }}
+        QProgressBar::chunk {{
+            background: {ACCENT_GREEN};
+            border-radius: 3px;
+        }}
+
+        /* ── Dialogs / message boxes ── */
         QMessageBox {{
             background: {BG_CARD};
             color: {TEXT_PRIMARY};
         }}
-        QToolTip {{
+        QDialog {{
             background: {BG_CARD};
             color: {TEXT_PRIMARY};
-            border: 1px solid {BORDER_SUBTLE};
-            padding: 4px;
         }}
+
+        /* ── Tooltips ── */
+        QToolTip {{
+            background: #1E2238;
+            color: {TEXT_PRIMARY};
+            border: 1px solid {BORDER_SUBTLE};
+            padding: 5px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+        }}
+
+        /* ── Splitters ── */
         QSplitter::handle {{
             background: {BORDER_SUBTLE};
-            width: 2px;
+            width: 1px;
+        }}
+        QSplitter::handle:hover {{
+            background: #4A4E6A;
+        }}
+
+        /* ── Spin boxes ── */
+        QSpinBox, QDoubleSpinBox {{
+            background: {BG_INPUT};
+            border: 1px solid {BORDER_SUBTLE};
+            border-radius: 8px;
+            padding: 6px 10px;
+            color: {TEXT_PRIMARY};
+        }}
+        QSpinBox:focus, QDoubleSpinBox:focus {{
+            border-color: {ACCENT_GREEN};
         }}
     """)
 
