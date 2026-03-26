@@ -1,7 +1,0 @@
-PySide6>=6.5
-pyqtgraph>=0.13
-numpy>=1.24
-pandas>=2.0
-pyserial>=3.5
-h5py>=3.10
-mne>=1.8

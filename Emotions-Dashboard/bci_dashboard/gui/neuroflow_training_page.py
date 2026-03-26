@@ -28,6 +28,7 @@ from gui.neuroflow_runtime import (
     CI_FOCUS_DROPOUT,
     CI_FOCUS_THRESHOLD,
     FOCUS_DWELL_SECONDS,
+    LaunchResult,
     SIM_START_DELAY_S,
     STAGES,
     NeuroflowSimulationEngine,
@@ -223,6 +224,7 @@ class CalibrationOverlay(QWidget):
 class NeuroflowTrainingPage(QWidget):
     back_requested = Signal()
     quick_calibration_requested = Signal()
+    launch_result_received = Signal(bool, str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -238,6 +240,11 @@ class NeuroflowTrainingPage(QWidget):
         self._sim_psd_accumulator = 0.0
         self._last_freqs = np.asarray([], dtype=float)
         self._last_powers = np.asarray([], dtype=float)
+        self._last_peak_freqs: dict[str, float] = {}
+        self._has_signal_snapshot = False
+        self._launch_in_progress = False
+        self._last_launch_result: LaunchResult | None = None
+        self._last_launch_source = ""
         self._log_lines = deque(maxlen=180)
 
         self._app_cycle_timer = QTimer(self)
@@ -253,6 +260,7 @@ class NeuroflowTrainingPage(QWidget):
         self._ui_timer.timeout.connect(self._refresh_runtime_ui)
 
         self._build_ui()
+        self.launch_result_received.connect(self._handle_launch_result)
         self._refresh_runtime_ui()
 
     def _build_ui(self):
@@ -421,10 +429,12 @@ class NeuroflowTrainingPage(QWidget):
         self._delta_gauge = GaugeDial("Delta", "#0EA5E9")
         self._theta_gauge = GaugeDial("Theta", "#22D3EE")
         self._alpha_gauge = GaugeDial("Alpha", "#4ADE80")
+        self._smr_gauge = GaugeDial("SMR", "#A3E635")
         self._beta_gauge = GaugeDial("Beta", "#F59E0B")
         gauges.addWidget(self._delta_gauge, 0, 0)
         gauges.addWidget(self._theta_gauge, 0, 1)
-        gauges.addWidget(self._alpha_gauge, 1, 0)
+        gauges.addWidget(self._alpha_gauge, 0, 2)
+        gauges.addWidget(self._smr_gauge, 1, 0)
         gauges.addWidget(self._beta_gauge, 1, 1)
         spectrum_layout.addLayout(gauges)
         right.addWidget(spectrum_frame, stretch=1)
@@ -548,16 +558,20 @@ class NeuroflowTrainingPage(QWidget):
         peak_freqs = dict(peak_freqs or {})
         if not band_powers:
             return
+        self._has_signal_snapshot = True
+        self._last_peak_freqs = peak_freqs
         max_value = max(0.4, max(band_powers.values()) * 1.1)
         self._delta_gauge.set_value(band_powers.get("delta", 0.0), max_value=max_value)
         self._theta_gauge.set_value(band_powers.get("theta", 0.0), max_value=max_value)
         self._alpha_gauge.set_value(band_powers.get("alpha", 0.0), max_value=max_value)
+        self._smr_gauge.set_value(band_powers.get("smr", 0.0), max_value=max_value)
         self._beta_gauge.set_value(band_powers.get("beta", 0.0), max_value=max_value)
         self._band_summary_lbl.setText(
             "Band powers: "
             f"Delta {band_powers.get('delta', 0.0):.3f} • "
             f"Theta {band_powers.get('theta', 0.0):.3f} • "
             f"Alpha {band_powers.get('alpha', 0.0):.3f} • "
+            f"SMR {band_powers.get('smr', 0.0):.3f} • "
             f"Beta {band_powers.get('beta', 0.0):.3f}"
         )
         self._peaks_lbl.setText(
@@ -567,14 +581,8 @@ class NeuroflowTrainingPage(QWidget):
             f"Theta {peak_freqs.get('theta_peak', 0.0):.1f} Hz"
         )
         triggered = self._runtime.ingest_band_powers(band_powers)
-        self._ci_gauge.set_value(self._runtime.ci_smooth, max_value=max(0.6, CI_FOCUS_THRESHOLD * 1.8))
-        self._ci_meta_lbl.setText(
-            f"CI raw {self._runtime.ci_raw:.3f} • smooth {self._runtime.ci_smooth:.3f} • Alpha peak {peak_freqs.get('alpha_peak', 0.0):.1f} Hz"
-        )
         if triggered:
-            app = self._runtime.current_app()
-            self._log_message(f"Focus confirmed. Launching {app['name']}.")
-            threaded_launch(app)
+            self._attempt_launch(self._runtime.current_app(), source="Automatic focus dwell")
         self._refresh_runtime_ui()
 
     def on_iapf_status(self, payload: dict):
@@ -694,10 +702,61 @@ class NeuroflowTrainingPage(QWidget):
     def _launch_current_app(self):
         if not self._runtime.calibrated:
             self._log_message("Manual launch is blocked until quick calibration completes.")
+            self._refresh_runtime_ui()
             return
         app = self._runtime.current_app()
-        self._log_message(f"Manual launch: {app['name']}")
-        threaded_launch(app)
+        self._attempt_launch(app, source="Manual launch")
+
+    def _attempt_launch(self, app: dict, source: str):
+        self._launch_in_progress = True
+        self._last_launch_source = source
+        self._last_launch_result = None
+        self._log_message(f"{source}: attempting to launch {app['name']}.")
+        threaded_launch(app, self._emit_launch_result)
+        self._refresh_runtime_ui()
+
+    def _emit_launch_result(self, result: LaunchResult):
+        self.launch_result_received.emit(bool(result.success), str(result.app_name), str(result.message))
+
+    def _handle_launch_result(self, success: bool, app_name: str, message: str):
+        self._launch_in_progress = False
+        self._last_launch_result = LaunchResult(bool(success), app_name, message)
+        if success:
+            self._log_message(f"Launch succeeded: {message}")
+        else:
+            self._log_message(f"Launch failed: {message}")
+        self._refresh_runtime_ui()
+
+    def _launch_gate_text(self, snapshot) -> str:
+        if self._launch_in_progress:
+            return "Launch attempted. Waiting for the operating system to respond."
+        if not snapshot.connected:
+            return "Waiting for connection."
+        if snapshot.calibration_active:
+            return "Quick calibration running."
+        if not snapshot.ready_to_calibrate:
+            return "Waiting for resistance pass."
+        if not snapshot.calibrated:
+            return "Launch blocked until quick calibration completes."
+        if not self._has_signal_snapshot:
+            return "Calibrated. Waiting for spectral summaries."
+        if snapshot.cooldown_remaining > 0.0:
+            return f"Cooldown active. Next launch in {snapshot.cooldown_remaining:.1f}s."
+        if snapshot.in_focus:
+            remaining = max(0.0, FOCUS_DWELL_SECONDS * (1.0 - snapshot.dwell_progress))
+            return f"Focus dwell active. Hold for {remaining:.1f}s."
+        if snapshot.ci_smooth >= CI_FOCUS_THRESHOLD:
+            return "Focus threshold reached. Keep holding to launch."
+        return "Calibrated and waiting for focus dwell."
+
+    def _focus_status_text(self, snapshot) -> str:
+        if self._launch_in_progress:
+            return "Launch attempted. Waiting for system confirmation."
+        if self._last_launch_result is not None and not self._last_launch_result.success:
+            return f"Launch failed. {self._last_launch_result.message}"
+        if self._has_signal_snapshot and snapshot.connected and not snapshot.calibrated:
+            return "CI is updating, but launch is blocked until quick calibration completes."
+        return snapshot.last_message
 
     def _refresh_runtime_ui(self):
         if not self._simulation_enabled and not self._live_connected and self._simulation_delay_started > 0.0:
@@ -714,13 +773,23 @@ class NeuroflowTrainingPage(QWidget):
         mode_text = "Simulation" if snapshot.simulation_active else ("Live Capsule" if snapshot.connected else "Disconnected")
         self._status_lbl.setText(f"Neuroflow • {mode_text} • Serial {self._serial} • Stage {STAGES[snapshot.stage][0]}")
         self._calibrate_btn.setEnabled(snapshot.connected and snapshot.ready_to_calibrate and not snapshot.calibration_active)
-        self._manual_launch_btn.setEnabled(snapshot.calibrated)
+        self._manual_launch_btn.setEnabled(snapshot.calibrated and not self._launch_in_progress)
         self._ci_gauge.set_value(snapshot.ci_smooth, max_value=max(0.6, CI_FOCUS_THRESHOLD * 1.8))
-        cooldown_text = f"Cooldown {snapshot.cooldown_remaining:.1f}s" if snapshot.cooldown_remaining > 0.0 else "Ready to launch"
-        if not self._last_freqs.size:
-            self._ci_meta_lbl.setText(f"CI raw {snapshot.ci_raw:.3f} • smooth {snapshot.ci_smooth:.3f} • {cooldown_text}")
+        gate_text = self._launch_gate_text(snapshot)
+        peak_text = ""
+        if self._last_peak_freqs:
+            peak_text = f" • Alpha peak {self._last_peak_freqs.get('alpha_peak', 0.0):.1f} Hz"
+        self._ci_meta_lbl.setText(
+            f"CI raw {snapshot.ci_raw:.3f} • smooth {snapshot.ci_smooth:.3f} • {gate_text}{peak_text}"
+        )
         self._dwell_bar.set_progress(snapshot.dwell_progress)
-        self._focus_hint_lbl.setText(snapshot.last_message)
+        self._focus_hint_lbl.setText(self._focus_status_text(snapshot))
+        app = self._runtime.current_app()
+        launch_lines = [f"Selected app: {app['icon']} {app['name']}", gate_text]
+        if self._last_launch_result is not None:
+            prefix = "Last launch ok" if self._last_launch_result.success else "Last launch failed"
+            launch_lines.append(f"{prefix}: {self._last_launch_result.message}")
+        self._launch_hint_lbl.setText("\n".join(launch_lines))
         if snapshot.calibration_active:
             self._overlay.start("Quick calibration running")
         elif not self._overlay.isHidden():

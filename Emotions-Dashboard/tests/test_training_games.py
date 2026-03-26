@@ -35,9 +35,11 @@ from gui.training_games import (  # noqa: E402
     PatternRecallController,
     ProstheticArmController,
     SpaceShooterController,
+    TugOfWarController,
     active_training_specs,
 )
 from gui.widgets.electrode_table import ElectrodeTable  # noqa: E402
+from gui.widgets.training_game_widgets import TugOfWarWidget  # noqa: E402
 from prosthetic_arm.arduino_arm import ArduinoArmController  # noqa: E402
 from prosthetic_arm.capsule_backend import CapsuleMetricAdapter  # noqa: E402
 from utils.sdk_scalars import coerce_float, coerce_int, coerce_percent  # noqa: E402
@@ -584,7 +586,7 @@ class TrainingGameControllerTests(unittest.TestCase):
 
     def test_active_specs_include_arcade_games(self):
         active_ids = {spec.game_id for spec in active_training_specs()}
-        self.assertTrue({"space_shooter", "jump_ball", "neuro_racer", "neon_drift_arena", "bubble_burst"}.issubset(active_ids))
+        self.assertTrue({"tug_of_war", "space_shooter", "jump_ball", "neuro_racer", "neon_drift_arena", "bubble_burst"}.issubset(active_ids))
         self.assertIn("full_reboot", active_ids)
         self.assertIn("neuro_music_flow", active_ids)
         self.assertIn("candy_cascade", active_ids)
@@ -664,6 +666,133 @@ class TrainingGameControllerTests(unittest.TestCase):
 
         self.assertIn("stale", snapshot.blocked_reason.lower())
         self.assertAlmostEqual(serenity_before, controller.view_state["serenity"], places=5)
+
+    def test_tug_of_war_concentration_pulls_toward_player_side(self):
+        controller = TugOfWarController()
+        self._calibrate(controller)
+        start_position = controller.view_state["rope_position"]
+
+        snapshot = None
+        for _ in range(6):
+            snapshot = controller.update_gameplay(54.0, 49.0, valid=True, stale=False, elapsed_seconds=2.0)
+
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.phase, "tug_of_war")
+        self.assertEqual(snapshot.direction, "player")
+        self.assertLess(controller.view_state["rope_position"], start_position)
+        self.assertEqual(controller.view_state["advantage_side"], "player")
+
+    def test_tug_of_war_relaxation_gives_system_advantage(self):
+        controller = TugOfWarController()
+        self._calibrate(controller)
+        start_position = controller.view_state["rope_position"]
+
+        snapshot = None
+        for _ in range(6):
+            snapshot = controller.update_gameplay(49.0, 56.0, valid=True, stale=False, elapsed_seconds=2.0)
+
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.direction, "system")
+        self.assertGreater(controller.view_state["rope_position"], start_position)
+        self.assertEqual(controller.view_state["advantage_side"], "system")
+
+    def test_tug_of_war_stale_metrics_freeze_rope_progress(self):
+        controller = TugOfWarController()
+        self._calibrate(controller)
+        controller.update_gameplay(54.0, 49.0, valid=True, stale=False, elapsed_seconds=1.0)
+        rope_before = controller.view_state["rope_position"]
+
+        snapshot = controller.update_gameplay(54.0, 49.0, valid=False, stale=True, elapsed_seconds=2.0)
+
+        self.assertIn("stale", snapshot.blocked_reason.lower())
+        self.assertEqual(rope_before, controller.view_state["rope_position"])
+
+    def test_tug_of_war_neutral_input_still_lets_system_pull(self):
+        controller = TugOfWarController()
+        self._calibrate(controller)
+
+        snapshot = None
+        for _ in range(4):
+            snapshot = controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=2.0)
+
+        self.assertIsNotNone(snapshot)
+        self.assertGreater(controller.view_state["system_force"], controller.view_state["player_force"])
+        self.assertGreater(controller.view_state["rope_position"], 0.0)
+        self.assertEqual(snapshot.direction, "system")
+
+    def test_tug_of_war_system_pressure_increases_by_stage(self):
+        controller = TugOfWarController()
+        self._calibrate(controller)
+
+        controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=4.0)
+        stage1_force = controller.view_state["system_force"]
+
+        controller._level_index = 1
+        controller._reset_level_state()
+        controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=4.0)
+        stage2_force = controller.view_state["system_force"]
+
+        controller._level_index = 2
+        controller._reset_level_state()
+        controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=4.0)
+        stage3_force = controller.view_state["system_force"]
+
+        self.assertGreater(stage2_force, stage1_force)
+        self.assertGreater(stage3_force, stage2_force)
+
+    def test_tug_of_war_player_capture_hold_completes_stage(self):
+        controller = TugOfWarController()
+        self._calibrate(controller)
+        controller._rope_position = -(controller.CAPTURE_THRESHOLD + 0.03)
+        controller._capture_owner = "player"
+        controller._capture_streak = controller._capture_target - 1
+
+        snapshot = controller.update_gameplay(55.0, 49.0, valid=True, stale=False, elapsed_seconds=8.0)
+
+        self.assertTrue(snapshot.level_completed)
+        self.assertEqual(controller.current_level_number, 2)
+        self.assertGreaterEqual(controller.finish_run(None, aborted=False).level_results[0].score, 20)
+
+    def test_tug_of_war_system_capture_hold_ends_run(self):
+        controller = TugOfWarController()
+        self._calibrate(controller)
+        controller._rope_position = controller.CAPTURE_THRESHOLD + 0.03
+        controller._capture_owner = "system"
+        controller._capture_streak = controller._capture_target - 1
+
+        snapshot = controller.update_gameplay(49.0, 56.0, valid=True, stale=False, elapsed_seconds=8.0)
+        result = controller.finish_run(None, aborted=False)
+
+        self.assertTrue(snapshot.run_completed)
+        self.assertFalse(snapshot.level_completed)
+        self.assertFalse(result.level_results[0].completed)
+
+    def test_tug_of_war_widget_renders_extreme_positions(self):
+        widget = TugOfWarWidget()
+        try:
+            widget.resize(960, 620)
+            widget.set_state(
+                {
+                    "headline": "Boss Clash",
+                    "advantage_side": "system",
+                    "rope_position": 0.92,
+                    "rope_tension": 0.84,
+                    "player_force": 31.0,
+                    "system_force": 78.0,
+                    "player_score": 128,
+                    "system_score": 166,
+                    "capture_progress": 0.76,
+                    "pressure_level": 88.0,
+                    "arena_energy": 88.0,
+                    "spark_intensity": 74.0,
+                    "message": "Relaxing gives the system ground. Pull back with concentration.",
+                }
+            )
+            widget.show()
+            APP.processEvents()
+            self.assertFalse(widget.grab().isNull())
+        finally:
+            widget.close()
 
     def test_space_shooter_focus_and_relax_move_ship(self):
         controller = SpaceShooterController()
@@ -1227,6 +1356,25 @@ class TrainingGameControllerTests(unittest.TestCase):
             self.assertEqual(state["backend_mode"], "capsule")
             self.assertIn("target_state", state)
             self.assertIn("history", state)
+        finally:
+            screen.close()
+
+    def test_training_screen_registers_tug_of_war_as_immersive_arcade_game(self):
+        with patch("gui.training_screen.AdaptiveMusicEngine.ensure_assets", return_value=None):
+            screen = TrainingScreen()
+        try:
+            self.assertIn("tug_of_war", screen._game_widget_map)
+            self.assertIn("tug_of_war", screen.IMMERSIVE_GAME_IDS)
+
+            screen._show_detail("tug_of_war")
+            self.assertEqual(
+                screen._detail_title_lbl.text(),
+                "A player-versus-system rope duel driven by concentration",
+            )
+
+            screen._select_game("tug_of_war")
+            screen._switch_game_widget()
+            self.assertIs(screen._game_views.currentWidget(), screen._tug_of_war_widget)
         finally:
             screen.close()
 

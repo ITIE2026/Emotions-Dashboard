@@ -1354,6 +1354,337 @@ class BubbleBurstWidget(_ImmersiveGameWidget):
         painter.drawText(QRectF(card.left() + 30, card.top() + 108, card.width() - 60, 34), Qt.AlignCenter | Qt.TextWordWrap, str(self._state.get("overlay_subtitle", "")))
 
 
+class TugOfWarWidget(_ImmersiveGameWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(560)
+
+    def sizeHint(self):
+        return QSize(560, 720)
+
+    def paintEvent(self, event):  # noqa: N802 - Qt API
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        self._paint_backdrop(painter)
+
+        headline = str(self._state.get("headline", "Tug of War"))
+        message = str(self._state.get("message", "Concentrate to pull harder. Relaxing gives the system ground."))
+        advantage_side = str(self._state.get("advantage_side", "neutral"))
+        rope_position = max(-1.0, min(1.0, float(self._state.get("rope_position", 0.0))))
+        rope_tension = max(0.0, min(1.0, float(self._state.get("rope_tension", 0.0))))
+        capture_progress = max(0.0, min(1.0, float(self._state.get("capture_progress", 0.0))))
+        pressure_level = max(0.0, min(100.0, float(self._state.get("pressure_level", 30.0))))
+        arena_energy = max(0.0, min(100.0, float(self._state.get("arena_energy", 32.0))))
+        spark_intensity = max(0.0, min(100.0, float(self._state.get("spark_intensity", 10.0))))
+        player_score = int(self._state.get("player_score", 0))
+        system_score = int(self._state.get("system_score", 0))
+        player_force = max(0.0, min(100.0, float(self._state.get("player_force", 0.0))))
+        system_force = max(0.0, min(100.0, float(self._state.get("system_force", 0.0))))
+
+        menu_rect = QRectF(18, 18, 54, 54)
+        self._menu_button_rect = menu_rect
+        self._draw_menu_button(painter, menu_rect)
+
+        balance_rect = _balance_panel_rect(self, 80.0, width_ratio=0.62) if self._state.get("balance_panel") else None
+        arena_top = (balance_rect.bottom() + 14.0) if balance_rect is not None else 92.0
+        arena_rect = QRectF(28, arena_top, self.width() - 56, max(260.0, self.height() - arena_top - 126.0))
+
+        self._draw_title_banner(painter, QRectF(92, 18, self.width() - 184, 56), headline, advantage_side, capture_progress, pressure_level)
+        self._draw_score_card(painter, QRectF(arena_rect.left(), arena_rect.top(), 148, 94), "Player", player_score, player_force, QColor("#5da8ff"), QColor("#ffd56e"))
+        self._draw_score_card(painter, QRectF(arena_rect.right() - 148, arena_rect.top(), 148, 94), "System", system_score, system_force, QColor("#78d4ff"), QColor("#9ea8ff"))
+
+        pit_rect = QRectF(arena_rect.left(), arena_rect.top() + 112, arena_rect.width(), arena_rect.height() - 112)
+        self._draw_arena(painter, pit_rect, advantage_side, arena_energy)
+
+        rope_center_y = pit_rect.center().y() - 18.0
+        left_anchor = QPointF(pit_rect.left() + 72, rope_center_y + 10)
+        right_anchor = QPointF(pit_rect.right() - 72, rope_center_y - 10)
+        rope_half_span = max(40.0, (pit_rect.width() * 0.5) - 104.0)
+        knot_center = QPointF(pit_rect.center().x() + (rope_position * rope_half_span), rope_center_y)
+
+        self._draw_capture_zone(painter, QRectF(pit_rect.left() + 26, pit_rect.top() + 24, 92, pit_rect.height() - 48), label="PLAYER ZONE", active=advantage_side == "player", tint=QColor("#3c84ff"))
+        self._draw_capture_zone(painter, QRectF(pit_rect.right() - 118, pit_rect.top() + 24, 92, pit_rect.height() - 48), label="SYSTEM ZONE", active=advantage_side == "system", tint=QColor("#7ca0ff"))
+        self._draw_rope(painter, left_anchor, right_anchor, knot_center, rope_tension)
+        self._draw_tug_team(painter, knot_center, left=True, energy=arena_energy, accent=QColor("#ffd56e"))
+        self._draw_tug_team(painter, knot_center, left=False, energy=arena_energy, accent=QColor("#9ea8ff"))
+        self._draw_knot_glow(painter, knot_center, rope_tension, spark_intensity, advantage_side)
+        self._draw_energy_particles(painter, pit_rect, knot_center, spark_intensity, rope_position, advantage_side)
+        self._draw_floor_grid(painter, pit_rect, knot_center)
+        self._draw_footer_strip(painter, QRectF(pit_rect.left(), pit_rect.bottom() - 52, pit_rect.width(), 52), message, advantage_side)
+
+        self._draw_balance_panel(painter, top=80.0, width_ratio=0.62)
+
+    def _paint_backdrop(self, painter: QPainter):
+        bg = QLinearGradient(0, 0, 0, self.height())
+        bg.setColorAt(0.0, QColor("#080912"))
+        bg.setColorAt(0.45, QColor("#0a0c17"))
+        bg.setColorAt(1.0, QColor("#05070f"))
+        painter.fillRect(self.rect(), bg)
+        glow = QRadialGradient(QPointF(self.width() * 0.42, self.height() * 0.28), self.width() * 0.62)
+        glow.setColorAt(0.0, QColor(255, 214, 110, 24))
+        glow.setColorAt(0.55, QColor(111, 168, 255, 20))
+        glow.setColorAt(1.0, QColor(0, 0, 0, 0))
+        painter.fillRect(self.rect(), glow)
+
+    def _draw_menu_button(self, painter: QPainter, rect: QRectF):
+        shell = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        shell.setColorAt(0.0, QColor("#406bd8"))
+        shell.setColorAt(1.0, QColor("#18284d"))
+        painter.setPen(QPen(QColor("#8ab9ff"), 2))
+        painter.setBrush(shell)
+        painter.drawRoundedRect(rect, 14, 14)
+        painter.setPen(QPen(QColor("#eef6ff"), 3, Qt.SolidLine, Qt.RoundCap))
+        for offset in (15, 26, 37):
+            painter.drawLine(QPointF(rect.left() + 14, rect.top() + offset), QPointF(rect.right() - 14, rect.top() + offset))
+
+    def _draw_title_banner(self, painter: QPainter, rect: QRectF, headline: str, advantage_side: str, capture_progress: float, pressure_level: float):
+        fill = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        fill.setColorAt(0.0, QColor("#151a2b"))
+        fill.setColorAt(0.5, QColor("#111a27"))
+        fill.setColorAt(1.0, QColor("#182231"))
+        painter.setPen(QPen(QColor("#394764"), 2))
+        painter.setBrush(fill)
+        painter.drawRoundedRect(rect, 22, 22)
+        headline_font = QFont()
+        headline_font.setPointSize(17)
+        headline_font.setBold(True)
+        painter.setFont(headline_font)
+        painter.setPen(QColor("#f8fbff"))
+        painter.drawText(QRectF(rect.left() + 18, rect.top() + 6, rect.width() - 170, 24), Qt.AlignVCenter | Qt.AlignLeft, headline)
+        sub_font = QFont()
+        sub_font.setPointSize(9)
+        painter.setFont(sub_font)
+        painter.setPen(QColor("#a9b7cb"))
+        painter.drawText(QRectF(rect.left() + 18, rect.top() + 28, rect.width() - 170, 16), Qt.AlignVCenter | Qt.AlignLeft, f"AI Pressure {pressure_level:.0f}%")
+
+        side_rect = QRectF(rect.right() - 126, rect.top() + 9, 108, rect.height() - 18)
+        side_fill = QLinearGradient(side_rect.topLeft(), side_rect.bottomLeft())
+        if advantage_side == "player":
+            side_fill.setColorAt(0.0, QColor("#2f67d5"))
+            side_fill.setColorAt(1.0, QColor("#1b376f"))
+            badge_text = "PLAYER EDGE"
+        elif advantage_side == "system":
+            side_fill.setColorAt(0.0, QColor("#5563d6"))
+            side_fill.setColorAt(1.0, QColor("#272c73"))
+            badge_text = "SYSTEM EDGE"
+        else:
+            side_fill.setColorAt(0.0, QColor("#4c5569"))
+            side_fill.setColorAt(1.0, QColor("#283042"))
+            badge_text = "EVEN"
+        painter.setPen(QPen(QColor(255, 255, 255, 40), 1.5))
+        painter.setBrush(side_fill)
+        painter.drawRoundedRect(side_rect, 16, 16)
+        label_font = QFont()
+        label_font.setPointSize(9)
+        label_font.setBold(True)
+        painter.setFont(label_font)
+        painter.setPen(QColor("#eefbfd"))
+        painter.drawText(side_rect, Qt.AlignCenter, badge_text)
+
+        meter_rect = QRectF(rect.left() + 18, rect.bottom() - 12, rect.width() - 170, 7)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(255, 255, 255, 20))
+        painter.drawRoundedRect(meter_rect, 3, 3)
+        fill_rect = QRectF(meter_rect.left(), meter_rect.top(), meter_rect.width() * capture_progress, meter_rect.height())
+        capture_fill = QLinearGradient(fill_rect.topLeft(), fill_rect.topRight())
+        capture_fill.setColorAt(0.0, QColor("#ffd56e"))
+        capture_fill.setColorAt(1.0, QColor("#fff4bf"))
+        painter.setBrush(capture_fill)
+        painter.drawRoundedRect(fill_rect, 3, 3)
+
+    def _draw_score_card(self, painter: QPainter, rect: QRectF, label: str, score: int, force: float, primary: QColor, accent: QColor):
+        fill = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        fill.setColorAt(0.0, QColor(17, 22, 34, 230))
+        fill.setColorAt(1.0, QColor(10, 14, 22, 230))
+        painter.setPen(QPen(QColor(255, 255, 255, 28), 1.5))
+        painter.setBrush(fill)
+        painter.drawRoundedRect(rect, 22, 22)
+        label_font = QFont()
+        label_font.setPointSize(10)
+        label_font.setBold(True)
+        painter.setFont(label_font)
+        painter.setPen(accent)
+        painter.drawText(QRectF(rect.left() + 14, rect.top() + 12, rect.width() - 28, 20), Qt.AlignLeft | Qt.AlignVCenter, label.upper())
+        score_font = QFont()
+        score_font.setPointSize(23)
+        score_font.setBold(True)
+        painter.setFont(score_font)
+        painter.setPen(QColor("#f8fbff"))
+        painter.drawText(QRectF(rect.left() + 14, rect.top() + 24, rect.width() - 28, 34), Qt.AlignLeft | Qt.AlignVCenter, str(score))
+        meter_rect = QRectF(rect.left() + 14, rect.bottom() - 20, rect.width() - 28, 9)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(255, 255, 255, 18))
+        painter.drawRoundedRect(meter_rect, 4, 4)
+        fill_rect = QRectF(meter_rect.left(), meter_rect.top(), meter_rect.width() * (force / 100.0), meter_rect.height())
+        meter_fill = QLinearGradient(fill_rect.topLeft(), fill_rect.topRight())
+        meter_fill.setColorAt(0.0, primary)
+        meter_fill.setColorAt(1.0, accent)
+        painter.setBrush(meter_fill)
+        painter.drawRoundedRect(fill_rect, 4, 4)
+
+    def _draw_arena(self, painter: QPainter, rect: QRectF, advantage_side: str, arena_energy: float):
+        painter.setPen(QPen(QColor("#2b3244"), 2))
+        shell = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        shell.setColorAt(0.0, QColor("#10141f"))
+        shell.setColorAt(1.0, QColor("#07090f"))
+        painter.setBrush(shell)
+        painter.drawRoundedRect(rect, 32, 32)
+        left_glow = QLinearGradient(rect.left(), rect.top(), rect.center().x(), rect.top())
+        left_glow.setColorAt(0.0, QColor(46, 109, 255, 116 if advantage_side == "player" else 68))
+        left_glow.setColorAt(1.0, QColor(46, 109, 255, 0))
+        painter.fillRect(QRectF(rect.left(), rect.top(), rect.width() * 0.5, rect.height()), left_glow)
+        right_glow = QLinearGradient(rect.right(), rect.top(), rect.center().x(), rect.top())
+        right_glow.setColorAt(0.0, QColor(103, 122, 255, 110 if advantage_side == "system" else 68))
+        right_glow.setColorAt(1.0, QColor(103, 122, 255, 0))
+        painter.fillRect(QRectF(rect.center().x(), rect.top(), rect.width() * 0.5, rect.height()), right_glow)
+        crowd_y = rect.bottom() - 18
+        for index in range(20):
+            ratio = index / 19.0
+            x = rect.left() + 18 + (ratio * (rect.width() - 36))
+            light_height = 8 + ((index % 4) * 5) + (arena_energy * 0.14)
+            color = QColor("#ffd56e") if index % 2 == 0 else QColor("#8ea2ff")
+            color.setAlpha(70 + int(arena_energy * 1.2))
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(color)
+            painter.drawRoundedRect(QRectF(x, crowd_y - light_height, 12, light_height), 4, 4)
+
+    def _draw_capture_zone(self, painter: QPainter, rect: QRectF, label: str, active: bool, tint: QColor):
+        fill = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        fill.setColorAt(0.0, QColor(tint.red(), tint.green(), tint.blue(), 52 if active else 24))
+        fill.setColorAt(1.0, QColor(tint.red(), tint.green(), tint.blue(), 14))
+        painter.setPen(QPen(QColor(tint.red(), tint.green(), tint.blue(), 165 if active else 82), 2.2))
+        painter.setBrush(fill)
+        painter.drawRoundedRect(rect, 18, 18)
+        font = QFont()
+        font.setPointSize(9)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor("#f4fbff" if active else "#b8c6d4"))
+        painter.drawText(QRectF(rect.left() + 6, rect.top() + 8, rect.width() - 12, 24), Qt.AlignCenter, label)
+
+    def _draw_rope(self, painter: QPainter, left_anchor: QPointF, right_anchor: QPointF, knot_center: QPointF, rope_tension: float):
+        sag = 16.0 - (rope_tension * 10.0)
+        rope = QPainterPath()
+        rope.moveTo(left_anchor)
+        rope.quadTo(QPointF((left_anchor.x() + knot_center.x()) * 0.5, knot_center.y() + sag), knot_center)
+        rope.quadTo(QPointF((right_anchor.x() + knot_center.x()) * 0.5, knot_center.y() + sag), right_anchor)
+        painter.setPen(QPen(QColor(0, 0, 0, 88), 11, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.drawPath(rope)
+        painter.setPen(QPen(QColor("#c9ab7a"), 7.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.drawPath(rope)
+        painter.setPen(QPen(QColor("#f7e1b7"), 2.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.drawPath(rope)
+
+    def _draw_tug_team(self, painter: QPainter, knot_center: QPointF, *, left: bool, energy: float, accent: QColor):
+        direction = -1 if left else 1
+        lead_center = QPointF(knot_center.x() + (direction * 84), knot_center.y() + 24)
+        rear_center = QPointF(lead_center.x() + (direction * 50), lead_center.y() + 10)
+        intensity = 0.6 + (energy / 160.0)
+        for center, scale in ((rear_center, 0.85), (lead_center, 1.0)):
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(14, 18, 28, 230))
+            painter.drawEllipse(QPointF(center.x(), center.y() - (30 * scale)), 14 * scale, 14 * scale)
+            torso = QPainterPath()
+            torso.moveTo(center.x(), center.y() - (16 * scale))
+            torso.lineTo(center.x() - (18 * scale), center.y() + (18 * scale))
+            torso.lineTo(center.x() + (18 * scale), center.y() + (18 * scale))
+            torso.closeSubpath()
+            painter.setBrush(QColor(18, 24, 36, 240))
+            painter.drawPath(torso)
+            painter.setPen(QPen(accent, 4.2 * scale, Qt.SolidLine, Qt.RoundCap))
+            painter.drawLine(QPointF(center.x() - (4 * scale), center.y() - (2 * scale)), QPointF(center.x() - (direction * 32 * scale), center.y() - (18 * scale) - (energy * 0.03)))
+            painter.drawLine(QPointF(center.x() + (4 * scale), center.y() + (16 * scale)), QPointF(center.x() + (direction * 24 * scale), center.y() + (32 * scale)))
+            painter.drawLine(QPointF(center.x() - (4 * scale), center.y() + (16 * scale)), QPointF(center.x() - (direction * 18 * scale), center.y() + (34 * scale)))
+        painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), int(90 * intensity)), 3.0, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(QPointF(lead_center.x() - (direction * 18), lead_center.y() - 8), QPointF(knot_center.x() + (direction * 12), knot_center.y()))
+
+    def _draw_knot_glow(self, painter: QPainter, knot_center: QPointF, rope_tension: float, spark_intensity: float, advantage_side: str):
+        glow_radius = 28.0 + (spark_intensity * 0.18)
+        if advantage_side == "player":
+            tint = QColor("#ffd56e")
+        elif advantage_side == "system":
+            tint = QColor("#9ea8ff")
+        else:
+            tint = QColor("#d7dee7")
+        glow = QRadialGradient(knot_center, glow_radius)
+        glow.setColorAt(0.0, QColor(tint.red(), tint.green(), tint.blue(), 180))
+        glow.setColorAt(0.48, QColor(tint.red(), tint.green(), tint.blue(), 78))
+        glow.setColorAt(1.0, QColor(tint.red(), tint.green(), tint.blue(), 0))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(glow)
+        painter.drawEllipse(knot_center, glow_radius, glow_radius)
+        painter.setBrush(QColor("#fff5db"))
+        painter.drawEllipse(knot_center, 9.5 + (rope_tension * 4.0), 9.5 + (rope_tension * 4.0))
+        painter.setBrush(QColor(tint.red(), tint.green(), tint.blue(), 225))
+        painter.drawEllipse(knot_center, 6.0 + (rope_tension * 2.0), 6.0 + (rope_tension * 2.0))
+
+    def _draw_energy_particles(self, painter: QPainter, rect: QRectF, knot_center: QPointF, spark_intensity: float, rope_position: float, advantage_side: str):
+        if advantage_side == "player":
+            tint = QColor("#ffd56e")
+        elif advantage_side == "system":
+            tint = QColor("#9ea8ff")
+        else:
+            tint = QColor("#d7dee7")
+        count = 14
+        spread = 24.0 + (spark_intensity * 0.25)
+        for index in range(count):
+            angle = (index / count) * math.tau
+            radius = spread + ((index % 5) * 7.0)
+            x = knot_center.x() + math.cos(angle) * radius + (rope_position * 8.0)
+            y = knot_center.y() + math.sin(angle) * (radius * 0.55)
+            size = 2.2 + ((index + int(spark_intensity)) % 3)
+            alpha = 90 + int((spark_intensity / 100.0) * 120)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(tint.red(), tint.green(), tint.blue(), alpha))
+            painter.drawEllipse(QPointF(max(rect.left(), min(rect.right(), x)), max(rect.top(), min(rect.bottom(), y))), size, size)
+
+    def _draw_floor_grid(self, painter: QPainter, rect: QRectF, knot_center: QPointF):
+        painter.setPen(QPen(QColor(255, 255, 255, 12), 1))
+        horizon = rect.bottom() - 68
+        for index in range(11):
+            y = rect.top() + 32 + (index * ((rect.height() - 96) / 10.0))
+            painter.drawLine(QPointF(rect.left() + 18, y), QPointF(rect.right() - 18, y))
+        for index in range(12):
+            x = rect.left() + 24 + (index * ((rect.width() - 48) / 11.0))
+            painter.drawLine(QPointF(x, rect.top() + 26), QPointF(knot_center.x() + ((x - knot_center.x()) * 0.35), horizon))
+
+    def _draw_footer_strip(self, painter: QPainter, rect: QRectF, message: str, advantage_side: str):
+        fill = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        fill.setColorAt(0.0, QColor(8, 11, 18, 200))
+        fill.setColorAt(1.0, QColor(6, 8, 14, 220))
+        painter.setPen(QPen(QColor(255, 255, 255, 18), 1.2))
+        painter.setBrush(fill)
+        painter.drawRoundedRect(rect, 18, 18)
+        tag_rect = QRectF(rect.left() + 12, rect.top() + 8, 128, rect.height() - 16)
+        tag_fill = QLinearGradient(tag_rect.topLeft(), tag_rect.bottomLeft())
+        if advantage_side == "player":
+            tag_fill.setColorAt(0.0, QColor("#355fd6"))
+            tag_fill.setColorAt(1.0, QColor("#233b81"))
+            tag_text = "PLAYER EDGE"
+        elif advantage_side == "system":
+            tag_fill.setColorAt(0.0, QColor("#5563d6"))
+            tag_fill.setColorAt(1.0, QColor("#272c73"))
+            tag_text = "SYSTEM EDGE"
+        else:
+            tag_fill.setColorAt(0.0, QColor("#4b546a"))
+            tag_fill.setColorAt(1.0, QColor("#252c39"))
+            tag_text = "TUG EVEN"
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(tag_fill)
+        painter.drawRoundedRect(tag_rect, 14, 14)
+        label_font = QFont()
+        label_font.setPointSize(10)
+        label_font.setBold(True)
+        painter.setFont(label_font)
+        painter.setPen(QColor("#eefbff"))
+        painter.drawText(tag_rect, Qt.AlignCenter, tag_text)
+        body_font = QFont()
+        body_font.setPointSize(11)
+        painter.setFont(body_font)
+        painter.setPen(QColor("#d8e1ef"))
+        painter.drawText(QRectF(tag_rect.right() + 14, rect.top() + 6, rect.width() - tag_rect.width() - 30, rect.height() - 12), Qt.AlignVCenter | Qt.TextWordWrap, message)
+
+
 class FullRebootWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)

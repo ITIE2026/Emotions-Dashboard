@@ -24,6 +24,10 @@ DIR_LABELS = {
     None: "Hold steady",
     "left": "Backtrack",
     "right": "Advance",
+    "focus": "Focus pull",
+    "calm": "Calm pull",
+    "player": "Player pull",
+    "system": "System push",
     "open": "Open",
     "neutral": "Neutral",
     "closed": "Close",
@@ -807,6 +811,179 @@ class ArcadeTrainingController(BaseTrainingController):
             run_completed=run_completed,
             view_state=self._view_state,
         )
+
+
+class TugOfWarController(ArcadeTrainingController):
+    LEVELS = [
+        TrainingLevel("Opening Pull", 75),
+        TrainingLevel("System Pressure", 75),
+        TrainingLevel("Boss Clash", 95),
+    ]
+    LEVEL_CONFIGS = [
+        {"capture_target": 8, "velocity_decay": 0.80, "drive_scale": 0.028, "ai_base_pressure": 0.38, "ai_wave_pressure": 0.06, "wave_period": 9.0, "player_force_scale": 26.0, "relax_force_scale": 12.0, "pressure_level": 34.0},
+        {"capture_target": 8, "velocity_decay": 0.78, "drive_scale": 0.031, "ai_base_pressure": 0.58, "ai_wave_pressure": 0.14, "wave_period": 7.0, "player_force_scale": 26.0, "relax_force_scale": 16.0, "pressure_level": 62.0},
+        {"capture_target": 10, "velocity_decay": 0.74, "drive_scale": 0.034, "ai_base_pressure": 0.76, "ai_wave_pressure": 0.24, "wave_period": 5.5, "player_force_scale": 28.0, "relax_force_scale": 18.0, "pressure_level": 88.0},
+    ]
+    CAPTURE_THRESHOLD = 0.72
+
+    def __init__(self):
+        super().__init__(self.LEVELS)
+
+    def _reset_level_state(self) -> None:
+        config = self.LEVEL_CONFIGS[self._level_index]
+        self._capture_target = int(config["capture_target"])
+        self._velocity_decay = float(config["velocity_decay"])
+        self._drive_scale = float(config["drive_scale"])
+        self._ai_base_pressure = float(config["ai_base_pressure"])
+        self._ai_wave_pressure = float(config["ai_wave_pressure"])
+        self._wave_period = float(config["wave_period"])
+        self._player_force_scale = float(config["player_force_scale"])
+        self._relax_force_scale = float(config["relax_force_scale"])
+        self._pressure_level = float(config["pressure_level"])
+        self._pressure_meter = self._pressure_level
+        self._rope_position = 0.0
+        self._rope_velocity = 0.0
+        self._capture_streak = 0
+        self._capture_owner: str | None = None
+        self._player_score = 0.0
+        self._system_score = 0.0
+        self._player_force = 0.0
+        self._system_force = 0.0
+        self._advantage_side = "neutral"
+        self._arena_energy = 38.0
+        self._spark_intensity = 14.0
+        self._rope_tension = 0.0
+        self._message = self._target_message()
+        self._view_state = self._tug_view_state()
+
+    def update_gameplay(self, concentration: float, relaxation: float, valid: bool, stale: bool, elapsed_seconds: float) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation - (self._relax_baseline or 0.0)
+        blocked_reason = ""
+        moved = False
+        level_completed = False
+        run_completed = False
+        self._message = self._target_message()
+        control_hint = self._target_hint()
+        if stale:
+            blocked_reason = "Metrics are stale. Tug of War paused."
+        elif not valid:
+            blocked_reason = "Artifacts detected. Tug of War paused."
+        else:
+            ai_wave = self._ai_wave(elapsed_seconds)
+            player_push = max(0.0, conc_delta) * self._player_force_scale
+            system_push = ((self._ai_base_pressure + ai_wave) * 42.0) + (max(0.0, relax_delta) * self._relax_force_scale)
+            self._player_force = max(0.0, min(100.0, player_push))
+            self._system_force = max(0.0, min(100.0, system_push))
+            tug_balance = max(-1.35, min(1.35, (self._system_force - self._player_force) / 100.0))
+            self._pressure_meter = min(100.0, self._pressure_level + (ai_wave * 90.0))
+            self._player_score += self._player_force * 0.085
+            self._system_score += self._system_force * 0.085
+            self._rope_velocity = (self._rope_velocity * self._velocity_decay) + (tug_balance * self._drive_scale)
+            self._rope_position = max(-1.0, min(1.0, self._rope_position + self._rope_velocity))
+            self._rope_tension = max(0.0, min(1.0, abs(self._rope_velocity) * 7.5 + abs(self._rope_position) * 0.35))
+            self._arena_energy = max(22.0, min(100.0, 30.0 + (max(self._player_force, self._system_force) * 0.45) + (abs(self._rope_position) * 28.0)))
+            self._spark_intensity = max(8.0, min(100.0, 10.0 + (self._rope_tension * 56.0) + ((self._capture_streak / max(1, self._capture_target)) * 18.0)))
+            capture_owner = self._capture_owner_for_position()
+            if capture_owner is not None:
+                if capture_owner == self._capture_owner:
+                    self._capture_streak += 1
+                else:
+                    self._capture_owner = capture_owner
+                    self._capture_streak = 1
+                self._message = f"{capture_owner.title()} side is capturing the rope."
+            else:
+                self._capture_owner = None
+                self._capture_streak = max(0, self._capture_streak - 1)
+            moved = abs(self._rope_velocity) > 0.001
+            if self._capture_streak >= self._capture_target:
+                if self._capture_owner == "player":
+                    score = self._level_score(elapsed_seconds)
+                    self._record_level_result(True, elapsed_seconds, score_override=score)
+                    level_completed = True
+                    run_completed = self._advance_level()
+                    if not run_completed:
+                        self._message = self._target_message()
+                elif self._capture_owner == "system":
+                    self._message = "The system overwhelmed the rope. This run ends here."
+                    self._record_level_result(False, elapsed_seconds, score_override=0)
+                    self._finished = True
+                    run_completed = True
+        self._advantage_side = self._current_advantage()
+        self._view_state = self._tug_view_state(message=blocked_reason or self._message, conc_delta=conc_delta, relax_delta=relax_delta)
+        direction = self._recommended_direction()
+        recommended_label = {"player": "Player pull", "system": "System pressure"}.get(direction, "Hold center")
+        return self._arcade_snapshot(phase="tug_of_war", phase_label=self.current_level.title, direction=direction, blocked_reason=blocked_reason, control_hint=control_hint, conc_delta=conc_delta, relax_delta=relax_delta, moved=moved, level_completed=level_completed, run_completed=run_completed, recommended_label=recommended_label)
+
+    def _ai_wave(self, elapsed_seconds: float) -> float:
+        if self._wave_period <= 0.0:
+            return 0.0
+        wave_phase = ((max(0.0, elapsed_seconds) / self._wave_period) * math.tau) - (math.pi / 2.0)
+        return self._ai_wave_pressure * (0.5 + (0.5 * math.sin(wave_phase)))
+
+    def _capture_owner_for_position(self) -> str | None:
+        if self._rope_position <= -self.CAPTURE_THRESHOLD:
+            return "player"
+        if self._rope_position >= self.CAPTURE_THRESHOLD:
+            return "system"
+        return None
+
+    def _recommended_direction(self) -> str | None:
+        if self._player_force >= self._system_force + 6.0:
+            return "player"
+        if self._system_force >= self._player_force + 6.0:
+            return "system"
+        return None
+
+    def _current_advantage(self) -> str:
+        if self._capture_owner is not None:
+            return self._capture_owner
+        if self._rope_position <= -0.12:
+            return "player"
+        if self._rope_position >= 0.12:
+            return "system"
+        return "neutral"
+
+    def _target_message(self) -> str:
+        if self._level_index == 0:
+            return "Concentrate to pull the knot into the Player zone before the system settles in."
+        if self._level_index == 1:
+            return "System pressure is rising. Hold concentration or the AI will drag the rope away."
+        return "Boss Clash is active. Stay focused through every surge or the system takes the zone."
+
+    def _target_hint(self) -> str:
+        if self._level_index == 0:
+            return "Concentration helps you pull. Relaxation gives the system a counter-pull."
+        if self._level_index == 1:
+            return "The system now applies stronger base pressure. Any relaxation gives it even more ground."
+        return "Boss surges keep pushing from the system side. Stay concentrated to survive the wave windows."
+
+    def _level_score(self, elapsed_seconds: float) -> float:
+        elapsed_penalty = max(0.0, float(elapsed_seconds) - float(self.current_level.target_seconds))
+        capture_bonus = (self._capture_streak / max(1.0, float(self._capture_target))) * 12.0
+        duel_bonus = min(18.0, self._player_score / 10.0)
+        tension_bonus = self._arena_energy * 0.18
+        return 52.0 + capture_bonus + duel_bonus + tension_bonus - elapsed_penalty
+
+    def _tug_view_state(self, *, message: str = "", conc_delta: float = 0.0, relax_delta: float = 0.0) -> dict:
+        return {
+            "mode": "tug_of_war",
+            "headline": self.current_level.title,
+            "rope_position": self._rope_position,
+            "rope_tension": self._rope_tension,
+            "player_force": self._player_force,
+            "system_force": self._system_force,
+            "player_score": int(round(self._player_score)),
+            "system_score": int(round(self._system_score)),
+            "capture_progress": min(1.0, self._capture_streak / max(1.0, float(self._capture_target))),
+            "advantage_side": self._advantage_side,
+            "pressure_level": self._pressure_meter,
+            "arena_energy": self._arena_energy,
+            "spark_intensity": self._spark_intensity,
+            "music_scene": "arcade",
+            "music_bias": max(-1.0, min(1.0, (self._system_force - self._player_force) / 100.0)),
+            "message": message or self._message,
+        }
 
 
 class SpaceShooterController(ArcadeTrainingController):
@@ -3647,6 +3824,33 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         controller_factory=FullRebootController,
         widget_kind="full_reboot",
         music_profile="sleep",
+    ),
+    TrainingGameSpec(
+        game_id="tug_of_war",
+        section="Arcade neurofeedback",
+        eyebrow="Arena duel",
+        card_title="Tug of War",
+        detail_title="A player-versus-system rope duel driven by concentration",
+        duration="6 min",
+        description="Pull against the system, hold the Player zone, and survive rising AI pressure across three rounds.",
+        detail_body=(
+            "Tug of War is now a player-versus-system neurofeedback duel. Concentration helps your side pull the rope "
+            "toward the Player zone, while relaxation gives the system extra counter-force and lets the AI steal ground. "
+            "Each round raises the pressure, so steady focus and quick recoveries matter more than brief spikes."
+        ),
+        instructions=(
+            "Concentrate to pull harder for your side. If you relax too much, the system gains rope pressure and starts "
+            "dragging the knot toward its capture zone. Hold the Player zone long enough to win the round before the AI "
+            "locks in its own capture streak."
+        ),
+        calibration_copy="Build a clean baseline first so the rope physics react smoothly once the arena opens.",
+        preview_label="DUEL",
+        colors=("#173a74", "#38d7c5"),
+        enabled=True,
+        controller_factory=TugOfWarController,
+        widget_kind="tug_of_war",
+        soundtrack_enabled=True,
+        music_profile="arcade",
     ),
     TrainingGameSpec(
         game_id="space_shooter",

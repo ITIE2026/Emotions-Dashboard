@@ -85,18 +85,50 @@ APPS = [
 ]
 
 
-def launch_app(app: dict) -> None:
+@dataclass(frozen=True)
+class LaunchResult:
+    success: bool
+    app_name: str
+    message: str
+
+
+
+def _shell_start_launch(target: str) -> None:
+    subprocess.Popen(["cmd", "/c", "start", "", str(target)], shell=False)
+
+
+
+def launch_app(app: dict) -> LaunchResult:
+    app_name = str(app.get("name", "Selected app"))
     cmd = app.get("cmd")
-    fallback = app.get("fallback", [])
+    fallback = list(app.get("fallback", []))
     shell = bool(app.get("shell", False))
+    errors: list[str] = []
+
     if cmd and os.path.exists(cmd):
         try:
             subprocess.Popen([cmd])
-            return
-        except Exception:
-            pass
+            return LaunchResult(True, app_name, f"Launched {app_name} using the configured executable.")
+        except Exception as exc:
+            errors.append(f"Executable launch failed: {exc}")
+    elif cmd:
+        errors.append(f"Configured executable was not found: {cmd}")
+
     if fallback:
-        subprocess.Popen(" ".join(fallback) if shell else fallback, shell=shell)
+        try:
+            if os.name == "nt" and str(fallback[0]).lower() == "start":
+                if len(fallback) < 2 or not str(fallback[1]).strip():
+                    raise ValueError("Missing fallback launch target.")
+                _shell_start_launch(str(fallback[1]))
+            else:
+                subprocess.Popen(" ".join(fallback) if shell else fallback, shell=shell)
+            return LaunchResult(True, app_name, f"Launched {app_name} using the Windows fallback target.")
+        except Exception as exc:
+            errors.append(f"Fallback launch failed: {exc}")
+
+    if not errors:
+        errors.append("No launch target is configured for this app.")
+    return LaunchResult(False, app_name, " ".join(errors))
 
 
 @dataclass(frozen=True)
@@ -349,11 +381,19 @@ class NeuroflowSimulationEngine:
         return self._sdk_time
 
 
-def threaded_launch(app: dict) -> None:
+
+def threaded_launch(app: dict, callback=None) -> threading.Thread:
     def _run():
         try:
-            launch_app(app)
-        except Exception:
-            pass
+            result = launch_app(app)
+        except Exception as exc:
+            result = LaunchResult(False, str(app.get("name", "Selected app")), f"Unexpected launch error: {exc}")
+        if callback is not None:
+            try:
+                callback(result)
+            except Exception:
+                pass
 
-    threading.Thread(target=_run, daemon=True).start()
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return thread

@@ -37,6 +37,7 @@ from gui.widgets.training_game_widgets import (
     PatternRecallWidget,
     ProstheticArmWidget,
     SpaceShooterWidget,
+    TugOfWarWidget,
 )
 from prosthetic_arm.arm_lab_panel import ArmLabPanel
 from prosthetic_arm.arm_state import ArmStateEngine, dominant_state_for_metrics
@@ -176,7 +177,7 @@ class SoundtrackCard(QFrame):
 
 class TrainingScreen(QWidget):
     neuroflow_quick_calibration_requested = Signal()
-    IMMERSIVE_GAME_IDS = {"space_shooter", "neuro_racer", "bubble_burst", "neon_drift_arena"}
+    IMMERSIVE_GAME_IDS = {"tug_of_war", "space_shooter", "neuro_racer", "bubble_burst", "neon_drift_arena"}
 
     SOUNDTRACKS = {
         "Aurora Drift": {
@@ -802,6 +803,7 @@ class TrainingScreen(QWidget):
         self._current_widget = CalmCurrentWidget()
         self._neuro_music_flow_widget = NeuroMusicFlowWidget()
         self._full_reboot_widget = FullRebootWidget()
+        self._tug_of_war_widget = TugOfWarWidget()
         self._space_shooter_widget = SpaceShooterWidget()
         self._jump_ball_widget = JumpBallWidget()
         self._neuro_racer_widget = NeuroRacerWidget()
@@ -810,6 +812,7 @@ class TrainingScreen(QWidget):
         self._pattern_widget = PatternRecallWidget()
         self._candy_cascade_widget = CandyCascadeWidget()
         self._prosthetic_arm_widget = ProstheticArmWidget()
+        self._tug_of_war_widget.set_menu_callback(self._cancel_gameplay)
         self._space_shooter_widget.set_menu_callback(self._cancel_gameplay)
         self._neuro_racer_widget.set_menu_callback(self._cancel_gameplay)
         self._neon_drift_arena_widget.set_menu_callback(self._cancel_gameplay)
@@ -820,6 +823,7 @@ class TrainingScreen(QWidget):
             "calm_current": self._current_widget,
             "neuro_music_flow": self._neuro_music_flow_widget,
             "full_reboot": self._full_reboot_widget,
+            "tug_of_war": self._tug_of_war_widget,
             "space_shooter": self._space_shooter_widget,
             "jump_ball": self._jump_ball_widget,
             "neuro_racer": self._neuro_racer_widget,
