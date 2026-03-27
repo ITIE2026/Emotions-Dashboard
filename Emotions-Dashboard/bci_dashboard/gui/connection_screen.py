@@ -4,6 +4,7 @@ Connection screen with device selection and write options.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QSize
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QToolButton,
@@ -44,6 +46,43 @@ _BTN_PRIMARY = gradient_button_style(
     ACCENT_GREEN, ACCENT_CYAN, "#0A0A14", border_radius=10, padding="10px", font_size=14
 )
 _BTN_DANGER = danger_button_style(ACCENT_RED)
+
+
+class _DeviceRowWidget(QWidget):
+    """Custom row widget for each discovered device in the scan list."""
+
+    def __init__(self, name: str, serial: str, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("background: transparent;")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(10, 8, 10, 8)
+        lay.setSpacing(12)
+
+        bars = QLabel("▮▮▮")
+        bars.setStyleSheet(
+            f"font-size: 11px; color: {ACCENT_GREEN}; background: transparent; letter-spacing: 1px;"
+        )
+        lay.addWidget(bars)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        name_lbl = QLabel(name)
+        name_lbl.setStyleSheet(
+            f"font-size: 13px; font-weight: bold; color: {TEXT_PRIMARY}; background: transparent;"
+        )
+        serial_lbl = QLabel(serial)
+        serial_lbl.setStyleSheet(
+            f"font-size: 11px; color: {TEXT_SECONDARY}; background: transparent;"
+        )
+        text_col.addWidget(name_lbl)
+        text_col.addWidget(serial_lbl)
+        lay.addLayout(text_col, stretch=1)
+
+        arrow = QLabel("›")
+        arrow.setStyleSheet(
+            f"font-size: 18px; color: {TEXT_SECONDARY}; background: transparent;"
+        )
+        lay.addWidget(arrow)
 
 
 class ConnectionScreen(QWidget):
@@ -184,17 +223,33 @@ class ConnectionScreen(QWidget):
         post_layout.setContentsMargins(16, 14, 16, 14)
         post_layout.setSpacing(10)
 
-        conn_header = QLabel("\u2705  Connected")
+        conn_header = QLabel("✅  Connected")
         conn_header.setStyleSheet(
             f"font-size: 16px; font-weight: bold; color: {ACCENT_GREEN}; background: transparent;"
         )
         post_layout.addWidget(conn_header)
 
+        batt_row = QHBoxLayout()
+        batt_row.setSpacing(8)
         self._battery_label = QLabel("Battery: --%")
         self._battery_label.setStyleSheet(
-            f"font-size: 14px; color: {TEXT_SECONDARY}; background: transparent;"
+            f"font-size: 13px; color: {TEXT_SECONDARY}; background: transparent;"
         )
-        post_layout.addWidget(self._battery_label)
+        batt_row.addWidget(self._battery_label)
+        batt_row.addStretch()
+        post_layout.addLayout(batt_row)
+
+        self._battery_bar = QProgressBar()
+        self._battery_bar.setRange(0, 100)
+        self._battery_bar.setValue(0)
+        self._battery_bar.setFixedHeight(4)
+        self._battery_bar.setTextVisible(False)
+        self._battery_bar.setStyleSheet(
+            "QProgressBar { background: #1A1F34; border: none; border-radius: 2px; }"
+            "QProgressBar::chunk { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "stop:0 #69F0AE, stop:1 #4DD0E1); border-radius: 2px; }"
+        )
+        post_layout.addWidget(self._battery_bar)
 
         self._diagram = ElectrodeDiagram()
         post_layout.addWidget(self._diagram)
@@ -333,18 +388,22 @@ class ConnectionScreen(QWidget):
         self._scan_btn.setEnabled(False)
         self._scan_btn.setText("Scanning...")
         self._device_list.clear()
+        self._diagram.start_scan()
         self._dm.scan_devices(self.selected_device_type_value)
 
     def _on_devices_found(self, devices: list):
         self._scan_btn.setEnabled(True)
         self._scan_btn.setText("Scan Devices")
+        self._diagram.stop_scan()
         self._device_list.clear()
         self._selected_serial = None
         for name, serial, dtype in devices:
-            item = QListWidgetItem(f"{name}  [{serial}]")
+            item = QListWidgetItem()
+            item.setSizeHint(QSize(280, 58))
             item.setData(Qt.UserRole, serial)
             item.setData(Qt.UserRole + 1, dtype)
             self._device_list.addItem(item)
+            self._device_list.setItemWidget(item, _DeviceRowWidget(name, serial))
         if not devices:
             empty = QListWidgetItem("No devices found")
             empty.setFlags(Qt.NoItemFlags)
@@ -376,13 +435,23 @@ class ConnectionScreen(QWidget):
     def _on_conn_changed(self, status):
         if status == 1:
             self._conn_timer.stop()
+            self._diagram.stop_scan()
             self._post_group.setVisible(True)
+            self._post_group.setStyleSheet(
+                f"background: {BG_CARD}; border: 1px solid {ACCENT_GREEN}; "
+                f"border-radius: 12px; "
+                f"box-shadow: 0 0 12px rgba(105,240,174,0.25);"
+            )
             self._connect_btn.setText("Connected")
             self._scan_btn.setVisible(False)
             self._device_list.setVisible(False)
             self._connect_btn.setVisible(False)
         elif status == 0:
+            self._diagram.stop_scan()
             self._post_group.setVisible(False)
+            self._post_group.setStyleSheet(
+                f"background: {BG_CARD}; border: 1px solid {BORDER_SUBTLE}; border-radius: 12px;"
+            )
             self._scan_btn.setVisible(True)
             self._device_list.setVisible(True)
             self._connect_btn.setVisible(True)
@@ -400,6 +469,17 @@ class ConnectionScreen(QWidget):
 
     def _on_battery(self, pct: int):
         self._battery_label.setText(f"Battery: {pct}%")
+        self._battery_bar.setValue(max(0, min(100, int(pct))))
+        if pct >= 60:
+            color_css = "stop:0 #69F0AE, stop:1 #4DD0E1"
+        elif pct >= 20:
+            color_css = "stop:0 #FFD740, stop:1 #FFAB40"
+        else:
+            color_css = "stop:0 #EF5350, stop:1 #FF7043"
+        self._battery_bar.setStyleSheet(
+            "QProgressBar { background: #1A1F34; border: none; border-radius: 2px; }"
+            f"QProgressBar::chunk {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:0,{color_css}); border-radius: 2px; }}"
+        )
 
     def _on_disconnect(self):
         self._dm.disconnect()
@@ -418,6 +498,7 @@ class ConnectionScreen(QWidget):
     def _on_scan_error(self, msg: str):
         self._scan_btn.setEnabled(True)
         self._scan_btn.setText("Scan Devices")
+        self._diagram.stop_scan()
         self._refresh_connect_state()
         QMessageBox.warning(self, "Scan Error", msg)
 

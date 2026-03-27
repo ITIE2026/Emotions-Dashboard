@@ -24,7 +24,7 @@ from gui.widgets.raw_data_widgets import (
     RhythmsPieChartWidget,
     TriAxisChartWidget,
 )
-from utils.config import BG_CARD, BG_PRIMARY, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY
+from utils.config import ACCENT_CYAN, BG_CARD, BG_PRIMARY, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY
 
 
 BAND_HISTORY_POINTS = 5000
@@ -66,36 +66,34 @@ class MemsScreen(QWidget):
 
         info_bar = QWidget()
         info_bar.setStyleSheet(
-            f"background: {BG_CARD}; border-bottom: 1px solid {BORDER_SUBTLE};"
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            " stop:0 #0C0F1E, stop:0.5 #131624, stop:1 #0C0F1E);"
+            f" border-bottom: 1px solid {BORDER_SUBTLE};"
         )
         info_layout = QHBoxLayout(info_bar)
         info_layout.setContentsMargins(16, 8, 16, 8)
         info_layout.setSpacing(20)
 
-        title = QLabel("MEMS and Rhythms")
+        title = QLabel("MEMS & Rhythms")
         title.setStyleSheet(
-            f"font-size: 14px; font-weight: bold; color: {TEXT_PRIMARY}; background: transparent;"
+            f"font-size: 15px; font-weight: bold; color: {ACCENT_CYAN}; background: transparent; "
+            f"letter-spacing: 0.5px; padding-left: 4px; text-transform: uppercase;"
+        )
+        _PILL = (
+            f"font-size: 11px; background: rgba(255,255,255,0.05); "
+            f"border: 1px solid {BORDER_SUBTLE}; border-radius: 10px; "
+            "padding: 3px 10px; color: {color};"
         )
         self._status_label = QLabel("Status: Idle")
-        self._status_label.setStyleSheet(
-            f"font-size: 12px; color: {TEXT_PRIMARY}; background: transparent;"
-        )
+        self._status_label.setStyleSheet(_PILL.format(color=TEXT_PRIMARY))
         self._device_label = QLabel("Device: --")
-        self._device_label.setStyleSheet(
-            f"font-size: 12px; color: {TEXT_SECONDARY}; background: transparent;"
-        )
+        self._device_label.setStyleSheet(_PILL.format(color=TEXT_SECONDARY))
         self._mode_label = QLabel("Mode: Unspecified")
-        self._mode_label.setStyleSheet(
-            f"font-size: 12px; color: {TEXT_SECONDARY}; background: transparent;"
-        )
+        self._mode_label.setStyleSheet(_PILL.format(color=TEXT_SECONDARY))
         self._battery_label = QLabel("Battery: ?")
-        self._battery_label.setStyleSheet(
-            f"font-size: 12px; color: {TEXT_SECONDARY}; background: transparent;"
-        )
+        self._battery_label.setStyleSheet(_PILL.format(color=TEXT_SECONDARY))
         self._session_label = QLabel(f"Session ID: {self._session_id}")
-        self._session_label.setStyleSheet(
-            f"font-size: 11px; color: {TEXT_SECONDARY}; background: transparent;"
-        )
+        self._session_label.setStyleSheet(_PILL.format(color=TEXT_SECONDARY))
         info_layout.addWidget(title)
         info_layout.addStretch()
         for widget in (
