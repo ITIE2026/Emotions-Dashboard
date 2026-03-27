@@ -66,42 +66,60 @@ class TrainingCard(QFrame):
         self.setCursor(Qt.PointingHandCursor if enabled else Qt.ArrowCursor)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(18)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
 
+        # Gradient preview tile with icon
         preview = QLabel(preview_label)
         preview.setAlignment(Qt.AlignCenter)
-        preview.setFixedSize(220, 150)
+        preview.setFixedSize(230, 155)
         preview.setStyleSheet(
-            "QLabel { border-radius: 26px; font-size: 22px; font-weight: bold; color: #f8fafc; "
-            f"background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {colors[0]}, stop:1 {colors[1]}); }}"
+            "QLabel { border-radius: 18px; font-size: 20px; font-weight: bold; color: #f8fafc; "
+            f"background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+            f"stop:0 {colors[0]}, stop:0.6 {colors[1]}, stop:1 {colors[0]}); "
+            f"border: 1px solid rgba(255,255,255,0.08); }}"
         )
         layout.addWidget(preview)
 
         text_col = QVBoxLayout()
-        text_col.setSpacing(8)
-        eyebrow_lbl = QLabel(eyebrow)
-        eyebrow_lbl.setStyleSheet(f"font-size: 12px; color: {ACCENT_GREEN};")
+        text_col.setSpacing(6)
+
+        eyebrow_lbl = QLabel(f"  {eyebrow}")
+        eyebrow_lbl.setStyleSheet(
+            f"font-size: 11px; color: {ACCENT_GREEN}; letter-spacing: 1px; "
+            f"text-transform: uppercase; font-weight: bold;"
+        )
+
         title_lbl = QLabel(title)
         title_lbl.setWordWrap(True)
-        title_lbl.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {TEXT_PRIMARY};")
-        meta_lbl = QLabel(duration if enabled else f"{duration}   Coming soon")
-        meta_lbl.setStyleSheet(f"font-size: 12px; color: {TEXT_SECONDARY};")
+        title_lbl.setStyleSheet(
+            f"font-size: 22px; font-weight: bold; color: #F5F5F5; letter-spacing: 0.3px;"
+        )
+
+        status_text = duration if enabled else f"{duration}   \u2022  Coming soon"
+        meta_lbl = QLabel(status_text)
+        meta_lbl.setStyleSheet(
+            f"font-size: 12px; color: {'#69F0AE' if enabled else TEXT_SECONDARY};"
+        )
+
         description_lbl = QLabel(description)
         description_lbl.setWordWrap(True)
-        description_lbl.setStyleSheet(f"font-size: 13px; color: {TEXT_SECONDARY};")
+        description_lbl.setStyleSheet(f"font-size: 13px; color: {TEXT_SECONDARY}; line-height: 1.4;")
+
         text_col.addWidget(eyebrow_lbl)
         text_col.addWidget(title_lbl)
         text_col.addWidget(meta_lbl)
+        text_col.addSpacing(4)
         text_col.addWidget(description_lbl)
         text_col.addStretch()
         layout.addLayout(text_col, stretch=1)
 
-        border = "#35313a" if enabled else "#26272c"
-        hover = "#1e212b" if enabled else "#16181d"
+        # Enabled/disabled card style
+        border = "#2E3450" if enabled else "#1E2030"
+        active_bg = "#0F1220"
         self.setStyleSheet(
-            f"QFrame {{ background: #0d0f13; border: 1px solid {border}; border-radius: 30px; }}"
-            f"QFrame:hover {{ background: {hover}; }}"
+            f"QFrame {{ background: {active_bg}; border: 1px solid {border}; border-radius: 22px; }}"
+            f"QFrame:hover {{ background: #141826; border-color: {'#69F0AE' if enabled else border}; }}"
         )
 
     def mouseReleaseEvent(self, event):  # noqa: N802 - Qt API
@@ -158,13 +176,16 @@ class SoundtrackCard(QFrame):
     def _apply_style(self):
         if self._selected:
             self.setStyleSheet(
-                "QFrame { background: #f6f5f3; border: 1px solid #f6f5f3; border-radius: 28px; }"
+                "QFrame { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+                "stop:0 #1A2E40, stop:1 #162535); "
+                "border: 2px solid #69F0AE; border-radius: 22px; }"
             )
-            self._state_lbl.setText("Selected")
-            self._state_lbl.setStyleSheet("font-size: 12px; color: #434343;")
+            self._state_lbl.setText("\u2713 Selected")
+            self._state_lbl.setStyleSheet("font-size: 12px; color: #69F0AE; font-weight: bold;")
         else:
             self.setStyleSheet(
-                f"QFrame {{ background: #17191f; border: 1px solid {BORDER_SUBTLE}; border-radius: 28px; }}"
+                f"QFrame {{ background: #0F1220; border: 1px solid {BORDER_SUBTLE}; border-radius: 22px; }}"
+                f"QFrame:hover {{ background: #141826; border-color: #3A4060; }}"
             )
             self._state_lbl.setText("Tap to select")
             self._state_lbl.setStyleSheet(f"font-size: 12px; color: {TEXT_SECONDARY};")

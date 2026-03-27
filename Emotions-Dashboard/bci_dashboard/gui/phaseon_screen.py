@@ -22,7 +22,7 @@ from gui.widgets.phaseon_widgets import (
     ResistanceGridWidget,
     StatusSummaryCard,
 )
-from utils.config import ACCENT_GREEN, BG_NAV, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY
+from utils.config import ACCENT_CYAN, ACCENT_GREEN, BG_NAV, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY
 
 
 class PhaseonScreen(QWidget):
@@ -36,7 +36,7 @@ class PhaseonScreen(QWidget):
         self._resistance_grid.set_resistances(self._runtime.snapshot_resistances())
 
     def _build_ui(self):
-        self.setStyleSheet("background: #000000; color: #f8fafc;")
+        self.setStyleSheet("background: #0A0C1A; color: #f8fafc;")
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -44,7 +44,7 @@ class PhaseonScreen(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
-        scroll.setStyleSheet("QScrollArea { background: #000000; border: none; }")
+        scroll.setStyleSheet("QScrollArea { background: #0A0C1A; border: none; }")
         root.addWidget(scroll)
 
         container = QWidget()
@@ -58,18 +58,20 @@ class PhaseonScreen(QWidget):
         layout.setSpacing(18)
 
         title = QLabel("Phaseon")
-        title.setStyleSheet("font-size: 42px; font-weight: bold; color: #f8fafc;")
+        title.setStyleSheet(f"font-size: 42px; font-weight: bold; color: {ACCENT_CYAN};")
         subtitle = QLabel(
             "Live neurofeedback view using the current dashboard pipeline, with shared BrainBit and Arduino controls."
         )
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet(f"font-size: 14px; color: {TEXT_SECONDARY};")
+        subtitle.setStyleSheet(f"font-size: 14px; color: rgba(77,208,225,0.60);")
         layout.addWidget(title)
         layout.addWidget(subtitle)
 
         controls = QFrame()
         controls.setStyleSheet(
-            f"QFrame {{ background: {BG_NAV}; border: 1px solid {BORDER_SUBTLE}; border-radius: 24px; }}"
+            f"QFrame {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f" stop:0 #0E1220, stop:0.5 #131A2A, stop:1 #0E1220);"
+            f" border: 1px solid {BORDER_SUBTLE}; border-radius: 24px; }}"
         )
         controls_layout = QHBoxLayout(controls)
         controls_layout.setContentsMargins(18, 14, 18, 14)

@@ -42,6 +42,7 @@ from gui.mems_screen import MemsScreen
 from gui.phaseon_screen import PhaseonScreen
 from gui.sessions_screen import SessionsScreen
 from gui.training_screen import TrainingScreen
+from gui.widgets.nav_bar import NavBar
 from prosthetic_arm.phaseon_runtime import PhaseonRuntime
 from storage.session_recorder import SessionRecorder
 from utils.config import (
@@ -413,6 +414,12 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._sessions_screen)
         self._stack.addWidget(self._phaseon_screen)
         root.addWidget(self._stack, stretch=1)
+
+        # ── Bottom NavBar: Home / Monitoring / Training / Sessions ────
+        self._nav_bar = NavBar()
+        root.addWidget(self._nav_bar)
+        self._nav_bar.tab_selected.connect(self._on_nav_tab_selected)
+        self._stack.currentChanged.connect(self._sync_nav_bar)
         self._stack.currentChanged.connect(self._update_live_view_activity)
         self._conn_screen.filter_signal_changed.connect(self._on_connection_filter_changed)
 
@@ -542,8 +549,9 @@ class MainWindow(QMainWindow):
         btn.setCursor(Qt.PointingHandCursor)
         btn.setStyleSheet(
             f"QPushButton {{ background: {bg}; color: {colour}; border: 1px solid {colour};"
-            f" border-radius: 6px; padding: 5px 14px; font-size: 12px; font-weight: bold; }}"
-            f"QPushButton:hover {{ background: {colour}; color: #111; }}"
+            f" border-radius: 8px; padding: 5px 16px; font-size: 12px; font-weight: bold; }}"
+            f"QPushButton:hover {{ background: {colour}; color: #0A0A14; }}"
+            f"QPushButton:disabled {{ background: #1A1E2E; color: #444; border-color: #333; }}"
         )
         return btn
 
@@ -1050,6 +1058,33 @@ class MainWindow(QMainWindow):
         if self._embedded_neuroflow_calibration:
             self._training_screen.on_neuroflow_calibration_finished(True, text)
         QTimer.singleShot(1200, self._finish_calibration_flow)
+
+    def _on_nav_tab_selected(self, tab_idx: int):
+        """Map NavBar tab index (0-3) to stack page."""
+        mapping = {
+            0: PAGE_CONNECTION,
+            1: PAGE_DASHBOARD,
+            2: PAGE_TRAINING,
+            3: PAGE_SESSIONS,
+        }
+        page = mapping.get(tab_idx, PAGE_CONNECTION)
+        if page == PAGE_TRAINING and self._stack.currentIndex() == PAGE_TRAINING:
+            return  # already there
+        self._stack.setCurrentIndex(page)
+
+    def _sync_nav_bar(self, page_index: int):
+        """Keep NavBar indicator in sync when page changes programmatically."""
+        reverse_map = {
+            PAGE_CONNECTION: 0,
+            PAGE_CALIBRATION: 0,   # calibration belongs to Home flow
+            PAGE_DASHBOARD: 1,
+            PAGE_MEMS: 1,          # MEMS is part of Monitoring
+            PAGE_TRAINING: 2,
+            PAGE_SESSIONS: 3,
+            PAGE_PHASEON: 2,       # PhaseON is a training mode
+        }
+        tab = reverse_map.get(page_index, 0)
+        self._nav_bar.set_active_tab(tab)
 
     def _go_home(self):
         current_index = self._stack.currentIndex()

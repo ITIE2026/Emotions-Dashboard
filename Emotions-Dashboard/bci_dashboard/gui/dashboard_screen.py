@@ -64,10 +64,13 @@ MEMS_WINDOW_SEC = 5.0
 
 
 def _section_header(text: str, colour: str = ACCENT_GREEN) -> QLabel:
+    """Section header with a coloured left accent stripe."""
     lbl = QLabel(text)
     lbl.setStyleSheet(
-        f"font-size: 14px; font-weight: bold; color: {colour}; "
-        f"padding: 6px 0 2px 0; background: transparent;"
+        f"font-size: 13px; font-weight: bold; color: {colour}; "
+        f"padding: 7px 12px 5px 14px; background: transparent; "
+        f"border-left: 3px solid {colour}; letter-spacing: 0.5px; "
+        f"text-transform: uppercase;"
     )
     return lbl
 
@@ -150,11 +153,14 @@ class DashboardScreen(QWidget):
 
         info_bar = QWidget()
         info_bar.setStyleSheet(
-            f"background: {BG_CARD}; border-bottom: 1px solid {BORDER_SUBTLE};"
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f" stop:0 #0C0F1E, stop:0.5 {BG_CARD}, stop:1 #0C0F1E);"
+            f" border-bottom: 1px solid {BORDER_SUBTLE};"
         )
+        info_bar.setFixedHeight(46)
         info_layout = QHBoxLayout(info_bar)
-        info_layout.setContentsMargins(16, 6, 16, 6)
-        info_layout.setSpacing(24)
+        info_layout.setContentsMargins(16, 0, 16, 0)
+        info_layout.setSpacing(20)
 
         self._conn_label = QLabel("IsConnected: false")
         self._serial_label = QLabel("Serial: --")

@@ -51,17 +51,19 @@ class SpectrumChart(QWidget):
         )
         layout.addWidget(title)
 
-        # Legend row
+        # Legend row – pill-style badges per band
         legend_row = QHBoxLayout()
-        legend_row.setContentsMargins(8, 0, 8, 0)
+        legend_row.setContentsMargins(8, 2, 8, 2)
         legend_row.addStretch()
         for _band_key, name, _band_range, colour in _BAND_SPECS:
-            dot = QLabel("■")
-            dot.setStyleSheet(f"color: {colour}; font-size: 10px; background: transparent;")
-            lbl = QLabel(name)
-            lbl.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 10px; background: transparent;")
-            legend_row.addWidget(dot)
-            legend_row.addWidget(lbl)
+            qc = QColor(colour)
+            pill = QLabel(name)
+            pill.setStyleSheet(
+                f"font-size: 9px; font-weight: bold; color: {colour}; "
+                f"background: rgba({qc.red()},{qc.green()},{qc.blue()},28); "
+                f"border: 1px solid {colour}; border-radius: 6px; padding: 2px 8px;"
+            )
+            legend_row.addWidget(pill)
         legend_row.addStretch()
         layout.addLayout(legend_row)
 
@@ -76,7 +78,7 @@ class SpectrumChart(QWidget):
         self._plot.getPlotItem().getAxis("bottom").setPen(pg.mkPen("#555"))
         self._plot.getPlotItem().getAxis("left").setTextPen(pg.mkPen("#888"))
         self._plot.getPlotItem().getAxis("bottom").setTextPen(pg.mkPen("#888"))
-        self._plot.showGrid(x=True, y=True, alpha=0.15)
+        self._plot.showGrid(x=True, y=True, alpha=0.10)
         self._plot.setXRange(0, _MAX_FREQ_HZ, padding=0)
         self._plot.setYRange(0, _DEFAULT_Y_MAX, padding=0.02)
         self._plot.getPlotItem().setMenuEnabled(False)
@@ -96,8 +98,8 @@ class SpectrumChart(QWidget):
         base_curve_colour = QColor("#7fd9ff")
         self._main_curve = self._plot.plot(
             pen=pg.mkPen(
-                color=(base_curve_colour.red(), base_curve_colour.green(), base_curve_colour.blue(), 170),
-                width=1.6,
+                color=(base_curve_colour.red(), base_curve_colour.green(), base_curve_colour.blue(), 185),
+                width=2.0,
             ),
         )
         self._main_curve.setZValue(0)
@@ -109,7 +111,7 @@ class SpectrumChart(QWidget):
                 base_curve_colour.red(),
                 base_curve_colour.green(),
                 base_curve_colour.blue(),
-                28,
+                45,
             ),
         )
         self._main_fill.setZValue(-5)
@@ -118,7 +120,7 @@ class SpectrumChart(QWidget):
         self._band_items = {}
         for band_key, _name, _band_range, colour in _BAND_SPECS:
             curve = self._plot.plot(
-                pen=pg.mkPen(color=colour, width=2),
+                pen=pg.mkPen(color=colour, width=2.2),
             )
             curve.setZValue(3)
             self._band_items[band_key] = {

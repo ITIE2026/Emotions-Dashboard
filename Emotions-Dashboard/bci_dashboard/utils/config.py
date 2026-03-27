@@ -100,6 +100,32 @@ ACCENT_YELLOW = "#FFC107"        # warnings
 ACCENT_CYAN = "#4DD0E1"          # section header: Rhythms
 ACCENT_ORANGE = "#FFB74D"        # section header: Frequency Peaks
 ACCENT_TEAL = "#26A69A"          # section header: State
+ACCENT_PURPLE = "#B388FF"        # Focus metric
+ACCENT_BLUE = "#64B5F6"          # Cognitive metric
+ACCENT_PINK = "#F48FB1"          # Self-control metric
+
+# ── Extended gradient / glow palette ──────────────────────────────────
+GRAD_BG_START = "#0D0F1A"        # deep gradient background start
+GRAD_BG_END = "#131624"          # gradient background end (same as BG_PRIMARY)
+GLOW_GREEN = "rgba(105,240,174,0.30)"   # green card glow
+GLOW_CYAN = "rgba(77,208,225,0.30)"    # cyan card glow
+GLOW_PURPLE = "rgba(179,136,255,0.30)" # purple card glow
+GLOW_BLUE = "rgba(100,181,246,0.30)"   # blue card glow
+GLOW_RED = "rgba(239,83,80,0.30)"      # red card glow
+GLOW_ORANGE = "rgba(255,183,77,0.30)"  # orange card glow
+
+BG_GLASS = "rgba(27,31,54,0.85)"       # translucent card glass surface
+BORDER_GLOW_GREEN = "rgba(105,240,174,0.45)"
+BORDER_GLOW_CYAN = "rgba(77,208,225,0.45)"
+
+# ── Typography scale ───────────────────────────────────────────────────
+FONT_GIANT = 36   # hero numbers
+FONT_H1 = 26      # screen titles
+FONT_H2 = 20      # section headings
+FONT_H3 = 16      # card headings
+FONT_BODY = 13    # body text
+FONT_SMALL = 11   # captions / labels
+FONT_TINY = 10    # badges / timestamps
 
 # ── CSV ────────────────────────────────────────────────────────────────
 CSV_COLUMNS = [

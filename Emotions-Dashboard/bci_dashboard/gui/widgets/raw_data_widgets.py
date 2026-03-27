@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from utils.config import (
+    ACCENT_GREEN,
     BG_CARD,
     BORDER_SUBTLE,
     COLOR_ALPHA,
@@ -80,14 +81,21 @@ class CollapsibleSection(QWidget):
         self._button.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
         self._button.clicked.connect(self._toggle)
         self._button.setStyleSheet(
-            f"QToolButton {{ color: {TEXT_PRIMARY}; background: #5567a9; border: none; "
-            f"padding: 6px 10px; font-size: 12px; font-weight: bold; text-align: left; }}"
+            f"QToolButton {{ color: {ACCENT_GREEN if expanded else TEXT_PRIMARY}; background: #0D0F1A; "
+            f"border: none; border-bottom: 1px solid {BORDER_SUBTLE}; "
+            f"padding: 10px 14px; font-size: 11px; font-weight: bold; "
+            f"letter-spacing: 1px; text-align: left; min-width: 100%; }}"
+            f"QToolButton:hover {{ background: #141826; }}"
+            f"QToolButton:checked {{ color: {ACCENT_GREEN}; }}"
         )
 
         self._body = QWidget()
         self._body.setVisible(expanded)
+        self._body.setStyleSheet(
+            f"border-left: 3px solid rgba(105,240,174,0.22); margin-left: 6px;"
+        )
         self._body_layout = QVBoxLayout(self._body)
-        self._body_layout.setContentsMargins(0, 0, 0, 0)
+        self._body_layout.setContentsMargins(8, 4, 0, 4)
         self._body_layout.setSpacing(6)
 
         layout = QVBoxLayout(self)
