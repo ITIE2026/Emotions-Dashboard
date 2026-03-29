@@ -1339,6 +1339,8 @@ class MainWindow(QMainWindow):
             return
         if self._stack.currentIndex() == PAGE_MEMS:
             self._mems_screen.on_mems(mems_timed_data)
+        if self._stack.currentIndex() == PAGE_TRAINING:
+            self._training_screen.on_mems(mems_timed_data)
         if self._session_active:
             self._recorder.record_mems_packet(mems_timed_data)
 

@@ -1,3 +1,6 @@
 bci_dashboard/logs/
 bci_dashboard/sessions/
 *.log
+.worktrees/
+__pycache__/
+*.pyc

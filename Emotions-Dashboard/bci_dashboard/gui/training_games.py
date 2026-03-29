@@ -549,6 +549,7 @@ class FullRebootController(BaseTrainingController):
             "restlessness": self._restlessness,
             "steady_hold": self._steady_hold,
             "best_hold": self._best_hold,
+
             "breath_phase": self._breath_phase,
             "music_scene": self._scene,
             "music_bias": max(-1.0, min(1.0, music_bias / 3.0)),
@@ -1370,38 +1371,100 @@ class SpaceShooterController(ArcadeTrainingController):
         }
 
 
+# ── Dino Runner constants (gyroscope) ──────────────────────────────
+_DINO_GYRO_DEAD_ZONE = 0.05
+_DINO_GYRO_EMA_ALPHA = 0.25
+_DINO_JUMP_TILT_THRESHOLD = 0.18   # accel-X tilt to trigger jump (head nod up)
+_DINO_DUCK_TILT_THRESHOLD = -0.15  # negative accel-X tilt = head nod down → duck
+_DINO_JUMP_VELOCITY = 14.0
+_DINO_GRAVITY = 1.4
+_DINO_GROUND_Y = 0.0
+
+
 class JumpBallController(ArcadeTrainingController):
+    """
+    Chrome Dino–style side-scrolling runner controlled by BCI signals.
+
+    Controls
+    --------
+    * **Focus (concentration)** → run forward (scroll speed increases)
+    * **Relaxation** → run in reverse / slow down
+    * **Gyroscope tilt up** → jump over cacti
+    * **Gyroscope tilt down** → duck under pterodactyls
+    """
+
     LEVELS = [
-        TrainingLevel("Run 1", 45),
-        TrainingLevel("Run 2", 55),
-        TrainingLevel("Run 3", 65),
+        TrainingLevel("Desert", 45),
+        TrainingLevel("Canyon", 55),
+        TrainingLevel("Volcano", 65),
     ]
-    CONFIGS = [
-        {"track_length": 92.0, "obstacles": [(18.0, 28.0), (36.0, 46.0), (54.0, 38.0), (74.0, 54.0)]},
-        {"track_length": 108.0, "obstacles": [(16.0, 32.0), (30.0, 52.0), (46.0, 40.0), (64.0, 62.0), (86.0, 48.0)]},
-        {
-            "track_length": 124.0,
-            "obstacles": [(14.0, 36.0), (28.0, 58.0), (42.0, 44.0), (58.0, 68.0), (78.0, 52.0), (100.0, 72.0)],
-        },
+
+    LEVEL_CONFIGS = [
+        {"base_speed": 3.0, "spawn_interval": 2.5, "ptero_chance": 0.0, "speed_cap": 6.0},
+        {"base_speed": 4.5, "spawn_interval": 1.8, "ptero_chance": 0.25, "speed_cap": 8.5},
+        {"base_speed": 6.0, "spawn_interval": 1.2, "ptero_chance": 0.40, "speed_cap": 11.0},
+    ]
+
+    OBSTACLE_TEMPLATES = [
+        {"kind": "cactus_small", "width": 18.0, "height": 34.0, "fly_y": 0.0},
+        {"kind": "cactus_large", "width": 24.0, "height": 48.0, "fly_y": 0.0},
+        {"kind": "cactus_group", "width": 42.0, "height": 38.0, "fly_y": 0.0},
+        {"kind": "pterodactyl", "width": 36.0, "height": 28.0, "fly_y": 40.0},
     ]
 
     def __init__(self):
         super().__init__(self.LEVELS)
+        # gyroscope state
+        self._gyro_tilt_y = 0.0  # smoothed forward/back head tilt (accel X)
+        self._gyro_zero_y = 0.0
+        self._gyro_samples: list[float] = []
+        self._gyro_calibrated = False
+
+    # -- MEMS input (called by TrainingScreen before update_gameplay) --
+
+    def update_mems(self, accel_x: float, accel_y: float, accel_z: float,
+                    gyro_x: float, gyro_y: float, gyro_z: float) -> None:
+        raw_y = accel_x  # forward/back tilt from accel X
+
+        if not self._gyro_calibrated:
+            self._gyro_samples.append(raw_y)
+            if len(self._gyro_samples) >= 60:
+                self._gyro_zero_y = sum(self._gyro_samples) / len(self._gyro_samples)
+                self._gyro_calibrated = True
+            return
+
+        adj_y = raw_y - self._gyro_zero_y
+        if abs(adj_y) < _DINO_GYRO_DEAD_ZONE:
+            adj_y = 0.0
+        self._gyro_tilt_y += _DINO_GYRO_EMA_ALPHA * (adj_y - self._gyro_tilt_y)
+
+    # -- lifecycle --
 
     def _reset_level_state(self) -> None:
-        config = self.CONFIGS[self._level_index]
-        self._track_length = config["track_length"]
-        self._progress = 0.0
-        self._ball_height = 18.0
-        self._combo = 0
-        self._best_combo = 0
-        self._cleared = 0
-        self._misses = 0
-        self._obstacles = [
-            {"progress_mark": mark, "required_height": height, "status": "active"}
-            for mark, height in config["obstacles"]
-        ]
-        self._view_state = self._jump_view_state()
+        cfg = self.LEVEL_CONFIGS[self._level_index]
+        self._base_speed: float = cfg["base_speed"]
+        self._spawn_interval: float = cfg["spawn_interval"]
+        self._ptero_chance: float = cfg["ptero_chance"]
+        self._speed_cap: float = cfg["speed_cap"]
+
+        self._scroll_speed: float = self._base_speed
+        self._distance: float = 0.0
+        self._dino_y: float = _DINO_GROUND_Y
+        self._dino_vy: float = 0.0
+        self._dino_on_ground: bool = True
+        self._dino_ducking: bool = False
+        self._jump_requested: bool = False
+        self._duck_requested: bool = False
+        self._stun_ticks: int = 0
+        self._spawn_timer: float = self._spawn_interval
+        self._obstacle_counter: int = 0
+        self._obstacles: list[dict] = []
+        self._combo: int = 0
+        self._best_combo: int = 0
+        self._cleared: int = 0
+        self._misses: int = 0
+        self._score: int = 0
+        self._view_state = self._dino_view_state()
 
     def update_gameplay(
         self,
@@ -1419,59 +1482,118 @@ class JumpBallController(ArcadeTrainingController):
         level_completed = False
         run_completed = False
         control_hint = (
-            "Concentrate to build jump height, relax to settle back to the track, and hold steady to protect your combo."
+            "Focus to run forward, relax to slow down, tilt head up to jump over cacti, tilt down to duck."
         )
+
+        # Read gyroscope intent
+        jump_tilt = self._gyro_tilt_y >= _DINO_JUMP_TILT_THRESHOLD
+        duck_tilt = self._gyro_tilt_y <= _DINO_DUCK_TILT_THRESHOLD
+        if jump_tilt:
+            self._jump_requested = True
+        if duck_tilt:
+            self._duck_requested = True
 
         if stale:
             blocked_reason = "Metrics are stale. Runner paused."
         elif not valid:
             blocked_reason = "Artifacts detected. Runner paused."
+        elif self._stun_ticks > 0:
+            self._stun_ticks -= 1
+            blocked_reason = "Stunned!"
         else:
             intent = self._arcade_intent(conc_delta, relax_delta)
+
+            # Scroll speed from EEG intent
             if intent == "focus":
-                self._progress += 4.2 + min(0.8, self._combo * 0.06)
-                self._ball_height = min(100.0, self._ball_height + 12.0)
+                speed_mult = 1.0 + min(0.6, conc_delta * 0.03)
+                self._scroll_speed = min(self._speed_cap, self._base_speed * speed_mult)
                 if self._stabilize_intent(intent):
-                    self._ball_height = min(100.0, self._ball_height + 16.0)
-                    action = "jump"
+                    action = "run"
                     moved = True
             elif intent == "relax":
-                self._progress += 3.6
-                self._ball_height = max(0.0, self._ball_height - 12.0)
+                speed_mult = -0.5 * (1.0 + min(0.4, relax_delta * 0.02))
+                self._scroll_speed = self._base_speed * speed_mult
                 if self._stabilize_intent(intent):
-                    self._ball_height = max(0.0, self._ball_height - 12.0)
-                    action = "land"
+                    action = "reverse"
                     moved = True
             elif intent == "steady":
-                self._progress += 4.5 + min(1.0, self._combo * 0.08)
+                self._scroll_speed = self._base_speed * 0.8
                 if self._stabilize_intent(intent):
                     action = "steady"
                     moved = True
             else:
                 self._stabilize_intent(None)
-                self._progress += 3.4
+                self._scroll_speed = self._base_speed * 0.4
 
-            gravity = 2.0 if intent == "focus" else 7.5
-            self._ball_height = max(0.0, self._ball_height - gravity)
-            self._resolve_obstacles()
-            self._progress = min(self._track_length, self._progress)
+            # Jump physics
+            if self._jump_requested and self._dino_on_ground:
+                self._dino_vy = _DINO_JUMP_VELOCITY
+                self._dino_on_ground = False
+                self._dino_ducking = False
+                action = "jump"
+                moved = True
+            self._jump_requested = False
 
-            if self._progress >= self._track_length:
-                total_obstacles = max(1, len(self._obstacles))
-                clear_ratio = self._cleared / total_obstacles
-                combo_bonus = min(18.0, self._best_combo * 2.4)
+            # Duck
+            self._dino_ducking = self._duck_requested and self._dino_on_ground
+            self._duck_requested = False
+
+            # Gravity
+            if not self._dino_on_ground:
+                self._dino_y += self._dino_vy
+                self._dino_vy -= _DINO_GRAVITY
+                if self._dino_y <= _DINO_GROUND_Y:
+                    self._dino_y = _DINO_GROUND_Y
+                    self._dino_vy = 0.0
+                    self._dino_on_ground = True
+
+            # Distance and spawning
+            scroll_step = abs(self._scroll_speed)
+            self._distance += scroll_step
+            self._score = int(self._distance * 0.1) + self._cleared * 10 + self._best_combo * 5
+
+            # Spawn obstacles
+            self._spawn_timer -= scroll_step * 0.04
+            if self._spawn_timer <= 0.0:
+                self._spawn_obstacle()
+                self._spawn_timer = self._spawn_interval
+
+            # Move obstacles
+            for obs in self._obstacles:
+                obs["x"] -= self._scroll_speed
+
+            # Collision detection
+            self._resolve_collisions()
+
+            # Remove off-screen obstacles (passed to the left)
+            before = len(self._obstacles)
+            self._obstacles = [o for o in self._obstacles if o["x"] > -60.0]
+            newly_cleared = before - len(self._obstacles)
+            if newly_cleared > 0:
+                self._cleared += newly_cleared
+                self._combo += newly_cleared
+                self._best_combo = max(self._best_combo, self._combo)
+
+            # Level completion by timer
+            if elapsed_seconds >= self.current_level.target_seconds:
+                combo_bonus = min(20.0, self._best_combo * 2.5)
                 miss_penalty = self._misses * 6.0
-                time_penalty = max(0, elapsed_seconds - self.current_level.target_seconds)
-                score = 48 + (clear_ratio * 36.0) + combo_bonus - miss_penalty - time_penalty
+                score = 48 + self._distance * 0.08 + combo_bonus - miss_penalty
                 self._record_level_result(True, elapsed_seconds, score_override=score)
                 level_completed = True
                 run_completed = self._advance_level()
 
-        self._view_state = self._jump_view_state(message=blocked_reason, music_bias=relax_delta - conc_delta)
-        recommended_label = self._jump_recommendation(action)
+        day_night = (self._distance % 1000.0) / 1000.0
+        if day_night > 0.5:
+            day_night = 1.0 - day_night
+        day_night *= 2.0  # 0→1→0 cycle
+
+        self._view_state = self._dino_view_state(message=blocked_reason, music_bias=relax_delta - conc_delta,
+                                                  day_night=day_night)
+        recommended_label = self._dino_recommendation(action)
         return self._arcade_snapshot(
             phase="jump_ball",
-            phase_label="Jump Ball",
+            phase_label="Dino Runner",
             direction=action,
             blocked_reason=blocked_reason,
             control_hint=control_hint,
@@ -1483,59 +1605,91 @@ class JumpBallController(ArcadeTrainingController):
             recommended_label=recommended_label,
         )
 
-    def _resolve_obstacles(self) -> None:
-        for obstacle in self._obstacles:
-            if obstacle["status"] != "active":
+    def _spawn_obstacle(self) -> None:
+        import random
+        if random.random() < self._ptero_chance:
+            template = self.OBSTACLE_TEMPLATES[3]  # pterodactyl
+        else:
+            template = random.choice(self.OBSTACLE_TEMPLATES[:3])  # cactus variants
+        self._obstacle_counter += 1
+        self._obstacles.append({
+            "id": self._obstacle_counter,
+            "x": 800.0,  # spawn off-screen right
+            "width": template["width"],
+            "height": template["height"],
+            "kind": template["kind"],
+            "fly_y": template["fly_y"],
+        })
+
+    def _resolve_collisions(self) -> None:
+        dino_x = 80.0
+        dino_w = 36.0
+        dino_h = 20.0 if self._dino_ducking else 44.0
+        dino_bottom = self._dino_y
+        dino_top = dino_bottom + dino_h
+
+        for obs in self._obstacles:
+            if obs.get("hit"):
                 continue
-            if obstacle["progress_mark"] > self._progress:
-                continue
-            if self._ball_height >= obstacle["required_height"]:
-                obstacle["status"] = "cleared"
-                self._cleared += 1
-                self._combo += 1
-                self._best_combo = max(self._best_combo, self._combo)
-            else:
-                obstacle["status"] = "missed"
+            obs_left = obs["x"]
+            obs_right = obs_left + obs["width"]
+            obs_bottom = obs["fly_y"]
+            obs_top = obs_bottom + obs["height"]
+
+            # AABB overlap check
+            if (dino_x + dino_w > obs_left and dino_x < obs_right
+                    and dino_top > obs_bottom and dino_bottom < obs_top):
+                obs["hit"] = True
                 self._misses += 1
                 self._combo = 0
-                self._ball_height = max(0.0, self._ball_height - 12.0)
-                self._progress = max(0.0, self._progress - 1.8)
+                self._stun_ticks = 3
 
-    def _jump_recommendation(self, action: str | None) -> str:
+    def _dino_recommendation(self, action: str | None) -> str:
         if action == "jump":
-            return "Jump charged"
-        if action == "land":
-            return "Settle the landing"
+            return "Jump!"
+        if action == "run":
+            return "Stay focused"
+        if action == "reverse":
+            return "Slowing down"
         if action == "steady":
-            return "Preserve the combo"
-        for obstacle in self._obstacles:
-            if obstacle["status"] != "active":
+            return "Nice combo!"
+        # Look ahead for incoming obstacles
+        for obs in sorted(self._obstacles, key=lambda o: o["x"]):
+            if obs.get("hit"):
                 continue
-            distance = obstacle["progress_mark"] - self._progress
-            if distance <= 16.0:
-                if self._ball_height + 8.0 < obstacle["required_height"]:
-                    return "Build jump"
-                if self._ball_height > obstacle["required_height"] + 14.0:
-                    return "Land clean"
-                return "Hold rhythm"
+            if obs["x"] < 200.0:
+                if obs["fly_y"] > 0:
+                    return "Duck!"
+                if self._dino_on_ground:
+                    return "Jump now!"
+                return "Hold air"
             break
-        return "Stay smooth"
+        return "Keep running"
 
-    def _jump_view_state(self, message: str = "", music_bias: float = 0.0) -> dict:
+    def _dino_view_state(self, message: str = "", music_bias: float = 0.0,
+                         day_night: float = 0.0) -> dict:
         return {
             "mode": "jump_ball",
-            "progress": self._progress,
-            "track_length": self._track_length,
-            "ball_height": self._ball_height,
+            "dino_y": self._dino_y,
+            "dino_on_ground": self._dino_on_ground,
+            "dino_ducking": self._dino_ducking,
+            "scroll_speed": self._scroll_speed,
+            "distance": self._distance,
+            "score": self._score,
             "combo": self._combo,
             "best_combo": self._best_combo,
             "cleared": self._cleared,
             "misses": self._misses,
-            "music_scene": "jump_flow",
+            "day_night": day_night,
+            "obstacles": [
+                {"x": o["x"], "width": o["width"], "height": o["height"],
+                 "kind": o["kind"], "fly_y": o["fly_y"]}
+                for o in self._obstacles if not o.get("hit")
+            ],
+            "music_scene": "dino_run",
             "music_bias": music_bias,
             "serenity": max(0.0, min(100.0, 58.0 + (self._best_combo * 4.0) - (self._misses * 10.0))),
             "restlessness": max(0.0, min(100.0, 18.0 + (self._misses * 12.0))),
-            "obstacles": [dict(obstacle) for obstacle in self._obstacles if obstacle["status"] == "active"],
             "message": message,
         }
 
@@ -3671,6 +3825,430 @@ class ProstheticArmController(BaseTrainingController):
         }
 
 
+# ---------------------------------------------------------------------------
+#  Astral Glider — gyroscope-steered space navigation
+# ---------------------------------------------------------------------------
+
+_AG_GYRO_DEAD_ZONE = 0.05      # ±G dead zone for accel tilt
+_AG_GYRO_SENSITIVITY = 2.8     # tilt-to-position multiplier
+_AG_GYRO_EMA_ALPHA = 0.25      # smoothing factor for gyro input
+_AG_SHIELD_RELAX_THRESH = 3.0  # relax delta to activate shield
+_AG_SHIELD_SUSTAIN = 8         # ticks sustained to activate (≈0.5 s)
+_AG_WARP_CHARGE_RATE = 0.012   # per tick when steady
+_AG_WARP_DRAIN = 0.35          # charge consumed per warp
+_AG_CRYSTAL_RADIUS = 0.04      # collision radius for crystals
+_AG_OBSTACLE_RADIUS = 0.035    # collision radius for obstacles
+_AG_SPAWN_INTERVAL_BASE = 6    # ticks between spawns (base)
+
+
+class AstralGliderController(ArcadeTrainingController):
+    """
+    Gyroscope-steered space navigation game.
+
+    Controls
+    --------
+    * **Gyroscope tilt** → ship steering (analog, smooth)
+    * **Focus (concentration)** → thrust / speed multiplier
+    * **Relaxation** → shield mode — phase through obstacles
+    * **Steady state** → charge warp ability (teleport forward for bonus)
+    """
+
+    LEVELS = [
+        TrainingLevel("Asteroid Belt", 50),
+        TrainingLevel("Nebula Run", 60),
+        TrainingLevel("Warp Core", 70),
+    ]
+
+    LEVEL_CONFIGS = [
+        {
+            "base_speed": 0.012, "obstacle_density": 0.35, "crystal_density": 0.55,
+            "gap_width": 0.38, "speed_focus_scale": 1.6, "score_goal": 200,
+        },
+        {
+            "base_speed": 0.017, "obstacle_density": 0.55, "crystal_density": 0.45,
+            "gap_width": 0.30, "speed_focus_scale": 1.8, "nebula": True, "score_goal": 350,
+        },
+        {
+            "base_speed": 0.023, "obstacle_density": 0.75, "crystal_density": 0.35,
+            "gap_width": 0.22, "speed_focus_scale": 2.0, "corridor": True, "score_goal": 500,
+        },
+    ]
+
+    def __init__(self):
+        super().__init__(self.LEVELS)
+        self._gyro_x = 0.0  # smoothed accel-Y (left/right tilt)
+        self._gyro_y = 0.0  # smoothed accel-X (forward/back tilt)
+        self._gyro_zero_x = 0.0
+        self._gyro_zero_y = 0.0
+        self._gyro_samples_for_zero: list[tuple[float, float]] = []
+        self._gyro_calibrated = False
+
+    # -- MEMS input (called by TrainingScreen before update_gameplay) --
+
+    def update_mems(self, accel_x: float, accel_y: float, accel_z: float,
+                    gyro_x: float, gyro_y: float, gyro_z: float) -> None:
+        raw_x = accel_y  # left/right tilt from accel Y
+        raw_y = accel_x  # up/down tilt from accel X
+
+        # Collect gyro zero samples during calibration
+        if not self._gyro_calibrated:
+            self._gyro_samples_for_zero.append((raw_x, raw_y))
+            if len(self._gyro_samples_for_zero) >= 60:
+                self._gyro_zero_x = sum(s[0] for s in self._gyro_samples_for_zero) / len(self._gyro_samples_for_zero)
+                self._gyro_zero_y = sum(s[1] for s in self._gyro_samples_for_zero) / len(self._gyro_samples_for_zero)
+                self._gyro_calibrated = True
+            return
+
+        adj_x = raw_x - self._gyro_zero_x
+        adj_y = raw_y - self._gyro_zero_y
+        if abs(adj_x) < _AG_GYRO_DEAD_ZONE:
+            adj_x = 0.0
+        if abs(adj_y) < _AG_GYRO_DEAD_ZONE:
+            adj_y = 0.0
+        self._gyro_x += _AG_GYRO_EMA_ALPHA * (adj_x - self._gyro_x)
+        self._gyro_y += _AG_GYRO_EMA_ALPHA * (adj_y - self._gyro_y)
+
+    # -- lifecycle --
+
+    def _reset_level_state(self) -> None:
+        cfg = self.LEVEL_CONFIGS[self._level_index]
+        self._base_speed: float = cfg["base_speed"]
+        self._obstacle_density: float = cfg["obstacle_density"]
+        self._crystal_density: float = cfg["crystal_density"]
+        self._gap_width: float = cfg["gap_width"]
+        self._speed_focus_scale: float = cfg["speed_focus_scale"]
+        self._score_goal: int = cfg["score_goal"]
+        self._has_nebula: bool = cfg.get("nebula", False)
+        self._has_corridor: bool = cfg.get("corridor", False)
+
+        self._ship_x: float = 0.5
+        self._ship_y: float = 0.7
+        self._thrust: float = 0.0
+        self._shield_active: bool = False
+        self._shield_sustain: int = 0
+        self._warp_charge: float = 0.0
+        self._warp_active_ticks: int = 0
+        self._score: int = 0
+        self._combo: int = 0
+        self._distance: float = 0.0
+        self._tick_count: int = 0
+
+        self._obstacles: list[dict] = []
+        self._crystals: list[dict] = []
+        self._particles: list[dict] = []
+        self._stars: list[dict] = self._generate_stars(80)
+        self._popups: list[dict] = []
+
+        self._overlay_kind: str | None = None
+        self._overlay_ticks: int = 0
+        self._message: str = ""
+        self._view_state = {"mode": "astral_glider"}
+
+    def _generate_stars(self, count: int) -> list[dict]:
+        import random
+        return [
+            {
+                "x": random.random(),
+                "y": random.random(),
+                "z": random.uniform(0.1, 1.0),
+                "brightness": random.uniform(0.3, 1.0),
+            }
+            for _ in range(count)
+        ]
+
+    # -- gameplay --
+
+    def update_gameplay(
+        self,
+        concentration: float,
+        relaxation: float,
+        valid: bool,
+        stale: bool,
+        elapsed_seconds: float,
+    ) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation - (self._relax_baseline or 0.0)
+        blocked_reason = ""
+        moved = False
+        level_completed = False
+        run_completed = False
+        self._tick_count += 1
+
+        # -- overlay transition --
+        if self._overlay_kind is not None:
+            self._overlay_ticks += 1
+            if self._overlay_ticks >= 40:
+                if self._overlay_kind == "success":
+                    self._record_level_result(True, elapsed_seconds, score_override=self._score_pct())
+                    level_completed = True
+                    run_completed = self._advance_level()
+                else:
+                    self._record_level_result(False, elapsed_seconds, score_override=max(10, self._score_pct() // 2))
+                    level_completed = True
+                    run_completed = self._advance_level()
+                self._overlay_kind = None
+                self._overlay_ticks = 0
+        elif stale:
+            blocked_reason = "Signal unavailable — hold the headband steady"
+        elif not valid:
+            blocked_reason = "Artifacts detected — relax your jaw and forehead"
+        elif elapsed_seconds >= self.current_level.target_seconds:
+            if self._score >= self._score_goal:
+                self._overlay_kind = "success"
+                self._overlay_ticks = 0
+            else:
+                self._overlay_kind = "timeout"
+                self._overlay_ticks = 0
+        else:
+            intent = self._arcade_intent(conc_delta, relax_delta)
+
+            # -- thrust from focus --
+            if intent == "focus":
+                self._thrust = min(1.0, self._thrust + 0.06)
+            else:
+                self._thrust = max(0.0, self._thrust - 0.03)
+
+            # -- shield from relaxation --
+            if intent == "relax" and relax_delta >= _AG_SHIELD_RELAX_THRESH:
+                self._shield_sustain += 1
+                if self._shield_sustain >= _AG_SHIELD_SUSTAIN:
+                    self._shield_active = True
+            else:
+                self._shield_sustain = max(0, self._shield_sustain - 2)
+                if self._shield_sustain <= 0:
+                    self._shield_active = False
+
+            # -- warp from steady --
+            if intent == "steady":
+                self._warp_charge = min(1.0, self._warp_charge + _AG_WARP_CHARGE_RATE)
+            if self._warp_charge >= 1.0 and intent == "focus":
+                self._warp_active_ticks = 12
+                self._warp_charge = max(0.0, self._warp_charge - _AG_WARP_DRAIN)
+                self._score += 50
+                self._combo += 1
+                self._popups.append({"text": "WARP +50", "x": self._ship_x, "y": self._ship_y - 0.05, "life": 18})
+
+            if self._warp_active_ticks > 0:
+                self._warp_active_ticks -= 1
+
+            # -- gyroscope steering --
+            self._ship_x += self._gyro_x * _AG_GYRO_SENSITIVITY * 0.016
+            self._ship_y += self._gyro_y * _AG_GYRO_SENSITIVITY * 0.012
+            self._ship_x = max(0.05, min(0.95, self._ship_x))
+            self._ship_y = max(0.15, min(0.90, self._ship_y))
+            moved = abs(self._gyro_x) > _AG_GYRO_DEAD_ZONE or intent is not None
+
+            # -- advance distance --
+            speed = self._base_speed * (1.0 + self._thrust * self._speed_focus_scale)
+            if self._warp_active_ticks > 0:
+                speed *= 3.0
+            self._distance += speed
+
+            # -- spawn obstacles / crystals --
+            spawn_interval = max(3, _AG_SPAWN_INTERVAL_BASE - self._level_index)
+            if self._tick_count % spawn_interval == 0:
+                self._spawn_entities()
+
+            # -- update entities --
+            self._update_entities(speed)
+
+            # -- collision detection --
+            self._check_collisions()
+
+            # -- level completion by score --
+            if self._score >= self._score_goal and self._overlay_kind is None:
+                self._overlay_kind = "success"
+                self._overlay_ticks = 0
+
+        # -- update particles --
+        self._update_particles()
+        self._update_stars(self._base_speed * (1.0 + self._thrust))
+        self._update_popups()
+
+        # -- build view state --
+        self._view_state = self._build_view_state(blocked_reason, conc_delta, relax_delta)
+
+        return self._arcade_snapshot(
+            phase="astral_glider",
+            phase_label=self.current_level.title,
+            direction=None if blocked_reason else (
+                "shield" if self._shield_active else
+                "boost" if self._warp_active_ticks > 0 else
+                "focus" if self._thrust > 0.3 else None
+            ),
+            blocked_reason=blocked_reason,
+            control_hint="Tilt to steer · Focus for thrust · Relax for shield",
+            conc_delta=conc_delta,
+            relax_delta=relax_delta,
+            moved=moved,
+            level_completed=level_completed,
+            run_completed=run_completed,
+            recommended_label="Shield!" if self._shield_active else (
+                "Warp!" if self._warp_active_ticks > 0 else
+                "Thrust!" if self._thrust > 0.5 else "Steer"
+            ),
+        )
+
+    # -- entity management --
+
+    def _spawn_entities(self) -> None:
+        import random
+        # Obstacles
+        if random.random() < self._obstacle_density:
+            ox = random.uniform(0.08, 0.92)
+            size = random.uniform(0.025, _AG_OBSTACLE_RADIUS * 1.5)
+            style = random.choice(["rock", "rock", "debris", "mine"])
+            self._obstacles.append({"x": ox, "y": -0.05, "size": size, "style": style,
+                                    "rot": random.uniform(0, 360)})
+        # Crystals
+        if random.random() < self._crystal_density:
+            cx = random.uniform(0.1, 0.9)
+            self._crystals.append({"x": cx, "y": -0.05, "value": random.choice([10, 15, 20, 25]),
+                                   "pulse": random.uniform(0, 6.28)})
+        # Corridor walls (level 3)
+        if self._has_corridor and self._tick_count % 4 == 0:
+            center = 0.5 + 0.15 * math.sin(self._distance * 2.0)
+            half = self._gap_width / 2.0
+            self._obstacles.append({"x": center - half - 0.06, "y": -0.05, "size": 0.06, "style": "wall", "rot": 0})
+            self._obstacles.append({"x": center + half + 0.06, "y": -0.05, "size": 0.06, "style": "wall", "rot": 0})
+
+    def _update_entities(self, speed: float) -> None:
+        drift = speed * 12.0
+        for obs in self._obstacles:
+            obs["y"] += drift
+            obs["rot"] = (obs.get("rot", 0) + 1.2) % 360
+        for crystal in self._crystals:
+            crystal["y"] += drift
+            crystal["pulse"] = (crystal.get("pulse", 0) + 0.12) % 6.283
+        self._obstacles = [o for o in self._obstacles if o["y"] < 1.15]
+        self._crystals = [c for c in self._crystals if c["y"] < 1.15]
+
+    def _check_collisions(self) -> None:
+        sx, sy = self._ship_x, self._ship_y
+        # Crystal collection
+        remaining_crystals: list[dict] = []
+        for crystal in self._crystals:
+            dx = crystal["x"] - sx
+            dy = crystal["y"] - sy
+            if math.hypot(dx, dy) < _AG_CRYSTAL_RADIUS + 0.03:
+                self._score += crystal["value"]
+                self._combo += 1
+                self._popups.append({"text": f"+{crystal['value']}", "x": crystal["x"], "y": crystal["y"], "life": 14})
+                self._spawn_collect_particles(crystal["x"], crystal["y"])
+            else:
+                remaining_crystals.append(crystal)
+        self._crystals = remaining_crystals
+
+        # Obstacle collision
+        if self._shield_active or self._warp_active_ticks > 0:
+            return
+        remaining_obs: list[dict] = []
+        for obs in self._obstacles:
+            dx = obs["x"] - sx
+            dy = obs["y"] - sy
+            hit_radius = obs["size"] + 0.028
+            if math.hypot(dx, dy) < hit_radius:
+                penalty = 15 + self._level_index * 5
+                self._score = max(0, self._score - penalty)
+                self._combo = 0
+                self._popups.append({"text": f"-{penalty}", "x": obs["x"], "y": obs["y"], "life": 14})
+                self._spawn_hit_particles(obs["x"], obs["y"])
+            else:
+                remaining_obs.append(obs)
+        self._obstacles = remaining_obs
+
+    def _spawn_collect_particles(self, x: float, y: float) -> None:
+        import random
+        for _ in range(6):
+            self._particles.append({
+                "x": x, "y": y,
+                "vx": random.uniform(-0.008, 0.008),
+                "vy": random.uniform(-0.012, 0.002),
+                "life": random.randint(8, 16),
+                "color": "cyan",
+            })
+
+    def _spawn_hit_particles(self, x: float, y: float) -> None:
+        import random
+        for _ in range(8):
+            self._particles.append({
+                "x": x, "y": y,
+                "vx": random.uniform(-0.01, 0.01),
+                "vy": random.uniform(-0.01, 0.01),
+                "life": random.randint(6, 14),
+                "color": "red",
+            })
+
+    def _update_particles(self) -> None:
+        for p in self._particles:
+            p["x"] += p["vx"]
+            p["y"] += p["vy"]
+            p["life"] -= 1
+        self._particles = [p for p in self._particles if p["life"] > 0]
+
+        # Thrust trail particles
+        if self._thrust > 0.1:
+            import random
+            for _ in range(int(self._thrust * 3)):
+                self._particles.append({
+                    "x": self._ship_x + random.uniform(-0.015, 0.015),
+                    "y": self._ship_y + 0.03,
+                    "vx": random.uniform(-0.003, 0.003),
+                    "vy": random.uniform(0.006, 0.014),
+                    "life": random.randint(4, 10),
+                    "color": "thrust",
+                })
+
+    def _update_stars(self, speed: float) -> None:
+        for star in self._stars:
+            star["y"] += speed * star["z"] * 8.0
+            if star["y"] > 1.05:
+                import random
+                star["y"] = -0.05
+                star["x"] = random.random()
+                star["brightness"] = random.uniform(0.3, 1.0)
+
+    def _update_popups(self) -> None:
+        for p in self._popups:
+            p["y"] -= 0.008
+            p["life"] -= 1
+        self._popups = [p for p in self._popups if p["life"] > 0]
+
+    def _score_pct(self) -> int:
+        return min(100, max(0, int(self._score / max(1, self._score_goal) * 100)))
+
+    def _build_view_state(self, message: str, conc_delta: float, relax_delta: float) -> dict:
+        return {
+            "mode": "astral_glider",
+            "ship_x": self._ship_x,
+            "ship_y": self._ship_y,
+            "thrust": self._thrust,
+            "shield_active": self._shield_active,
+            "warp_charge": self._warp_charge,
+            "warp_active": self._warp_active_ticks > 0,
+            "score": self._score,
+            "score_goal": self._score_goal,
+            "combo": self._combo,
+            "distance": self._distance,
+            "stars": list(self._stars),
+            "obstacles": list(self._obstacles),
+            "crystals": list(self._crystals),
+            "particles": list(self._particles),
+            "popups": list(self._popups),
+            "has_nebula": self._has_nebula,
+            "has_corridor": self._has_corridor,
+            "overlay_kind": self._overlay_kind,
+            "level_title": self.current_level.title,
+            "headline": self.current_level.title,
+            "speed": self._base_speed * (1.0 + self._thrust * self._speed_focus_scale),
+            "serenity": max(0.0, min(100.0, 50.0 + relax_delta * 5.0)),
+            "restlessness": max(0.0, min(100.0, 50.0 + conc_delta * 5.0)),
+            "music_scene": "astral_glider",
+            "music_bias": max(-1.0, min(1.0, (conc_delta - relax_delta) / 3.0)),
+            "message": message or self._message,
+        }
+
+
 TRAINING_SPECS: list[TrainingGameSpec] = [
     TrainingGameSpec(
         game_id="calm_current",
@@ -3880,23 +4458,23 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
     TrainingGameSpec(
         game_id="jump_ball",
         section="Arcade neurofeedback",
-        eyebrow="Rhythm runner",
-        card_title="Jump Ball",
-        detail_title="A rolling jump game for focus timing and controlled recovery",
+        eyebrow="BCI Runner",
+        card_title="Dino Runner",
+        detail_title="A Chrome Dino–style runner controlled by focus, relaxation, and gyroscope",
         duration="8 min",
-        description="Charge jumps over obstacle towers, settle landings cleanly, and preserve a smooth combo rhythm.",
+        description="Run across a desert as a T-Rex, jumping over cacti and dodging pterodactyls using BCI and head tilt.",
         detail_body=(
-            "Jump Ball turns concentration into jump height and relaxation into clean landings. It works well with EEG "
-            "because the course moves forward automatically, letting the player focus on steady lift, recovery, and "
-            "momentum instead of twitch steering."
+            "Dino Runner is a side-scrolling obstacle course inspired by the classic offline dinosaur game. "
+            "Concentration controls running speed, relaxation slows or reverses the scroll, and tilting your head "
+            "up triggers a jump while tilting down makes the dino duck under flying obstacles."
         ),
         instructions=(
-            "Concentrate to build jump height, relax to settle back to the track, and hold a balanced steady state to "
-            "protect momentum through clean sections."
+            "Focus to run forward, relax to slow down or reverse, tilt your head up to jump over cacti, "
+            "and tilt down to duck under pterodactyls. Build combos by clearing obstacles cleanly."
         ),
-        calibration_copy="Hold a clean baseline so jump charge and landing recovery stay responsive during the run.",
-        preview_label="JUMP",
-        colors=("#5c2d0d", "#ffbe55"),
+        calibration_copy="Hold a clean baseline so speed and jump responsiveness stay calibrated during the run.",
+        preview_label="DINO",
+        colors=("#535353", "#f7f7f7"),
         enabled=True,
         controller_factory=JumpBallController,
         widget_kind="jump_ball",
@@ -4025,6 +4603,34 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         controller_factory=CandyCascadeController,
         widget_kind="candy_cascade",
         music_profile="memory",
+    ),
+    TrainingGameSpec(
+        game_id="astral_glider",
+        section="Arcade neurofeedback",
+        eyebrow="GYRO + BRAIN CONTROL",
+        card_title="Astral Glider",
+        detail_title="Pilot a starship through asteroid fields using your mind and head tilt",
+        duration="3 min",
+        description="The first game combining gyroscope head-tilt steering with focus thrust and relaxation shields.",
+        detail_body=(
+            "Astral Glider is a breakthrough neurofeedback game that combines three input modalities: "
+            "tilt your head to steer the ship, concentrate to engage thrust and fly faster, and relax to "
+            "activate energy shields that phase through obstacles. Hold a balanced steady state to charge "
+            "a warp ability that teleports you forward for bonus points. Navigate asteroid belts, nebula "
+            "corridors, and warp-speed gauntlets across three increasingly challenging levels."
+        ),
+        instructions=(
+            "Tilt your head left/right to steer. Concentrate to engage thrust and gain speed. "
+            "Relax to activate shields and pass through obstacles. Stay balanced to charge warp. "
+            "Collect crystals for score and avoid asteroids."
+        ),
+        calibration_copy="Hold your head in a comfortable neutral position while we calibrate the gyroscope and EEG baseline.",
+        preview_label="🚀",
+        colors=("#0a0a2e", "#1a6aff"),
+        enabled=True,
+        controller_factory=AstralGliderController,
+        widget_kind="astral_glider",
+        music_profile="arcade",
     ),
 ]
 

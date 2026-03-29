@@ -26,6 +26,7 @@ from gui.training_audio import AdaptiveMusicEngine, TRAINING_AUDIO_ASSET_DIR
 from gui.training_games import TRAINING_SPECS, active_training_specs
 from gui.widgets.mind_maze_board import MindMazeBoard, MindMazeControlBar
 from gui.widgets.training_game_widgets import (
+    AstralGliderWidget,
     BubbleBurstWidget,
     CandyCascadeWidget,
     CalmCurrentWidget,
@@ -198,7 +199,7 @@ class SoundtrackCard(QFrame):
 
 class TrainingScreen(QWidget):
     neuroflow_quick_calibration_requested = Signal()
-    IMMERSIVE_GAME_IDS = {"tug_of_war", "space_shooter", "neuro_racer", "bubble_burst", "neon_drift_arena"}
+    IMMERSIVE_GAME_IDS = {"tug_of_war", "space_shooter", "neuro_racer", "bubble_burst", "neon_drift_arena", "astral_glider", "jump_ball"}
 
     SOUNDTRACKS = {
         "Aurora Drift": {
@@ -598,6 +599,26 @@ class TrainingScreen(QWidget):
     def _arm_metrics_are_fresh(self) -> bool:
         return (time.monotonic() - self._arm_last_metrics_t) <= 2.0
 
+    def on_mems(self, mems_timed_data) -> None:
+        """Accept MEMS data from MainWindow and forward to game controller."""
+        if not hasattr(self, "_controller") or self._controller is None:
+            return
+        if not hasattr(self._controller, "update_mems"):
+            return
+        try:
+            count = len(mems_timed_data)
+            if count <= 0:
+                return
+            last = count - 1
+            accel = mems_timed_data.get_accelerometer(last)
+            gyro = mems_timed_data.get_gyroscope(last)
+            self._controller.update_mems(
+                accel.x, accel.y, accel.z,
+                gyro.x, gyro.y, gyro.z,
+            )
+        except Exception:
+            pass
+
     def _current_metric_pair(self) -> tuple[float, float]:
         if self._current_game_id == "prosthetic_arm":
             return (
@@ -833,12 +854,14 @@ class TrainingScreen(QWidget):
         self._pattern_widget = PatternRecallWidget()
         self._candy_cascade_widget = CandyCascadeWidget()
         self._prosthetic_arm_widget = ProstheticArmWidget()
+        self._astral_glider_widget = AstralGliderWidget()
         self._tug_of_war_widget.set_menu_callback(self._cancel_gameplay)
         self._space_shooter_widget.set_menu_callback(self._cancel_gameplay)
         self._neuro_racer_widget.set_menu_callback(self._cancel_gameplay)
         self._neon_drift_arena_widget.set_menu_callback(self._cancel_gameplay)
         self._bubble_burst_widget.set_menu_callback(self._cancel_gameplay)
         self._bubble_burst_widget.set_swap_callback(self._swap_bubble_queue)
+        self._astral_glider_widget.set_menu_callback(self._cancel_gameplay)
         self._game_widget_map = {
             "mind_maze": self._maze_board,
             "calm_current": self._current_widget,
@@ -853,6 +876,7 @@ class TrainingScreen(QWidget):
             "pattern_recall": self._pattern_widget,
             "candy_cascade": self._candy_cascade_widget,
             "prosthetic_arm": self._prosthetic_arm_widget,
+            "astral_glider": self._astral_glider_widget,
         }
         for widget in self._game_widget_map.values():
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)

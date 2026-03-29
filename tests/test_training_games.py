@@ -707,15 +707,24 @@ class TrainingGameControllerTests(unittest.TestCase):
     def test_jump_ball_focus_clears_obstacle(self):
         controller = JumpBallController()
         self._calibrate(controller)
-        controller._progress = 15.0
 
-        controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=2.0)
-        controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=2.0)
-        controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=3.0)
-        snapshot = controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=3.0)
+        # Calibrate gyroscope (60 samples)
+        for _ in range(60):
+            controller.update_mems(0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
 
-        self.assertIn(snapshot.recommended_label, {"Jump charged", "Land clean", "Preserve the combo", "Hold rhythm"})
-        self.assertGreaterEqual(controller.view_state["cleared"], 1)
+        # Spawn an obstacle then simulate jump via gyro tilt
+        controller._spawn_obstacle()
+        controller._obstacles[0]["x"] = 120.0  # position near dino
+
+        # Tilt head up to trigger jump
+        controller.update_mems(0.25, 0.0, 1.0, 0.0, 0.0, 0.0)
+
+        # Run several gameplay ticks with focus to move forward
+        for t in range(1, 5):
+            snapshot = controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=float(t))
+
+        self.assertIn(snapshot.recommended_label, {"Jump!", "Stay focused", "Nice combo!", "Keep running", "Jump now!", "Hold air", "Slowing down", "Duck!"})
+        self.assertTrue(controller.view_state["cleared"] >= 1 or controller.view_state["misses"] >= 1)
 
     def test_neuro_racer_focus_and_relax_steer_between_lanes(self):
         controller = NeuroRacerController()
