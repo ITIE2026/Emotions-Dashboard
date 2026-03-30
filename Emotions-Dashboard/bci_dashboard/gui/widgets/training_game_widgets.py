@@ -551,675 +551,6 @@ class JumpBallWidget(_ImmersiveGameWidget):
             painter.drawPath(path)
 
 
-class NeuroRacerWidget(_ImmersiveGameWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setMinimumHeight(520)
-
-    def sizeHint(self):
-        return QSize(640, 520)
-
-    def paintEvent(self, event):  # noqa: N802 - Qt API
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        sky = QLinearGradient(0, 0, 0, self.height())
-        sky.setColorAt(0.0, QColor("#53c5ff"))
-        sky.setColorAt(0.45, QColor("#8dd7ff"))
-        sky.setColorAt(1.0, QColor("#cfeeff"))
-        painter.fillRect(self.rect(), sky)
-
-        cloud_glow = QRadialGradient(QPointF(self.width() * 0.72, self.height() * 0.24), self.width() * 0.34)
-        cloud_glow.setColorAt(0.0, QColor(255, 255, 255, 110))
-        cloud_glow.setColorAt(1.0, QColor(255, 255, 255, 0))
-        painter.fillRect(self.rect(), cloud_glow)
-
-        progress = float(self._state.get("star_progress", 0.0))
-        menu_rect = QRectF(18, 18, 54, 54)
-        self._menu_button_rect = menu_rect
-        self._draw_menu_button(painter, menu_rect)
-        self._draw_star_bar(painter, QRectF(self.width() * 0.22, 18, self.width() * 0.44, 42), progress)
-        self._draw_score_pill(painter, QRectF(self.width() - 114, 18, 96, 42), str(int(self._state.get("score", 0))))
-        balance_rect = _balance_panel_rect(self, 74.0, width_ratio=0.60) if self._state.get("balance_panel") else None
-
-        road_top_y = (balance_rect.bottom() + 18.0) if balance_rect is not None else 86.0
-        road_bottom_y = self.height() - 92.0
-        bottom_width = self.width() * 0.58
-        top_width = self.width() * 0.16
-        center_x = self.width() * 0.5
-        road = QPainterPath()
-        road.moveTo(center_x - (bottom_width / 2), road_bottom_y)
-        road.lineTo(center_x - (top_width / 2), road_top_y)
-        road.lineTo(center_x + (top_width / 2), road_top_y)
-        road.lineTo(center_x + (bottom_width / 2), road_bottom_y)
-        road.closeSubpath()
-        road_fill = QLinearGradient(0, road_top_y, 0, road_bottom_y)
-        road_fill.setColorAt(0.0, QColor("#66626a"))
-        road_fill.setColorAt(1.0, QColor("#2b2b32"))
-        painter.setPen(QPen(QColor("#1b1c21"), 2))
-        painter.setBrush(road_fill)
-        painter.drawPath(road)
-
-        for side in (-1, 1):
-            for index in range(12):
-                ratio0 = index / 12.0
-                ratio1 = (index + 1) / 12.0
-                y0 = road_top_y + ((road_bottom_y - road_top_y) * ratio0)
-                y1 = road_top_y + ((road_bottom_y - road_top_y) * ratio1)
-                width0 = top_width + ((bottom_width - top_width) * ratio0)
-                width1 = top_width + ((bottom_width - top_width) * ratio1)
-                x0 = center_x + (side * (width0 / 2))
-                x1 = center_x + (side * (width1 / 2))
-                stripe = QPainterPath()
-                stripe.moveTo(x0, y0)
-                stripe.lineTo(x1, y1)
-                stripe.lineTo(x1 + (side * 16), y1)
-                stripe.lineTo(x0 + (side * 10), y0)
-                stripe.closeSubpath()
-                painter.setBrush(QColor("#ff2d2d") if index % 2 == 0 else QColor("#f3f6ff"))
-                painter.setPen(Qt.NoPen)
-                painter.drawPath(stripe)
-
-        painter.setPen(QPen(QColor(255, 255, 255, 150), 3, Qt.DashLine))
-        for lane_ratio in (0.33, 0.66):
-            painter.drawLine(
-                QPointF(center_x - ((bottom_width / 2) - (bottom_width * lane_ratio)), road_bottom_y),
-                QPointF(center_x - ((top_width / 2) - (top_width * lane_ratio)), road_top_y),
-            )
-
-        finish_distance = max(1.0, float(self._state.get("finish_distance", 1000.0)))
-        progress_ratio = float(self._state.get("progress_ratio", 0.0))
-        arch_width = top_width * (1.2 + (progress_ratio * 0.3))
-        arch_y = road_top_y + 12
-        painter.setPen(QPen(QColor("#222222"), 5))
-        painter.drawLine(QPointF(center_x - (arch_width / 2), arch_y), QPointF(center_x + (arch_width / 2), arch_y))
-        for side in (-1, 1):
-            painter.drawLine(QPointF(center_x + (side * arch_width / 2), arch_y), QPointF(center_x + (side * arch_width / 2), arch_y + 24))
-
-        lane = int(self._state.get("lane", 1))
-        for car in self._state.get("traffic", []):
-            self._draw_traffic_car(
-                painter,
-                center_x,
-                top_width,
-                bottom_width,
-                road_top_y,
-                road_bottom_y,
-                int(car.get("lane", 1)),
-                float(car.get("gap", 200.0)),
-            )
-
-        for effect in self._state.get("effects", []):
-            self._draw_effect(
-                painter,
-                center_x,
-                top_width,
-                bottom_width,
-                road_top_y,
-                road_bottom_y,
-                int(effect.get("lane", lane)),
-                float(effect.get("gap", 28.0)),
-                str(effect.get("kind", "spark")),
-                int(effect.get("ticks", 1)),
-            )
-
-        self._draw_player_car(
-            painter,
-            center_x,
-            bottom_width,
-            road_bottom_y,
-            lane,
-            int(self._state.get("nitro_ticks", 0)) > 0,
-        )
-
-        self._draw_bottom_chrome(painter)
-
-        painter.setPen(QColor("#f4fbff"))
-        font = QFont()
-        font.setPointSize(10)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(QRectF(20, self.height() - 82, 180, 22), Qt.AlignLeft, f"Speed {float(self._state.get('speed', 0.0)):.0f}")
-        painter.drawText(QRectF(self.width() - 200, self.height() - 82, 180, 22), Qt.AlignRight, f"Nitro {float(self._state.get('nitro', 0.0)):.0f}")
-        font.setBold(False)
-        painter.setFont(font)
-        painter.setPen(QColor("#234463"))
-        painter.drawText(QRectF(20, self.height() - 58, 220, 20), Qt.AlignLeft, f"Stability {float(self._state.get('stability', 0.0)):.0f}")
-        painter.drawText(QRectF(self.width() - 240, self.height() - 58, 220, 20), Qt.AlignRight, f"Overtakes {int(self._state.get('overtakes', 0))}")
-        painter.drawText(QRectF(0, self.height() - 34, self.width(), 20), Qt.AlignCenter, str(self._state.get("message", "")))
-
-        self._draw_balance_panel(painter, top=74.0, width_ratio=0.60)
-        if self._state.get("overlay_kind"):
-            self._draw_overlay(painter)
-
-    def _draw_menu_button(self, painter: QPainter, rect: QRectF):
-        fill = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-        fill.setColorAt(0.0, QColor("#f7f7fb"))
-        fill.setColorAt(1.0, QColor("#ced4e3"))
-        painter.setPen(QPen(QColor("#8794ad"), 2))
-        painter.setBrush(fill)
-        painter.drawRoundedRect(rect, 15, 15)
-        painter.setPen(QPen(QColor("#525f73"), 3, Qt.SolidLine, Qt.RoundCap))
-        for offset in (15, 26, 37):
-            painter.drawLine(QPointF(rect.left() + 14, rect.top() + offset), QPointF(rect.right() - 14, rect.top() + offset))
-
-    def _draw_star_bar(self, painter: QPainter, rect: QRectF, progress: float):
-        painter.setPen(QPen(QColor("#6079a3"), 2))
-        painter.setBrush(QColor("#dcecff"))
-        painter.drawRoundedRect(rect, 20, 20)
-        fill = QRectF(rect.left() + 4, rect.top() + 4, (rect.width() - 8) * max(0.0, min(1.0, progress)), rect.height() - 8)
-        grad = QLinearGradient(fill.topLeft(), fill.topRight())
-        grad.setColorAt(0.0, QColor("#1fb7ff"))
-        grad.setColorAt(1.0, QColor("#6be3ff"))
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(grad)
-        painter.drawRoundedRect(fill, 16, 16)
-        for index, ratio in enumerate((0.25, 0.5, 0.75)):
-            painter.setBrush(QColor("#ffd348") if progress >= ratio else QColor("#9aa9c7"))
-            painter.setPen(QPen(QColor(255, 255, 255, 110), 1.5))
-            painter.drawPath(_star_path(QPointF(rect.left() + (rect.width() * ratio), rect.center().y()), 10.0, 4.8))
-
-    def _draw_score_pill(self, painter: QPainter, rect: QRectF, text: str):
-        fill = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-        fill.setColorAt(0.0, QColor("#1f2937"))
-        fill.setColorAt(1.0, QColor("#111827"))
-        painter.setPen(QPen(QColor("#7a879d"), 2))
-        painter.setBrush(fill)
-        painter.drawRoundedRect(rect, 18, 18)
-        painter.setPen(QColor("#f9fbff"))
-        font = QFont()
-        font.setPointSize(12)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(rect, Qt.AlignCenter, text)
-
-    def _lane_point(self, center_x: float, top_width: float, bottom_width: float, top_y: float, bottom_y: float, lane: int, gap: float) -> tuple[QPointF, float]:
-        depth = max(0.0, min(1.0, gap / 260.0))
-        y = bottom_y - ((1.0 - depth) * (bottom_y - top_y))
-        road_width = top_width + ((bottom_width - top_width) * (1.0 - depth))
-        lane_ratio = {0: -0.28, 1: 0.0, 2: 0.28}.get(lane, 0.0)
-        x = center_x + (road_width * lane_ratio)
-        return QPointF(x, y), road_width
-
-    def _draw_traffic_car(self, painter: QPainter, center_x: float, top_width: float, bottom_width: float, top_y: float, bottom_y: float, lane: int, gap: float):
-        center, road_width = self._lane_point(center_x, top_width, bottom_width, top_y, bottom_y, lane, gap)
-        scale = max(0.28, min(1.0, road_width / bottom_width))
-        rect = QRectF(center.x() - (26 * scale), center.y() - (42 * scale), 52 * scale, 82 * scale)
-        fill = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-        fill.setColorAt(0.0, QColor("#37d99b") if lane == 1 else (QColor("#46a9ff") if lane == 0 else QColor("#ffd74e")))
-        fill.setColorAt(1.0, QColor("#0f2740"))
-        painter.setPen(QPen(QColor(255, 255, 255, 120), 1.5))
-        painter.setBrush(fill)
-        painter.drawRoundedRect(rect, 10, 10)
-        painter.setBrush(QColor("#172233"))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(QRectF(rect.left() + (8 * scale), rect.top() + (10 * scale), rect.width() - (16 * scale), rect.height() * 0.28), 6, 6)
-
-    def _draw_effect(self, painter: QPainter, center_x: float, top_width: float, bottom_width: float, top_y: float, bottom_y: float, lane: int, gap: float, kind: str, ticks: int):
-        center, road_width = self._lane_point(center_x, top_width, bottom_width, top_y, bottom_y, lane, gap)
-        radius = max(10.0, (road_width / 7.0) + (ticks * 2.0))
-        glow = QRadialGradient(center, radius)
-        if kind == "impact":
-            glow.setColorAt(0.0, QColor("#fff0b5"))
-            glow.setColorAt(0.35, QColor("#ff7a4f"))
-        else:
-            glow.setColorAt(0.0, QColor("#d8f8ff"))
-            glow.setColorAt(0.35, QColor("#8fe7ff"))
-        glow.setColorAt(1.0, QColor(255, 255, 255, 0))
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(glow)
-        painter.drawEllipse(center, radius, radius)
-
-    def _draw_player_car(self, painter: QPainter, center_x: float, bottom_width: float, bottom_y: float, lane: int, nitro_active: bool):
-        lane_offset = {0: -0.28, 1: 0.0, 2: 0.28}.get(lane, 0.0)
-        car_center = QPointF(center_x + (bottom_width * lane_offset), bottom_y - 26)
-        body = QRectF(car_center.x() - 46, car_center.y() - 56, 92, 112)
-        fill = QLinearGradient(body.topLeft(), body.bottomLeft())
-        fill.setColorAt(0.0, QColor("#ff9c3f"))
-        fill.setColorAt(0.55, QColor("#ff6d22"))
-        fill.setColorAt(1.0, QColor("#7d2f12"))
-        painter.setPen(QPen(QColor(255, 255, 255, 130), 2))
-        painter.setBrush(fill)
-        painter.drawRoundedRect(body, 24, 24)
-        painter.setBrush(QColor("#1f1f22"))
-        painter.setPen(Qt.NoPen)
-        painter.drawRoundedRect(QRectF(body.left() + 14, body.top() + 16, body.width() - 28, 28), 10, 10)
-        painter.drawRect(QRectF(body.left() + 18, body.bottom() - 28, body.width() - 36, 12))
-        painter.setBrush(QColor("#222834"))
-        for offset in (-28, 28):
-            painter.drawEllipse(QPointF(car_center.x() + offset, body.bottom() - 10), 10, 10)
-        if nitro_active:
-            flame = QLinearGradient(car_center.x(), body.bottom() - 8, car_center.x(), body.bottom() + 46)
-            flame.setColorAt(0.0, QColor("#a3f6ff"))
-            flame.setColorAt(0.4, QColor("#2fc5ff"))
-            flame.setColorAt(1.0, QColor(47, 197, 255, 0))
-            painter.setBrush(flame)
-            painter.drawRoundedRect(QRectF(car_center.x() - 12, body.bottom() - 6, 24, 52), 10, 10)
-
-    def _draw_bottom_chrome(self, painter: QPainter):
-        pedal = QRectF(28, self.height() - 120, 68, 72)
-        wheel = QRectF(self.width() - 104, self.height() - 122, 76, 76)
-        pedal_fill = QLinearGradient(pedal.topLeft(), pedal.bottomLeft())
-        pedal_fill.setColorAt(0.0, QColor("#edf2ff"))
-        pedal_fill.setColorAt(1.0, QColor("#b7c4d9"))
-        painter.setPen(QPen(QColor("#73829c"), 2))
-        painter.setBrush(pedal_fill)
-        painter.drawRoundedRect(pedal, 18, 18)
-        painter.drawRoundedRect(QRectF(110, self.height() - 110, 70, 56), 18, 18)
-        painter.setPen(QPen(QColor("#66758a"), 3))
-        for col in range(3):
-            x = pedal.left() + 18 + (col * 14)
-            painter.drawLine(QPointF(x, pedal.top() + 18), QPointF(x, pedal.bottom() - 18))
-        painter.drawEllipse(wheel)
-        painter.drawEllipse(QRectF(wheel.left() + 18, wheel.top() + 18, wheel.width() - 36, wheel.height() - 36))
-        painter.drawLine(QPointF(wheel.center().x(), wheel.top() + 12), QPointF(wheel.center().x(), wheel.center().y() + 10))
-        painter.drawLine(QPointF(wheel.left() + 14, wheel.center().y()), QPointF(wheel.center().x(), wheel.center().y() + 10))
-        painter.drawLine(QPointF(wheel.right() - 14, wheel.center().y()), QPointF(wheel.center().x(), wheel.center().y() + 10))
-
-    def _draw_overlay(self, painter: QPainter):
-        painter.fillRect(self.rect(), QColor(12, 19, 34, 110))
-        card = QRectF(self.width() * 0.17, self.height() * 0.28, self.width() * 0.66, self.height() * 0.22)
-        fill = QLinearGradient(card.topLeft(), card.bottomLeft())
-        fill.setColorAt(0.0, QColor("#f6fbff"))
-        fill.setColorAt(1.0, QColor("#d8ecff"))
-        painter.setPen(QPen(QColor("#8db4de"), 2))
-        painter.setBrush(fill)
-        painter.drawRoundedRect(card, 24, 24)
-        painter.setPen(QColor("#17436d"))
-        title_font = QFont()
-        title_font.setPointSize(20)
-        title_font.setBold(True)
-        painter.setFont(title_font)
-        painter.drawText(QRectF(card.left() + 20, card.top() + 24, card.width() - 40, 34), Qt.AlignCenter, str(self._state.get("overlay_title", "")))
-        body_font = QFont()
-        body_font.setPointSize(11)
-        painter.setFont(body_font)
-        painter.setPen(QColor("#4a6787"))
-        painter.drawText(QRectF(card.left() + 24, card.top() + 70, card.width() - 48, 44), Qt.AlignCenter | Qt.TextWordWrap, str(self._state.get("overlay_subtitle", "")))
-
-
-class NeonDriftArenaWidget(_ImmersiveGameWidget):
-    COLOR_THEMES = {
-        "violet": ("#b267ff", "#6a2fd1", "#f0d5ff"),
-        "gold": ("#ffe36c", "#f1b726", "#fff6cb"),
-        "cyan": ("#5ce8ff", "#1ba6ff", "#d6fbff"),
-        "lime": ("#a4ff72", "#37d88b", "#ecffd8"),
-    }
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setMinimumHeight(560)
-
-    def sizeHint(self):
-        return QSize(760, 560)
-
-    def paintEvent(self, event):  # noqa: N802 - Qt API
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        self._paint_backdrop(painter)
-
-        progress = float(self._state.get("star_progress", 0.0))
-        score = int(self._state.get("score", 0))
-        combo = int(self._state.get("combo", 0))
-        boost = float(self._state.get("boost_meter", 0.0))
-        target_collectibles = int(self._state.get("target_collectibles", 0))
-        collected = int(self._state.get("collectibles", 0))
-
-        menu_rect = QRectF(18, 18, 54, 54)
-        self._menu_button_rect = menu_rect
-        self._draw_menu_button(painter, menu_rect)
-        self._draw_star_bar(painter, QRectF(self.width() * 0.18, 18, self.width() * 0.44, 42), progress)
-        self._draw_score_pill(painter, QRectF(self.width() - 114, 18, 96, 42), str(score))
-        balance_rect = _balance_panel_rect(self, 76.0, width_ratio=0.60) if self._state.get("balance_panel") else None
-
-        arena_top = (balance_rect.bottom() + 18.0) if balance_rect is not None else 92.0
-        arena_rect = QRectF(26.0, arena_top, self.width() - 52.0, max(260.0, self.height() - arena_top - 110.0))
-        self._draw_projected_city(painter, arena_rect)
-        self._draw_projection_floor(painter, arena_rect)
-
-        for hazard in self._state.get("hazards", []):
-            self._draw_hazard_pool(painter, arena_rect, hazard)
-        for pad in self._state.get("boost_pads", []):
-            self._draw_boost_pad(painter, arena_rect, pad)
-        for tile in self._state.get("projected_collectibles", []):
-            self._draw_collectible_tile(painter, arena_rect, tile)
-        for sigil in self._state.get("sigils", []):
-            self._draw_sigil(painter, arena_rect, sigil)
-        for popup in self._state.get("score_popups", []):
-            self._draw_popup(painter, arena_rect, popup)
-
-        self._draw_kart_trail(painter, arena_rect)
-        self._draw_kart(painter, arena_rect)
-        self._draw_hud(painter, arena_rect, combo, boost, collected, target_collectibles)
-
-        painter.setPen(QColor("#f5f2ff"))
-        font = QFont()
-        font.setPointSize(11)
-        font.setBold(False)
-        painter.setFont(font)
-        painter.drawText(QRectF(26, self.height() - 38, self.width() - 52, 22), Qt.AlignCenter, str(self._state.get("message", "")))
-
-        self._draw_balance_panel(painter, top=76.0, width_ratio=0.60)
-        if self._state.get("overlay_kind"):
-            self._draw_overlay(painter)
-
-    def _lane_point(self, arena_rect: QRectF, lane_pos: float, gap: float) -> tuple[QPointF, float]:
-        lane_count = max(2, int(self._state.get("lane_count", 5)))
-        depth = max(0.0, min(1.0, float(gap) / max(1.0, float(self._state.get("field_depth", 220.0)))))
-        t = 1.0 - depth
-        perspective = 0.24 + (t * 0.76)
-        usable_width = arena_rect.width() * (0.22 + (perspective * 0.68))
-        cx = arena_rect.center().x() + math.sin((gap / 52.0) + 0.4) * (arena_rect.width() * 0.09 * (1.0 - t))
-        lane_ratio = (float(lane_pos) / max(1.0, lane_count - 1)) - 0.5
-        x = cx + (lane_ratio * usable_width)
-        y = arena_rect.bottom() - (t * (arena_rect.height() * 0.78))
-        scale = 0.38 + (perspective * 0.92)
-        return QPointF(x, y), scale
-
-    def _paint_backdrop(self, painter: QPainter):
-        painter.fillRect(self.rect(), QColor("#090611"))
-        sky = QLinearGradient(0, 0, 0, self.height())
-        sky.setColorAt(0.0, QColor("#140a27"))
-        sky.setColorAt(0.34, QColor("#251342"))
-        sky.setColorAt(0.72, QColor("#0f1023"))
-        sky.setColorAt(1.0, QColor("#05060d"))
-        painter.fillRect(self.rect(), sky)
-
-        haze = QRadialGradient(QPointF(self.width() * 0.52, self.height() * 0.30), self.width() * 0.54)
-        haze.setColorAt(0.0, QColor(233, 120, 255, 54))
-        haze.setColorAt(0.46, QColor(104, 168, 255, 26))
-        haze.setColorAt(1.0, QColor(0, 0, 0, 0))
-        painter.fillRect(self.rect(), haze)
-
-    def _draw_projected_city(self, painter: QPainter, arena_rect: QRectF):
-        wall_rect = QRectF(arena_rect.left(), arena_rect.top() - 18.0, arena_rect.width(), arena_rect.height() * 0.22)
-        wall_fill = QLinearGradient(wall_rect.topLeft(), wall_rect.bottomLeft())
-        wall_fill.setColorAt(0.0, QColor("#7a2cd7"))
-        wall_fill.setColorAt(0.35, QColor("#d85bd6"))
-        wall_fill.setColorAt(1.0, QColor("#ffcf6e"))
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(wall_fill)
-        painter.drawRoundedRect(wall_rect, 18, 18)
-
-        skyline = QPainterPath()
-        skyline.moveTo(wall_rect.left(), wall_rect.bottom())
-        x = wall_rect.left()
-        heights = [18, 42, 24, 56, 30, 78, 32, 64, 22, 50, 28, 68, 26]
-        widths = [26, 20, 30, 18, 28, 24, 34, 20, 36, 26, 32, 22, 44]
-        for width, height in zip(widths, heights):
-            skyline.lineTo(x, wall_rect.bottom() - height)
-            skyline.lineTo(x + width, wall_rect.bottom() - height)
-            x += width
-            skyline.lineTo(x, wall_rect.bottom())
-        skyline.lineTo(wall_rect.right(), wall_rect.bottom())
-        skyline.closeSubpath()
-        painter.setBrush(QColor(39, 18, 74, 170))
-        painter.drawPath(skyline)
-
-        painter.setPen(QPen(QColor(255, 217, 120, 110), 2))
-        for index in range(16):
-            y = wall_rect.top() + 8 + ((index % 3) * 6)
-            x0 = wall_rect.left() + 18 + (index * 36)
-            painter.drawLine(QPointF(x0, y), QPointF(min(wall_rect.right() - 12, x0 + 20), y))
-
-    def _draw_projection_floor(self, painter: QPainter, arena_rect: QRectF):
-        floor = QLinearGradient(arena_rect.topLeft(), arena_rect.bottomLeft())
-        floor.setColorAt(0.0, QColor("#1b1731"))
-        floor.setColorAt(0.48, QColor("#151327"))
-        floor.setColorAt(1.0, QColor("#0b0c14"))
-        painter.setPen(QPen(QColor(255, 255, 255, 24), 1.5))
-        painter.setBrush(floor)
-        painter.drawRoundedRect(arena_rect, 26, 26)
-
-        painter.setPen(QPen(QColor(255, 255, 255, 14), 1))
-        for row in range(8):
-            y = arena_rect.top() + ((row + 1) * arena_rect.height() / 9.0)
-            painter.drawLine(QPointF(arena_rect.left() + 14, y), QPointF(arena_rect.right() - 14, y))
-
-        painter.setPen(Qt.NoPen)
-        for index in range(5):
-            glow_center = QPointF(
-                arena_rect.left() + (arena_rect.width() * (0.12 + (index * 0.19))),
-                arena_rect.top() + (arena_rect.height() * (0.24 + ((index % 2) * 0.18))),
-            )
-            glow = QRadialGradient(glow_center, arena_rect.width() * 0.12)
-            glow.setColorAt(0.0, QColor(176, 84, 255, 30))
-            glow.setColorAt(0.55, QColor(80, 221, 255, 14))
-            glow.setColorAt(1.0, QColor(0, 0, 0, 0))
-            painter.setBrush(glow)
-            painter.drawEllipse(glow_center, arena_rect.width() * 0.12, arena_rect.width() * 0.12)
-
-    def _draw_collectible_tile(self, painter: QPainter, arena_rect: QRectF, tile: dict):
-        center, scale = self._lane_point(arena_rect, float(tile.get("lane", 2.0)), float(tile.get("gap", 0.0)))
-        light_hex, dark_hex, edge_hex = self.COLOR_THEMES.get(str(tile.get("style", "violet")), self.COLOR_THEMES["violet"])
-        width = 30.0 * scale
-        height = 18.0 * scale
-        tile_rect = QRectF(center.x() - width / 2, center.y() - height / 2, width, height)
-        glow = QRadialGradient(center, width * 1.2)
-        glow.setColorAt(0.0, QColor(light_hex))
-        glow.setColorAt(0.45, QColor(light_hex).lighter(112))
-        glow.setColorAt(1.0, QColor(255, 255, 255, 0))
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(glow)
-        painter.drawEllipse(center, width * 1.1, height * 1.35)
-
-        fill = QLinearGradient(tile_rect.topLeft(), tile_rect.bottomLeft())
-        fill.setColorAt(0.0, QColor(light_hex))
-        fill.setColorAt(1.0, QColor(dark_hex))
-        painter.setPen(QPen(QColor(edge_hex), max(1.2, 1.8 * scale)))
-        painter.setBrush(fill)
-        painter.drawRoundedRect(tile_rect, 8 * scale, 8 * scale)
-
-        painter.setPen(QPen(QColor(255, 255, 255, 120), max(0.8, 1.2 * scale)))
-        painter.drawLine(QPointF(tile_rect.left() + width * 0.18, center.y()), QPointF(tile_rect.right() - width * 0.18, center.y()))
-
-    def _draw_sigil(self, painter: QPainter, arena_rect: QRectF, sigil: dict):
-        center, scale = self._lane_point(arena_rect, float(sigil.get("lane", 2.0)), float(sigil.get("gap", 0.0)))
-        light_hex, dark_hex, edge_hex = self.COLOR_THEMES.get(str(sigil.get("style", "gold")).replace("sigil_", ""), self.COLOR_THEMES["gold"])
-        radius = 24.0 * scale
-        glow = QRadialGradient(center, radius * 1.7)
-        glow.setColorAt(0.0, QColor(light_hex))
-        glow.setColorAt(0.38, QColor(light_hex).lighter(118))
-        glow.setColorAt(1.0, QColor(255, 255, 255, 0))
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(glow)
-        painter.drawEllipse(center, radius * 1.7, radius * 1.3)
-
-        painter.setPen(QPen(QColor(edge_hex), max(1.3, 2.0 * scale)))
-        painter.setBrush(QColor(dark_hex))
-        painter.drawEllipse(center, radius, radius * 0.74)
-        painter.drawPath(_star_path(center, radius * 0.56, radius * 0.26))
-
-    def _draw_hazard_pool(self, painter: QPainter, arena_rect: QRectF, hazard: dict):
-        center, scale = self._lane_point(arena_rect, float(hazard.get("lane", 2.0)), float(hazard.get("gap", 0.0)))
-        width = 44.0 * scale * (0.8 + float(hazard.get("width", 0.9)))
-        height = 20.0 * scale * (0.9 + float(hazard.get("width", 0.9)))
-        glow = QRadialGradient(center, width * 1.1)
-        glow.setColorAt(0.0, QColor(120, 0, 140, 105))
-        glow.setColorAt(0.58, QColor(43, 16, 74, 75))
-        glow.setColorAt(1.0, QColor(0, 0, 0, 0))
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(glow)
-        painter.drawEllipse(center, width * 1.1, height * 1.2)
-        painter.setBrush(QColor(14, 8, 26, 220))
-        painter.drawEllipse(center, width, height)
-        painter.setPen(QPen(QColor(104, 31, 146, 140), max(1.0, 1.6 * scale)))
-        painter.drawEllipse(center, width * 0.78, height * 0.72)
-
-    def _draw_boost_pad(self, painter: QPainter, arena_rect: QRectF, pad: dict):
-        center, scale = self._lane_point(arena_rect, float(pad.get("lane", 2.0)), float(pad.get("gap", 0.0)))
-        rect = QRectF(center.x() - (28 * scale), center.y() - (12 * scale), 56 * scale, 24 * scale)
-        glow = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        glow.setColorAt(0.0, QColor("#ffe96f"))
-        glow.setColorAt(0.45, QColor("#5effef"))
-        glow.setColorAt(1.0, QColor("#d76fff"))
-        painter.setPen(QPen(QColor("#fef4b3"), max(1.2, 2.0 * scale)))
-        painter.setBrush(glow)
-        painter.drawRoundedRect(rect, 10 * scale, 10 * scale)
-        painter.setPen(QPen(QColor(32, 16, 60, 180), max(1.0, 1.6 * scale)))
-        painter.drawLine(QPointF(rect.left() + rect.width() * 0.24, rect.center().y()), QPointF(rect.right() - rect.width() * 0.20, rect.center().y()))
-        painter.drawLine(QPointF(rect.right() - rect.width() * 0.28, rect.top() + rect.height() * 0.22), QPointF(rect.right() - rect.width() * 0.18, rect.center().y()))
-        painter.drawLine(QPointF(rect.right() - rect.width() * 0.28, rect.bottom() - rect.height() * 0.22), QPointF(rect.right() - rect.width() * 0.18, rect.center().y()))
-
-    def _draw_popup(self, painter: QPainter, arena_rect: QRectF, popup: dict):
-        center, scale = self._lane_point(arena_rect, float(popup.get("lane", 2.0)), float(popup.get("gap", 0.0)))
-        font = QFont()
-        font.setPointSize(max(9, int(11 * scale)))
-        font.setBold(True)
-        painter.setFont(font)
-        painter.setPen(QColor("#ff7a8d") if popup.get("bad") else QColor("#fff4a3"))
-        painter.drawText(QRectF(center.x() - 36, center.y() - 30, 72, 20), Qt.AlignCenter, str(popup.get("text", "")))
-
-    def _draw_kart_trail(self, painter: QPainter, arena_rect: QRectF):
-        center, scale = self._lane_point(arena_rect, float(self._state.get("kart_track_pos", 2.0)), 6.0)
-        trail = QPainterPath()
-        trail.moveTo(center.x(), center.y() + (20 * scale))
-        for step in range(1, 6):
-            offset_gap = 18.0 + (step * 16.0)
-            point, point_scale = self._lane_point(arena_rect, float(self._state.get("kart_track_pos", 2.0)), offset_gap)
-            point.setY(point.y() + (18 * point_scale))
-            trail.lineTo(point)
-        glow = QLinearGradient(trail.boundingRect().topLeft(), trail.boundingRect().bottomLeft())
-        glow.setColorAt(0.0, QColor("#ffe16d" if float(self._state.get("boost_ticks", 0)) > 0 else "#b55dff"))
-        glow.setColorAt(1.0, QColor("#19dcff"))
-        painter.setPen(QPen(glow, max(6.0, 16.0 * scale), Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        painter.drawPath(trail)
-
-    def _draw_kart(self, painter: QPainter, arena_rect: QRectF):
-        center, scale = self._lane_point(arena_rect, float(self._state.get("kart_track_pos", 2.0)), 0.0)
-        glow_radius = 46.0 * scale
-        glow = QRadialGradient(center, glow_radius * 1.4)
-        glow.setColorAt(0.0, QColor("#ffef74" if float(self._state.get("boost_ticks", 0)) > 0 else "#d767ff"))
-        glow.setColorAt(0.35, QColor("#49e1ff"))
-        glow.setColorAt(1.0, QColor(255, 255, 255, 0))
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(glow)
-        painter.drawEllipse(center, glow_radius * 1.5, glow_radius)
-
-        body = QRectF(center.x() - (34 * scale), center.y() - (22 * scale), 68 * scale, 44 * scale)
-        fill = QLinearGradient(body.topLeft(), body.bottomLeft())
-        fill.setColorAt(0.0, QColor("#fefefe"))
-        fill.setColorAt(0.35, QColor("#cce6ff"))
-        fill.setColorAt(1.0, QColor("#525ef2"))
-        painter.setPen(QPen(QColor("#f6f8ff"), max(1.3, 1.8 * scale)))
-        painter.setBrush(fill)
-        painter.drawRoundedRect(body, 18 * scale, 18 * scale)
-        painter.setBrush(QColor("#17182c"))
-        painter.drawRoundedRect(QRectF(body.left() + (14 * scale), body.top() + (8 * scale), body.width() - (28 * scale), 13 * scale), 7 * scale, 7 * scale)
-        painter.setBrush(QColor("#1b2133"))
-        for offset in (-20, 20):
-            painter.drawEllipse(QPointF(center.x() + (offset * scale), body.bottom() - (2 * scale)), 7 * scale, 7 * scale)
-        painter.setPen(QPen(QColor("#ffe57e"), max(1.0, 1.4 * scale)))
-        painter.drawLine(QPointF(body.left() + 10 * scale, center.y()), QPointF(body.left() + 20 * scale, center.y()))
-        painter.drawLine(QPointF(body.right() - 20 * scale, center.y()), QPointF(body.right() - 10 * scale, center.y()))
-
-    def _draw_hud(self, painter: QPainter, arena_rect: QRectF, combo: int, boost: float, collected: int, target_collectibles: int):
-        combo_rect = QRectF(arena_rect.left() + 18, arena_rect.bottom() - 78, 136, 56)
-        boost_rect = QRectF(combo_rect.right() + 16, arena_rect.bottom() - 78, 210, 56)
-        target_rect = QRectF(arena_rect.right() - 182, arena_rect.bottom() - 78, 164, 56)
-        for rect in (combo_rect, boost_rect, target_rect):
-            shell = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-            shell.setColorAt(0.0, QColor(20, 18, 38, 230))
-            shell.setColorAt(1.0, QColor(12, 11, 24, 230))
-            painter.setPen(QPen(QColor(255, 255, 255, 36), 1.5))
-            painter.setBrush(shell)
-            painter.drawRoundedRect(rect, 18, 18)
-
-        painter.setPen(QColor("#e9eeff"))
-        font = QFont()
-        font.setPointSize(10)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(combo_rect.adjusted(0, 6, 0, 0), Qt.AlignHCenter, "Combo")
-        painter.drawText(target_rect.adjusted(0, 6, 0, 0), Qt.AlignHCenter, "Targets")
-        painter.drawText(boost_rect.adjusted(16, 6, -16, 0), Qt.AlignLeft, "Boost")
-
-        combo_font = QFont()
-        combo_font.setPointSize(18)
-        combo_font.setBold(True)
-        painter.setFont(combo_font)
-        painter.setPen(QColor("#62f7c4"))
-        painter.drawText(combo_rect.adjusted(0, 18, 0, 0), Qt.AlignCenter, str(combo))
-
-        painter.setPen(QColor("#ffe47d"))
-        painter.drawText(target_rect.adjusted(0, 18, 0, 0), Qt.AlignCenter, f"{collected}/{target_collectibles}")
-
-        bar = QRectF(boost_rect.left() + 16, boost_rect.bottom() - 18, boost_rect.width() - 32, 12)
-        painter.setPen(QPen(QColor("#4d4f76"), 1.2))
-        painter.setBrush(QColor("#272842"))
-        painter.drawRoundedRect(bar, 8, 8)
-        fill = QRectF(bar.left() + 2, bar.top() + 2, (bar.width() - 4) * max(0.0, min(1.0, boost / 100.0)), bar.height() - 4)
-        fill_grad = QLinearGradient(fill.topLeft(), fill.topRight())
-        fill_grad.setColorAt(0.0, QColor("#5bdeff"))
-        fill_grad.setColorAt(0.55, QColor("#ffd86f"))
-        fill_grad.setColorAt(1.0, QColor("#c657ff"))
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(fill_grad)
-        painter.drawRoundedRect(fill, 6, 6)
-
-    def _draw_menu_button(self, painter: QPainter, rect: QRectF):
-        fill = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-        fill.setColorAt(0.0, QColor("#7f5bff"))
-        fill.setColorAt(1.0, QColor("#4721bb"))
-        painter.setPen(QPen(QColor("#d8c9ff"), 2))
-        painter.setBrush(fill)
-        painter.drawRoundedRect(rect, 15, 15)
-        painter.setPen(QPen(QColor("#f8f5ff"), 3, Qt.SolidLine, Qt.RoundCap))
-        for offset in (15, 26, 37):
-            painter.drawLine(QPointF(rect.left() + 14, rect.top() + offset), QPointF(rect.right() - 14, rect.top() + offset))
-
-    def _draw_star_bar(self, painter: QPainter, rect: QRectF, progress: float):
-        painter.setPen(QPen(QColor("#635c8d"), 2))
-        painter.setBrush(QColor("#1f1f34"))
-        painter.drawRoundedRect(rect, 20, 20)
-        fill = QRectF(rect.left() + 4, rect.top() + 4, (rect.width() - 8) * max(0.0, min(1.0, progress)), rect.height() - 8)
-        grad = QLinearGradient(fill.topLeft(), fill.topRight())
-        grad.setColorAt(0.0, QColor("#b64cff"))
-        grad.setColorAt(0.45, QColor("#49d8ff"))
-        grad.setColorAt(1.0, QColor("#ffe16d"))
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(grad)
-        painter.drawRoundedRect(fill, 16, 16)
-        for ratio in (0.25, 0.5, 0.75):
-            painter.setBrush(QColor("#ffd348") if progress >= ratio else QColor("#8e91ad"))
-            painter.setPen(QPen(QColor(255, 255, 255, 110), 1.5))
-            painter.drawPath(_star_path(QPointF(rect.left() + (rect.width() * ratio), rect.center().y()), 10.0, 4.8))
-
-    def _draw_score_pill(self, painter: QPainter, rect: QRectF, text: str):
-        fill = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-        fill.setColorAt(0.0, QColor("#291a47"))
-        fill.setColorAt(1.0, QColor("#141028"))
-        painter.setPen(QPen(QColor("#8b86b3"), 2))
-        painter.setBrush(fill)
-        painter.drawRoundedRect(rect, 18, 18)
-        painter.setPen(QColor("#fefcff"))
-        font = QFont()
-        font.setPointSize(12)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(rect, Qt.AlignCenter, text)
-
-    def _draw_overlay(self, painter: QPainter):
-        painter.fillRect(self.rect(), QColor(8, 8, 18, 130))
-        card = QRectF(self.width() * 0.15, self.height() * 0.27, self.width() * 0.70, self.height() * 0.24)
-        fill = QLinearGradient(card.topLeft(), card.bottomLeft())
-        fill.setColorAt(0.0, QColor("#1c1831"))
-        fill.setColorAt(1.0, QColor("#0d1020"))
-        painter.setPen(QPen(QColor("#b16dff"), 2))
-        painter.setBrush(fill)
-        painter.drawRoundedRect(card, 24, 24)
-        painter.setPen(QColor("#fff2c3"))
-        title_font = QFont()
-        title_font.setPointSize(20)
-        title_font.setBold(True)
-        painter.setFont(title_font)
-        painter.drawText(QRectF(card.left() + 20, card.top() + 24, card.width() - 40, 34), Qt.AlignCenter, str(self._state.get("overlay_title", "")))
-        body_font = QFont()
-        body_font.setPointSize(11)
-        painter.setFont(body_font)
-        painter.setPen(QColor("#d9ddff"))
-        painter.drawText(QRectF(card.left() + 26, card.top() + 70, card.width() - 52, 44), Qt.AlignCenter | Qt.TextWordWrap, str(self._state.get("overlay_subtitle", "")))
-
-
 class BubbleBurstWidget(_ImmersiveGameWidget):
     COLORS = {
         "red": ("#ff5d5d", "#9f0915"),
@@ -2583,292 +1914,628 @@ class CandyCascadeWidget(QWidget):
                 )
 
 
-# ---------------------------------------------------------------------------
-#  Astral Glider Widget
-# ---------------------------------------------------------------------------
 
+class NeonViceWidget(_ImmersiveGameWidget):
+    """Top-down arena shooter with synthwave Vice City aesthetics."""
 
-class AstralGliderWidget(_ImmersiveGameWidget):
-    """Full-window QPainter rendering for the Astral Glider game."""
-
-    _SHIP_COLORS = {
-        "body": QColor(120, 200, 255),
-        "thrust": QColor(255, 160, 40),
-        "shield": QColor(60, 180, 255, 80),
-        "warp": QColor(180, 120, 255),
-        "crystal": QColor(0, 255, 210),
-        "rock": QColor(140, 120, 110),
-        "debris": QColor(180, 160, 140),
-        "mine": QColor(255, 60, 60),
-        "wall": QColor(100, 90, 120),
-        "bg_top": QColor(6, 6, 30),
-        "bg_bot": QColor(12, 12, 50),
-        "nebula": QColor(40, 20, 80, 45),
-        "popup_plus": QColor(0, 255, 180),
-        "popup_minus": QColor(255, 80, 80),
-        "hud": QColor(200, 220, 255),
-    }
+    _NEON_PINK = QColor(255, 45, 149)
+    _NEON_CYAN = QColor(0, 255, 230)
+    _NEON_YELLOW = QColor(255, 240, 60)
+    _NEON_ORANGE = QColor(255, 140, 40)
+    _DARK_BG_TOP = QColor(10, 4, 26)
+    _DARK_BG_BOT = QColor(26, 10, 46)
+    _GRID_COLOR = QColor(255, 45, 149, 35)
+    _SUNSET_TOP = QColor(255, 80, 120, 50)
+    _SUNSET_BOT = QColor(255, 180, 80, 30)
+    _PALM_COLOR = QColor(8, 2, 18)
+    _HUD_COLOR = QColor(255, 255, 255, 220)
+    _HEART_FULL = QColor(255, 45, 100)
+    _HEART_EMPTY = QColor(80, 30, 50)
+    _SHIELD_GLOW = QColor(0, 200, 255, 60)
+    _ENEMY_THUG = QColor(255, 80, 60)
+    _ENEMY_RUNNER = QColor(255, 160, 40)
+    _ENEMY_HEAVY = QColor(200, 50, 50)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumHeight(560)
 
-    def sizeHint(self):
-        return QSize(520, 720)
+    def sizeHint(self):  # noqa: N802
+        return QSize(640, 560)
 
     def paintEvent(self, event):  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
         s = self._state
+        arena_w = float(s.get("arena_w", 900))
+        arena_h = float(s.get("arena_h", 600))
+        sx = w / arena_w
+        sy = h / arena_h
 
-        # -- background gradient --
+        # -- dark gradient background ---------------------------------
         bg = QLinearGradient(0, 0, 0, h)
-        bg.setColorAt(0, self._SHIP_COLORS["bg_top"])
-        bg.setColorAt(1, self._SHIP_COLORS["bg_bot"])
+        bg.setColorAt(0.0, self._DARK_BG_TOP)
+        bg.setColorAt(1.0, self._DARK_BG_BOT)
         painter.fillRect(self.rect(), bg)
 
-        # -- stars --
-        for star in s.get("stars", []):
-            sx = star["x"] * w
-            sy = star["y"] * h
-            brightness = star.get("brightness", 0.6)
-            radius = 1.0 + star.get("z", 0.5) * 1.5
-            c = QColor(255, 255, 255, int(brightness * 200))
+        # -- sunset strip at top (Vice City horizon) ------------------
+        sunset = QLinearGradient(0, 0, 0, h * 0.18)
+        sunset.setColorAt(0.0, self._SUNSET_TOP)
+        sunset.setColorAt(1.0, QColor(0, 0, 0, 0))
+        painter.fillRect(QRectF(0, 0, w, h * 0.18), sunset)
+
+        # -- palm silhouettes at edges --------------------------------
+        self._draw_palms(painter, w, h)
+
+        # -- neon grid floor ------------------------------------------
+        self._draw_grid(painter, w, h, sx, sy)
+
+        # -- aim line -------------------------------------------------
+        aim = math.radians(float(s.get("aim_angle", 0)))
+        px = float(s.get("player_x", 450)) * sx
+        py = float(s.get("player_y", 300)) * sy
+        aim_len = min(w, h) * 0.35
+        painter.setPen(QPen(QColor(255, 255, 255, 30), 1, Qt.DashLine))
+        painter.drawLine(QPointF(px, py),
+                         QPointF(px + math.cos(aim) * aim_len,
+                                 py + math.sin(aim) * aim_len))
+
+        # -- bullets --------------------------------------------------
+        for b in s.get("bullets", []):
+            bx = float(b["x"]) * sx
+            by = float(b["y"]) * sy
+            self._draw_bullet(painter, bx, by)
+
+        # -- enemies --------------------------------------------------
+        for e in s.get("enemies", []):
+            ex = float(e["x"]) * sx
+            ey = float(e["y"]) * sy
+            self._draw_enemy(painter, ex, ey, e.get("kind", "thug"), int(e.get("hp", 1)))
+
+        # -- particles ------------------------------------------------
+        for p in s.get("particles", []):
+            ppx = float(p["x"]) * sx
+            ppy = float(p["y"]) * sy
+            life = int(p.get("life", 1))
+            c = self._NEON_PINK if p.get("color") == "pink" else self._NEON_ORANGE
+            c = QColor(c.red(), c.green(), c.blue(), min(255, life * 18))
             painter.setPen(Qt.NoPen)
             painter.setBrush(c)
-            painter.drawEllipse(QPointF(sx, sy), radius, radius)
+            painter.drawEllipse(QPointF(ppx, ppy), 3, 3)
 
-        # -- nebula overlay --
-        if s.get("has_nebula"):
-            nr = QRadialGradient(w * 0.4, h * 0.3, w * 0.5)
-            nr.setColorAt(0, QColor(80, 30, 140, 35))
-            nr.setColorAt(0.6, QColor(30, 10, 80, 20))
-            nr.setColorAt(1, QColor(0, 0, 0, 0))
-            painter.fillRect(self.rect(), nr)
-            nr2 = QRadialGradient(w * 0.7, h * 0.6, w * 0.4)
-            nr2.setColorAt(0, QColor(20, 60, 120, 30))
-            nr2.setColorAt(1, QColor(0, 0, 0, 0))
-            painter.fillRect(self.rect(), nr2)
+        # -- player ---------------------------------------------------
+        shield = bool(s.get("shield_active", False))
+        invuln = int(s.get("tick", 0)) % 4 < 2 if int(s.get("health", 3)) <= 1 else True
+        if invuln:
+            self._draw_player(painter, px, py, aim, shield, sx)
 
-        # -- obstacles --
-        for obs in s.get("obstacles", []):
-            ox = obs["x"] * w
-            oy = obs["y"] * h
-            size = obs.get("size", 0.03) * w
-            style = obs.get("style", "rock")
-            rot = obs.get("rot", 0)
-            color = self._SHIP_COLORS.get(style, self._SHIP_COLORS["rock"])
-            painter.save()
-            painter.translate(ox, oy)
-            painter.rotate(rot)
-            painter.setPen(QPen(color.darker(140), 1.5))
-            painter.setBrush(color)
-            if style == "wall":
-                painter.drawRect(QRectF(-size, -size * 2, size * 2, size * 4))
-            elif style == "mine":
-                painter.drawEllipse(QPointF(0, 0), size, size)
-                painter.setPen(QPen(QColor(255, 200, 0), 2))
-                for angle_deg in range(0, 360, 45):
-                    a = math.radians(angle_deg)
-                    painter.drawLine(
-                        QPointF(math.cos(a) * size * 0.7, math.sin(a) * size * 0.7),
-                        QPointF(math.cos(a) * size * 1.3, math.sin(a) * size * 1.3),
-                    )
-            else:
-                pts = []
-                for i in range(6):
-                    a = math.radians(i * 60 + rot * 0.3)
-                    r = size * (0.8 + 0.4 * ((i % 3) / 3.0))
-                    pts.append(QPointF(math.cos(a) * r, math.sin(a) * r))
-                path = QPainterPath()
-                path.moveTo(pts[0])
-                for pt in pts[1:]:
-                    path.lineTo(pt)
-                path.closeSubpath()
-                painter.drawPath(path)
-            painter.restore()
+        # -- HUD (top band) -------------------------------------------
+        self._draw_hud(painter, w, h, s)
 
-        # -- crystals --
-        for crystal in s.get("crystals", []):
-            cx = crystal["x"] * w
-            cy = crystal["y"] * h
-            pulse = crystal.get("pulse", 0)
-            r = 8 + 3 * math.sin(pulse)
-            glow = QRadialGradient(cx, cy, r * 2.5)
-            glow.setColorAt(0, QColor(0, 255, 210, 60))
-            glow.setColorAt(1, QColor(0, 255, 210, 0))
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(glow)
-            painter.drawEllipse(QPointF(cx, cy), r * 2.5, r * 2.5)
-            painter.setBrush(self._SHIP_COLORS["crystal"])
-            diamond = QPainterPath()
-            diamond.moveTo(cx, cy - r)
-            diamond.lineTo(cx + r * 0.6, cy)
-            diamond.lineTo(cx, cy + r)
-            diamond.lineTo(cx - r * 0.6, cy)
-            diamond.closeSubpath()
-            painter.drawPath(diamond)
-
-        # -- particles --
-        for p in s.get("particles", []):
-            px = p["x"] * w
-            py = p["y"] * h
-            life_ratio = max(0.05, p.get("life", 1) / 16.0)
-            pr = 2.5 * life_ratio
-            pcolor = p.get("color", "cyan")
-            if pcolor == "cyan":
-                pc = QColor(0, 255, 210, int(200 * life_ratio))
-            elif pcolor == "red":
-                pc = QColor(255, 80, 50, int(200 * life_ratio))
-            elif pcolor == "thrust":
-                pc = QColor(255, 160 + int(60 * life_ratio), 40, int(180 * life_ratio))
-            else:
-                pc = QColor(200, 200, 255, int(180 * life_ratio))
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(pc)
-            painter.drawEllipse(QPointF(px, py), pr, pr)
-
-        # -- ship --
-        ship_x = s.get("ship_x", 0.5) * w
-        ship_y = s.get("ship_y", 0.7) * h
-        thrust = s.get("thrust", 0)
-        shield = s.get("shield_active", False)
-        warp_on = s.get("warp_active", False)
-
-        # shield aura
-        if shield:
-            sr = 36
-            shield_grad = QRadialGradient(ship_x, ship_y, sr)
-            shield_grad.setColorAt(0, QColor(60, 180, 255, 0))
-            shield_grad.setColorAt(0.7, QColor(60, 180, 255, 50))
-            shield_grad.setColorAt(1.0, QColor(60, 180, 255, 100))
-            painter.setPen(QPen(QColor(80, 200, 255, 120), 2))
-            painter.setBrush(shield_grad)
-            painter.drawEllipse(QPointF(ship_x, ship_y), sr, sr)
-
-        # warp speed lines
-        if warp_on:
-            painter.setPen(QPen(QColor(180, 120, 255, 100), 1.5))
-            for star in s.get("stars", [])[:20]:
-                sx2 = star["x"] * w
-                sy2 = star["y"] * h
-                painter.drawLine(QPointF(sx2, sy2), QPointF(sx2, sy2 + 30))
-
-        # ship body (triangle)
-        ship_color = self._SHIP_COLORS["warp"] if warp_on else self._SHIP_COLORS["body"]
-        ship_path = QPainterPath()
-        ship_path.moveTo(ship_x, ship_y - 18)
-        ship_path.lineTo(ship_x - 12, ship_y + 14)
-        ship_path.lineTo(ship_x + 12, ship_y + 14)
-        ship_path.closeSubpath()
-        painter.setPen(QPen(ship_color.lighter(140), 1.5))
-        painter.setBrush(ship_color)
-        painter.drawPath(ship_path)
-
-        # engine glow
-        if thrust > 0.05:
-            glow_h = 6 + thrust * 18
-            engine_grad = QLinearGradient(ship_x, ship_y + 14, ship_x, ship_y + 14 + glow_h)
-            engine_grad.setColorAt(0, QColor(255, 200, 60, 200))
-            engine_grad.setColorAt(0.5, QColor(255, 120, 20, 140))
-            engine_grad.setColorAt(1, QColor(255, 60, 20, 0))
-            painter.setPen(Qt.NoPen)
-            flame = QPainterPath()
-            flame.moveTo(ship_x - 6, ship_y + 14)
-            flame.lineTo(ship_x, ship_y + 14 + glow_h)
-            flame.lineTo(ship_x + 6, ship_y + 14)
-            flame.closeSubpath()
-            painter.setBrush(engine_grad)
-            painter.drawPath(flame)
-
-        # -- popups --
-        for popup in s.get("popups", []):
-            px2 = popup["x"] * w
-            py2 = popup["y"] * h
-            life = popup.get("life", 1)
-            alpha = min(255, life * 18)
-            text = popup.get("text", "")
-            is_neg = text.startswith("-")
-            painter.setPen(QColor(255, 80, 80, alpha) if is_neg else QColor(0, 255, 180, alpha))
-            painter.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
-            painter.drawText(QPointF(px2 - 20, py2), text)
-
-        # -- HUD --
-        score = s.get("score", 0)
-        score_goal = s.get("score_goal", 1)
-        combo = s.get("combo", 0)
-        warp_charge = s.get("warp_charge", 0)
-        level_title = s.get("level_title", "")
-        message = s.get("message", "")
-
-        painter.setPen(self._SHIP_COLORS["hud"])
-        painter.setFont(QFont("Segoe UI", 11))
-        painter.drawText(16, 28, level_title)
-
-        painter.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
-        painter.drawText(16, 58, f"{score} / {score_goal}")
-
-        if combo > 1:
-            painter.setPen(QColor(0, 255, 180))
-            painter.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
-            painter.drawText(16, 78, f"x{combo} combo")
-
-        # warp charge bar
-        bar_x = w - 140
-        bar_y = 20
-        bar_w = 120
-        bar_h = 12
-        painter.setPen(QPen(QColor(100, 100, 140), 1))
-        painter.setBrush(QColor(20, 20, 40))
-        painter.drawRoundedRect(QRectF(bar_x, bar_y, bar_w, bar_h), 4, 4)
-        if warp_charge > 0:
-            fill_color = QColor(180, 120, 255) if warp_charge >= 1.0 else QColor(100, 80, 180)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(fill_color)
-            painter.drawRoundedRect(QRectF(bar_x + 1, bar_y + 1, (bar_w - 2) * warp_charge, bar_h - 2), 3, 3)
-        painter.setPen(self._SHIP_COLORS["hud"])
-        painter.setFont(QFont("Segoe UI", 9))
-        warp_label = "WARP READY" if warp_charge >= 1.0 else "Warp"
-        painter.drawText(QRectF(bar_x, bar_y - 16, bar_w, 14), Qt.AlignRight, warp_label)
-
-        # thrust indicator
-        if thrust > 0.05:
-            painter.setPen(QColor(255, 200, 60))
-            painter.setFont(QFont("Segoe UI", 9))
-            painter.drawText(QRectF(bar_x, bar_y + 18, bar_w, 14), Qt.AlignRight, f"Thrust {int(thrust * 100)}%")
-
-        # shield indicator
-        if shield:
-            painter.setPen(QColor(60, 180, 255))
-            painter.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-            painter.drawText(QRectF(bar_x - 40, bar_y + 36, bar_w + 40, 18), Qt.AlignRight, "⛨ SHIELD ACTIVE")
-
-        # message overlay
-        if message:
-            painter.setPen(QColor(255, 180, 80, 200))
-            painter.setFont(QFont("Segoe UI", 14))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom, message)
-
-        # overlay (success / timeout)
+        # -- overlay messages -----------------------------------------
         overlay = s.get("overlay_kind")
         if overlay:
-            painter.fillRect(self.rect(), QColor(0, 0, 0, 140))
-            painter.setPen(QColor(255, 255, 255))
-            painter.setFont(QFont("Segoe UI", 28, QFont.Weight.Bold))
-            text = "LEVEL COMPLETE!" if overlay == "success" else "TIME UP"
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
+            self._draw_overlay(painter, w, h, overlay)
 
-        # balance panel
+        # -- balance panel --------------------------------------------
         self._draw_balance_panel(painter, top=h - 160, width_ratio=0.55)
 
-        # menu button
+        # -- menu button (close) --------------------------------------
         self._menu_button_rect = QRectF(w - 48, h - 48, 36, 36)
         painter.setPen(QPen(QColor(200, 200, 220, 120), 1.5))
-        painter.setBrush(QColor(30, 30, 50, 140))
+        painter.setBrush(QColor(30, 20, 40, 180))
         painter.drawRoundedRect(self._menu_button_rect, 6, 6)
         painter.setPen(QColor(200, 200, 220, 180))
         painter.setFont(QFont("Segoe UI", 14))
         painter.drawText(self._menu_button_rect, Qt.AlignmentFlag.AlignCenter, "✕")
 
         painter.end()
+
+    # -- drawing helpers -----------------------------------------------
+
+    def _draw_palms(self, painter: QPainter, w: float, h: float) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(self._PALM_COLOR)
+        for px_base, mirror in [(w * 0.06, False), (w * 0.94, True)]:
+            trunk_w = 6
+            trunk_h = h * 0.18
+            trunk_top = h * 0.02
+            painter.drawRect(QRectF(px_base - trunk_w / 2, trunk_top, trunk_w, trunk_h))
+            crown_y = trunk_top - 4
+            for angle_off in [-55, -25, 0, 25, 55]:
+                a = math.radians(angle_off + (180 if mirror else 0))
+                lx = px_base + math.cos(a) * 30
+                ly = crown_y + math.sin(a) * 8 - 10
+                path = QPainterPath()
+                path.moveTo(px_base, crown_y)
+                path.cubicTo(px_base + math.cos(a) * 14, crown_y - 12,
+                             lx - math.cos(a) * 5, ly + 6,
+                             lx, ly)
+                painter.setPen(QPen(self._PALM_COLOR, 3))
+                painter.drawPath(path)
+                painter.setPen(Qt.NoPen)
+
+    def _draw_grid(self, painter: QPainter, w: float, h: float,
+                   sx: float, sy: float) -> None:
+        painter.setPen(QPen(self._GRID_COLOR, 1))
+        spacing = 45
+        for gx in range(0, int(w) + spacing, spacing):
+            painter.drawLine(QPointF(gx, 0), QPointF(gx, h))
+        for gy in range(0, int(h) + spacing, spacing):
+            painter.drawLine(QPointF(0, gy), QPointF(w, gy))
+
+    def _draw_player(self, painter: QPainter, x: float, y: float,
+                     aim_rad: float, shield: bool, sx: float) -> None:
+        size = 14 * sx
+        # glow
+        glow = QRadialGradient(x, y, size * 2.5)
+        glow.setColorAt(0, QColor(0, 255, 230, 50))
+        glow.setColorAt(1, QColor(0, 0, 0, 0))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(glow)
+        painter.drawEllipse(QPointF(x, y), size * 2.5, size * 2.5)
+
+        # triangle pointing in aim direction
+        pts = []
+        for i, a in enumerate([0, 140, -140]):
+            r = size if i == 0 else size * 0.7
+            pts.append(QPointF(x + math.cos(aim_rad + math.radians(a)) * r,
+                               y + math.sin(aim_rad + math.radians(a)) * r))
+        path = QPainterPath()
+        path.moveTo(pts[0])
+        path.lineTo(pts[1])
+        path.lineTo(pts[2])
+        path.closeSubpath()
+        painter.setPen(QPen(self._NEON_CYAN, 2))
+        painter.setBrush(QColor(0, 255, 230, 120))
+        painter.drawPath(path)
+
+        # shield ring
+        if shield:
+            painter.setPen(QPen(self._SHIELD_GLOW, 3))
+            painter.setBrush(QColor(0, 200, 255, 25))
+            painter.drawEllipse(QPointF(x, y), size * 1.8, size * 1.8)
+
+    def _draw_enemy(self, painter: QPainter, x: float, y: float,
+                    kind: str, hp: int) -> None:
+        if kind == "heavy":
+            color = self._ENEMY_HEAVY
+            r = 14
+        elif kind == "runner":
+            color = self._ENEMY_RUNNER
+            r = 9
+        else:
+            color = self._ENEMY_THUG
+            r = 11
+        # glow
+        glow = QRadialGradient(x, y, r * 2.2)
+        glow.setColorAt(0, QColor(color.red(), color.green(), color.blue(), 40))
+        glow.setColorAt(1, QColor(0, 0, 0, 0))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(glow)
+        painter.drawEllipse(QPointF(x, y), r * 2.2, r * 2.2)
+
+        painter.setPen(QPen(color, 2))
+        painter.setBrush(QColor(color.red(), color.green(), color.blue(), 100))
+        if kind == "heavy":
+            painter.drawRect(QRectF(x - r, y - r, r * 2, r * 2))
+            if hp > 1:
+                painter.setPen(QPen(QColor(255, 255, 255, 180), 1))
+                painter.drawLine(QPointF(x - 4, y), QPointF(x + 4, y))
+                painter.drawLine(QPointF(x, y - 4), QPointF(x, y + 4))
+        elif kind == "runner":
+            path = QPainterPath()
+            for i in range(3):
+                a = math.radians(i * 120 - 90)
+                pt = QPointF(x + math.cos(a) * r, y + math.sin(a) * r)
+                if i == 0:
+                    path.moveTo(pt)
+                else:
+                    path.lineTo(pt)
+            path.closeSubpath()
+            painter.drawPath(path)
+        else:
+            painter.drawEllipse(QPointF(x, y), r, r)
+
+    def _draw_bullet(self, painter: QPainter, x: float, y: float) -> None:
+        glow = QRadialGradient(x, y, 8)
+        glow.setColorAt(0, QColor(255, 240, 60, 180))
+        glow.setColorAt(0.5, QColor(255, 200, 40, 60))
+        glow.setColorAt(1, QColor(0, 0, 0, 0))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(glow)
+        painter.drawEllipse(QPointF(x, y), 8, 8)
+        painter.setBrush(self._NEON_YELLOW)
+        painter.drawEllipse(QPointF(x, y), 3, 3)
+
+    def _draw_hud(self, painter: QPainter, w: float, h: float, s: dict) -> None:
+        # semi-transparent top band
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 100))
+        painter.drawRect(QRectF(0, 0, w, 52))
+
+        health = int(s.get("health", 3))
+        # hearts
+        for i in range(3):
+            hx = 16 + i * 28
+            c = self._HEART_FULL if i < health else self._HEART_EMPTY
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(c)
+            painter.drawEllipse(QPointF(hx + 6, 20), 8, 8)
+            painter.drawEllipse(QPointF(hx + 16, 20), 8, 8)
+            path = QPainterPath()
+            path.moveTo(hx, 23)
+            path.lineTo(hx + 11, 36)
+            path.lineTo(hx + 22, 23)
+            painter.drawPath(path)
+
+        # wave
+        wave_num = int(s.get("wave_number", 0))
+        wave_total = int(s.get("wave_count", 3))
+        wave_font = QFont("Courier New", 11)
+        wave_font.setBold(True)
+        painter.setFont(wave_font)
+        painter.setPen(self._NEON_PINK)
+        painter.drawText(QRectF(w * 0.35, 8, w * 0.3, 18),
+                         Qt.AlignCenter, f"WAVE {wave_num}/{wave_total}")
+
+        # level title
+        title_font = QFont("Courier New", 9)
+        painter.setFont(title_font)
+        painter.setPen(QColor(200, 200, 220, 150))
+        painter.drawText(QRectF(w * 0.35, 28, w * 0.3, 16),
+                         Qt.AlignCenter, str(s.get("level_title", "")))
+
+        # score + combo (top-right)
+        score = int(s.get("score", 0))
+        combo = int(s.get("combo", 0))
+        mono = QFont("Courier New", 13)
+        mono.setBold(True)
+        painter.setFont(mono)
+        painter.setPen(self._HUD_COLOR)
+        painter.drawText(QRectF(w - 220, 8, 204, 20),
+                         Qt.AlignRight | Qt.AlignVCenter, f"SCORE {score:06d}")
+        if combo > 1:
+            combo_font = QFont("Courier New", 10)
+            painter.setFont(combo_font)
+            painter.setPen(self._NEON_CYAN)
+            painter.drawText(QRectF(w - 220, 30, 204, 16),
+                             Qt.AlignRight | Qt.AlignVCenter, f"x{combo} COMBO")
+
+    def _draw_overlay(self, painter: QPainter, w: float, h: float,
+                      overlay: str) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 160))
+        painter.drawRect(self.rect())
+        font = QFont("Courier New", 28)
+        font.setBold(True)
+        painter.setFont(font)
+        if overlay == "success":
+            painter.setPen(self._NEON_CYAN)
+            text = "LEVEL CLEAR"
+        elif overlay == "fail":
+            painter.setPen(self._NEON_PINK)
+            text = "WASTED"
+        else:
+            painter.setPen(self._NEON_ORANGE)
+            text = "TIME UP"
+        painter.drawText(QRectF(0, h * 0.35, w, 50), Qt.AlignCenter, text)
+
+
+class HillClimbRacerWidget(_ImmersiveGameWidget):
+    """Side-scrolling physics racer with a cartoon outdoor aesthetic."""
+
+    _SKY_TOP = QColor(100, 180, 255)
+    _SKY_BOT = QColor(200, 230, 255)
+    _GROUND_TOP = QColor(100, 180, 60)
+    _GROUND_BOT = QColor(60, 120, 40)
+    _ROAD_COLOR = QColor(140, 110, 70)
+    _CAR_BODY = QColor(220, 50, 50)
+    _CAR_WINDOW = QColor(180, 220, 255)
+    _WHEEL_COLOR = QColor(50, 50, 50)
+    _COIN_COLOR = QColor(255, 210, 50)
+    _FUEL_COLOR = QColor(60, 200, 80)
+    _HUD_BG = QColor(0, 0, 0, 100)
+    _HUD_TEXT = QColor(255, 255, 255, 220)
+    _FUEL_BAR_BG = QColor(60, 60, 60, 180)
+    _FUEL_BAR_FG = QColor(80, 220, 100)
+    _FUEL_BAR_LOW = QColor(255, 80, 60)
+    _DIST_COLOR = QColor(255, 220, 100)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(560)
+
+    def sizeHint(self):  # noqa: N802
+        return QSize(640, 560)
+
+    def paintEvent(self, event):  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        s = self._state
+        view_w = float(s.get("view_w", 900))
+        view_h = float(s.get("view_h", 500))
+        sx = w / view_w
+        sy = h / view_h
+
+        # -- sky gradient -------------------------------------------------
+        sky = QLinearGradient(0, 0, 0, h * 0.55)
+        sky.setColorAt(0.0, self._SKY_TOP)
+        sky.setColorAt(1.0, self._SKY_BOT)
+        painter.fillRect(self.rect(), sky)
+
+        # -- distant mountains silhouette ---------------------------------
+        self._draw_mountains(painter, w, h, s)
+
+        # -- terrain ------------------------------------------------------
+        terrain = s.get("terrain", [])
+        world_x = float(s.get("world_x", 0))
+        car_screen_x = float(s.get("car_x", 120)) * sx
+        if terrain:
+            self._draw_terrain(painter, w, h, sx, sy, terrain, world_x, car_screen_x)
+
+        # -- pickups ------------------------------------------------------
+        for p in s.get("pickups", []):
+            if p.get("collected"):
+                continue
+            px = (float(p["world_x"]) - world_x) * sx + car_screen_x
+            ground_y = self._interp_terrain_y(terrain, float(p["world_x"]), world_x, sy, car_screen_x, sx)
+            py = ground_y + float(p.get("y_offset", -35)) * sy
+            if 0 <= px <= w:
+                self._draw_pickup(painter, px, py, p.get("kind", "coin"), sx)
+
+        # -- car ----------------------------------------------------------
+        car_angle = float(s.get("car_angle", 0))
+        car_y = self._interp_terrain_y(terrain, world_x, world_x, sy, car_screen_x, sx)
+        if not s.get("on_ground", True):
+            air_t = int(s.get("air_ticks", 0))
+            car_y -= max(0, 20 * sy - air_t * 1.5 * sy)  # arc upward then fall
+        self._draw_car(painter, car_screen_x, car_y, car_angle, sx, sy)
+
+        # -- HUD ----------------------------------------------------------
+        self._draw_hud(painter, w, h, s)
+
+        # -- overlay messages ---------------------------------------------
+        overlay = s.get("overlay_kind")
+        if overlay:
+            self._draw_overlay(painter, w, h, overlay)
+
+        # -- balance panel ------------------------------------------------
+        self._draw_balance_panel(painter, top=h - 160, width_ratio=0.55)
+
+        # -- menu button --------------------------------------------------
+        self._menu_button_rect = QRectF(w - 48, h - 48, 36, 36)
+        painter.setPen(QPen(QColor(80, 80, 80, 150), 1.5))
+        painter.setBrush(QColor(240, 240, 240, 200))
+        painter.drawRoundedRect(self._menu_button_rect, 6, 6)
+        painter.setPen(QColor(80, 80, 80, 200))
+        painter.setFont(QFont("Segoe UI", 14))
+        painter.drawText(self._menu_button_rect, Qt.AlignmentFlag.AlignCenter, "✕")
+
+        painter.end()
+
+    # -- drawing helpers --------------------------------------------------
+
+    def _draw_mountains(self, painter: QPainter, w: float, h: float, s: dict) -> None:
+        world_x = float(s.get("world_x", 0))
+        painter.setPen(Qt.NoPen)
+        # Far mountains (parallax scroll slower)
+        painter.setBrush(QColor(140, 180, 140, 80))
+        path = QPainterPath()
+        path.moveTo(0, h * 0.55)
+        for i in range(0, int(w) + 60, 60):
+            offset = (i + world_x * 0.05) * 0.02
+            my = h * 0.38 + math.sin(offset) * h * 0.08 + math.sin(offset * 2.3) * h * 0.04
+            path.lineTo(i, my)
+        path.lineTo(w, h * 0.55)
+        path.closeSubpath()
+        painter.drawPath(path)
+
+        # Near mountains
+        painter.setBrush(QColor(100, 150, 100, 100))
+        path2 = QPainterPath()
+        path2.moveTo(0, h * 0.55)
+        for i in range(0, int(w) + 40, 40):
+            offset = (i + world_x * 0.12) * 0.025
+            my = h * 0.42 + math.sin(offset) * h * 0.06 + math.sin(offset * 1.7 + 1) * h * 0.04
+            path2.lineTo(i, my)
+        path2.lineTo(w, h * 0.55)
+        path2.closeSubpath()
+        painter.drawPath(path2)
+
+    def _draw_terrain(self, painter: QPainter, w: float, h: float,
+                      sx: float, sy: float, terrain: list, world_x: float,
+                      car_screen_x: float) -> None:
+        if not terrain:
+            return
+        path = QPainterPath()
+        first = True
+        for seg in terrain:
+            tx = (float(seg["world_x"]) - world_x) * sx + car_screen_x
+            ty = float(seg["y"]) * sy
+            if first:
+                path.moveTo(tx, ty)
+                first = False
+            else:
+                path.lineTo(tx, ty)
+        # Close bottom
+        path.lineTo(w + 20, h + 20)
+        path.lineTo(-20, h + 20)
+        path.closeSubpath()
+
+        ground = QLinearGradient(0, h * 0.4, 0, h)
+        ground.setColorAt(0.0, self._GROUND_TOP)
+        ground.setColorAt(0.3, self._GROUND_BOT)
+        ground.setColorAt(1.0, QColor(80, 100, 50))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(ground)
+        painter.drawPath(path)
+
+        # Road surface line
+        painter.setPen(QPen(self._ROAD_COLOR, 3))
+        road = QPainterPath()
+        first = True
+        for seg in terrain:
+            tx = (float(seg["world_x"]) - world_x) * sx + car_screen_x
+            ty = float(seg["y"]) * sy
+            if first:
+                road.moveTo(tx, ty)
+                first = False
+            else:
+                road.lineTo(tx, ty)
+        painter.drawPath(road)
+
+    def _interp_terrain_y(self, terrain: list, target_wx: float,
+                          cam_wx: float, sy: float, car_sx: float,
+                          sx: float) -> float:
+        if not terrain:
+            return 400.0 * sy
+        # Find two surrounding segments
+        for i in range(len(terrain) - 1):
+            x0 = float(terrain[i]["world_x"])
+            x1 = float(terrain[i + 1]["world_x"])
+            if x0 <= target_wx <= x1:
+                frac = (target_wx - x0) / max(1, x1 - x0)
+                y = float(terrain[i]["y"]) * (1 - frac) + float(terrain[i + 1]["y"]) * frac
+                return y * sy
+        return float(terrain[-1]["y"]) * sy if terrain else 400 * sy
+
+    def _draw_car(self, painter: QPainter, x: float, y: float,
+                  angle: float, sx: float, sy: float) -> None:
+        painter.save()
+        painter.translate(x, y)
+        painter.rotate(angle)
+        cw = 48 * sx
+        ch = 20 * sy
+
+        # shadow
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 30))
+        painter.drawEllipse(QPointF(0, ch * 0.3), cw * 0.45, ch * 0.15)
+
+        # body
+        body = QRectF(-cw / 2, -ch, cw, ch * 0.7)
+        painter.setPen(QPen(QColor(180, 30, 30), 1.5))
+        painter.setBrush(self._CAR_BODY)
+        painter.drawRoundedRect(body, 4, 4)
+
+        # window
+        win = QRectF(-cw * 0.1, -ch * 0.9, cw * 0.35, ch * 0.45)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(self._CAR_WINDOW)
+        painter.drawRoundedRect(win, 2, 2)
+
+        # wheels
+        painter.setBrush(self._WHEEL_COLOR)
+        painter.drawEllipse(QPointF(-cw * 0.3, 0), ch * 0.25, ch * 0.25)
+        painter.drawEllipse(QPointF(cw * 0.3, 0), ch * 0.25, ch * 0.25)
+        # wheel shine
+        painter.setBrush(QColor(150, 150, 150))
+        painter.drawEllipse(QPointF(-cw * 0.3, 0), ch * 0.1, ch * 0.1)
+        painter.drawEllipse(QPointF(cw * 0.3, 0), ch * 0.1, ch * 0.1)
+
+        painter.restore()
+
+    def _draw_pickup(self, painter: QPainter, x: float, y: float,
+                     kind: str, sx: float) -> None:
+        r = 10 * sx
+        if kind == "fuel":
+            painter.setPen(QPen(QColor(40, 160, 60), 2))
+            painter.setBrush(self._FUEL_COLOR)
+            painter.drawRoundedRect(QRectF(x - r, y - r * 1.2, r * 2, r * 2.4), 3, 3)
+            painter.setPen(QColor(255, 255, 255, 200))
+            painter.setFont(QFont("Segoe UI", max(7, int(8 * sx))))
+            painter.drawText(QRectF(x - r, y - r * 1.2, r * 2, r * 2.4), Qt.AlignCenter, "F")
+        else:
+            # coin
+            glow = QRadialGradient(x, y, r * 1.8)
+            glow.setColorAt(0, QColor(255, 220, 60, 100))
+            glow.setColorAt(1, QColor(0, 0, 0, 0))
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(glow)
+            painter.drawEllipse(QPointF(x, y), r * 1.8, r * 1.8)
+            painter.setPen(QPen(QColor(200, 170, 30), 2))
+            painter.setBrush(self._COIN_COLOR)
+            painter.drawEllipse(QPointF(x, y), r, r)
+            painter.setPen(QColor(180, 140, 20))
+            painter.setFont(QFont("Segoe UI", max(7, int(8 * sx)), QFont.Bold))
+            painter.drawText(QRectF(x - r, y - r, r * 2, r * 2), Qt.AlignCenter, "$")
+
+    def _draw_hud(self, painter: QPainter, w: float, h: float, s: dict) -> None:
+        # Top band
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(self._HUD_BG)
+        painter.drawRect(QRectF(0, 0, w, 56))
+
+        # Fuel gauge
+        fuel = float(s.get("fuel", 100))
+        fuel_pct = fuel / 100.0
+        bar_w = 120
+        bar_h = 14
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(self._FUEL_BAR_BG)
+        painter.drawRoundedRect(QRectF(14, 12, bar_w, bar_h), 3, 3)
+        bar_color = self._FUEL_BAR_FG if fuel > 20 else self._FUEL_BAR_LOW
+        painter.setBrush(bar_color)
+        painter.drawRoundedRect(QRectF(14, 12, bar_w * fuel_pct, bar_h), 3, 3)
+        lbl_font = QFont("Segoe UI", 9)
+        lbl_font.setBold(True)
+        painter.setFont(lbl_font)
+        painter.setPen(self._HUD_TEXT)
+        painter.drawText(QRectF(14, 28, bar_w, 18), Qt.AlignLeft, "FUEL")
+
+        # Distance + target
+        dist = float(s.get("distance", 0))
+        target = float(s.get("target_distance", 2500))
+        dist_font = QFont("Courier New", 12)
+        dist_font.setBold(True)
+        painter.setFont(dist_font)
+        painter.setPen(self._DIST_COLOR)
+        painter.drawText(QRectF(w * 0.32, 8, w * 0.36, 20), Qt.AlignCenter,
+                         f"{int(dist)}m / {int(target)}m")
+
+        # Level title
+        title_font = QFont("Segoe UI", 9)
+        painter.setFont(title_font)
+        painter.setPen(QColor(200, 200, 220, 160))
+        painter.drawText(QRectF(w * 0.32, 30, w * 0.36, 16), Qt.AlignCenter,
+                         str(s.get("level_title", "")))
+
+        # Score + coins (top right)
+        score = int(s.get("score", 0))
+        coins = int(s.get("coins", 0))
+        score_font = QFont("Courier New", 13)
+        score_font.setBold(True)
+        painter.setFont(score_font)
+        painter.setPen(self._HUD_TEXT)
+        painter.drawText(QRectF(w - 220, 8, 204, 20),
+                         Qt.AlignRight | Qt.AlignVCenter, f"SCORE {score:05d}")
+        coin_font = QFont("Segoe UI", 10)
+        painter.setFont(coin_font)
+        painter.setPen(self._COIN_COLOR)
+        painter.drawText(QRectF(w - 220, 30, 204, 16),
+                         Qt.AlignRight | Qt.AlignVCenter, f"🪙 {coins}")
+
+    def _draw_overlay(self, painter: QPainter, w: float, h: float,
+                      overlay: str) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 160))
+        painter.drawRect(self.rect())
+        font = QFont("Segoe UI", 28)
+        font.setBold(True)
+        painter.setFont(font)
+        if overlay == "success":
+            painter.setPen(QColor(80, 220, 120))
+            text = "LEVEL CLEAR!"
+        elif overlay == "crash":
+            painter.setPen(QColor(255, 80, 60))
+            text = "CRASHED!"
+        elif overlay == "fuel":
+            painter.setPen(QColor(255, 160, 40))
+            text = "OUT OF FUEL"
+        else:
+            painter.setPen(QColor(200, 200, 200))
+            text = "TIME UP"
+        painter.drawText(QRectF(0, h * 0.35, w, 50), Qt.AlignCenter, text)

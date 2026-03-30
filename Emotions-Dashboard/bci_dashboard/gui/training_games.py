@@ -1694,922 +1694,6 @@ class JumpBallController(ArcadeTrainingController):
         }
 
 
-class NeuroRacerController(ArcadeTrainingController):
-    LEVELS = [
-        TrainingLevel("Track 1", 54),
-        TrainingLevel("Track 2", 64),
-        TrainingLevel("Track 3", 74),
-    ]
-    CONFIGS = [
-        {
-            "finish_distance": 980.0,
-            "base_speed": 60.0,
-            "star_thresholds": [260, 440, 620],
-            "traffic": [
-                (0.0, 1, 190.0, 54.0, 45),
-                (110.0, 2, 210.0, 56.0, 55),
-                (220.0, 0, 220.0, 53.0, 55),
-                (360.0, 1, 210.0, 57.0, 65),
-                (520.0, 2, 200.0, 58.0, 70),
-                (710.0, 0, 210.0, 55.0, 75),
-                (820.0, 1, 230.0, 52.0, 90),
-            ],
-        },
-        {
-            "finish_distance": 1180.0,
-            "base_speed": 62.0,
-            "star_thresholds": [320, 560, 780],
-            "traffic": [
-                (0.0, 1, 190.0, 55.0, 50),
-                (90.0, 0, 205.0, 57.0, 55),
-                (190.0, 2, 215.0, 58.0, 60),
-                (300.0, 1, 225.0, 54.0, 70),
-                (410.0, 0, 215.0, 60.0, 80),
-                (540.0, 2, 210.0, 59.0, 80),
-                (710.0, 1, 225.0, 53.0, 95),
-                (860.0, 0, 220.0, 56.0, 95),
-                (980.0, 2, 230.0, 54.0, 110),
-            ],
-        },
-        {
-            "finish_distance": 1340.0,
-            "base_speed": 64.0,
-            "star_thresholds": [380, 660, 920],
-            "traffic": [
-                (0.0, 1, 185.0, 56.0, 55),
-                (80.0, 2, 198.0, 57.0, 60),
-                (165.0, 0, 205.0, 58.0, 65),
-                (250.0, 1, 215.0, 55.0, 75),
-                (360.0, 2, 205.0, 59.0, 85),
-                (500.0, 0, 215.0, 58.0, 85),
-                (680.0, 1, 225.0, 54.0, 100),
-                (830.0, 2, 214.0, 60.0, 105),
-                (980.0, 0, 218.0, 59.0, 105),
-                (1120.0, 1, 240.0, 55.0, 130),
-            ],
-        },
-    ]
-
-    def __init__(self):
-        super().__init__(self.LEVELS)
-
-    def _reset_level_state(self) -> None:
-        config = self.CONFIGS[self._level_index]
-        self._finish_distance = float(config["finish_distance"])
-        self._base_speed = float(config["base_speed"])
-        self._star_thresholds = list(config["star_thresholds"])
-        self._traffic_schedule = [
-            {
-                "spawn_at": spawn_at,
-                "lane": lane,
-                "gap": gap,
-                "speed": speed,
-                "value": value,
-            }
-            for spawn_at, lane, gap, speed, value in config["traffic"]
-        ]
-        self._traffic: list[dict] = []
-        self._distance = 0.0
-        self._lane = 1
-        self._speed = self._base_speed
-        self._stability = 100.0
-        self._nitro = 42.0
-        self._nitro_ticks = 0
-        self._line_lock_ticks = 0
-        self._score = 0
-        self._overtakes = 0
-        self._collisions = 0
-        self._streak = 0
-        self._best_streak = 0
-        self._effects: list[dict] = []
-        self._overlay_kind: str | None = None
-        self._overlay_title = ""
-        self._overlay_subtitle = ""
-        self._overlay_timer = 0
-        self._pending_outcome: str | None = None
-        self._message = "Thread the sky ramp, steer through traffic, and save nitro for clear runs."
-        self._view_state = self._racer_view_state()
-
-    def update_gameplay(
-        self,
-        concentration: float,
-        relaxation: float,
-        valid: bool,
-        stale: bool,
-        elapsed_seconds: float,
-    ) -> GameplaySnapshot:
-        conc_delta = concentration - (self._conc_baseline or 0.0)
-        relax_delta = relaxation - (self._relax_baseline or 0.0)
-        blocked_reason = ""
-        action = None
-        moved = False
-        level_completed = False
-        run_completed = False
-        control_hint = "Concentrate to steer right, relax to steer left, and hold steady to trigger nitro or lock the line."
-
-        if self._overlay_kind is not None:
-            level_completed, run_completed = self._tick_overlay(elapsed_seconds)
-        elif stale:
-            blocked_reason = "Metrics are stale. Neuro Racer paused."
-        elif not valid:
-            blocked_reason = "Artifacts detected. Neuro Racer paused."
-        else:
-            self._spawn_traffic()
-            intent = self._arcade_intent(conc_delta, relax_delta)
-            if intent == "focus":
-                if self._stabilize_intent(intent):
-                    self._lane = min(2, self._lane + 1)
-                    self._speed = min(96.0, self._speed + 3.5)
-                    self._message = "Cutting into the right lane."
-                    action = "right"
-                    moved = True
-            elif intent == "relax":
-                if self._stabilize_intent(intent):
-                    self._lane = max(0, self._lane - 1)
-                    self._speed = max(38.0, self._speed - 4.5)
-                    self._stability = min(100.0, self._stability + 3.0)
-                    self._message = "Settled left to reset the line."
-                    action = "left"
-                    moved = True
-            elif intent == "steady":
-                if self._stabilize_intent(intent):
-                    action = "steady"
-                    moved = True
-                    if self._nitro >= 30.0:
-                        self._nitro = max(0.0, self._nitro - 30.0)
-                        self._nitro_ticks = 4
-                        self._speed = min(100.0, self._speed + 10.0)
-                        self._effects.append({"lane": self._lane, "gap": 32.0, "kind": "nitro", "ticks": 5})
-                        self._message = "Nitro engaged."
-                    else:
-                        self._line_lock_ticks = 3
-                        self._stability = min(100.0, self._stability + 4.0)
-                        self._message = "Stable racing line locked."
-            else:
-                self._stabilize_intent(None)
-
-            if self._nitro_ticks > 0:
-                self._speed = min(100.0, self._speed + 4.0)
-                self._nitro_ticks -= 1
-            elif self._line_lock_ticks > 0:
-                self._line_lock_ticks -= 1
-                self._speed = min(92.0, self._speed + 1.2)
-                self._stability = min(100.0, self._stability + 1.0)
-            elif self._speed > self._base_speed:
-                self._speed -= 1.6
-            elif self._speed < self._base_speed:
-                self._speed += 1.0
-
-            self._nitro = min(100.0, self._nitro + 0.9 + min(1.2, self._best_streak * 0.08))
-            self._distance = min(self._finish_distance, self._distance + (self._speed * 2.15))
-            self._advance_traffic()
-            self._tick_effects()
-
-            if self._stability <= 0 and self._overlay_kind is None:
-                self._start_failure_overlay("The racer lost stability on the sky ramp.")
-            elif self._distance >= self._finish_distance and self._overlay_kind is None:
-                self._start_finish_overlay()
-
-        self._view_state = self._racer_view_state(message=blocked_reason, music_bias=relax_delta - conc_delta)
-        recommended_label = self._racer_recommendation(action)
-        return self._arcade_snapshot(
-            phase="neuro_racer",
-            phase_label="Neuro Racer",
-            direction=action,
-            blocked_reason=blocked_reason,
-            control_hint=control_hint,
-            conc_delta=conc_delta,
-            relax_delta=relax_delta,
-            moved=moved,
-            level_completed=level_completed,
-            run_completed=run_completed,
-            recommended_label=recommended_label,
-        )
-
-    def _tick_overlay(self, elapsed_seconds: float) -> tuple[bool, bool]:
-        self._tick_effects()
-        if self._overlay_timer > 0:
-            self._overlay_timer -= 1
-        if self._overlay_timer > 0:
-            return False, False
-
-        outcome = self._pending_outcome
-        self._overlay_kind = None
-        self._overlay_title = ""
-        self._overlay_subtitle = ""
-        self._pending_outcome = None
-        if outcome == "failure":
-            self._record_level_result(False, elapsed_seconds, score_override=0)
-            self._finished = True
-            return False, True
-        if outcome == "level_complete":
-            time_penalty = max(0, elapsed_seconds - self.current_level.target_seconds)
-            score = (
-                48
-                + min(30.0, self._score / 20.0)
-                + min(16.0, self._best_streak * 2.2)
-                + (self._stability * 0.12)
-                - (self._collisions * 6.0)
-                - time_penalty
-            )
-            self._record_level_result(True, elapsed_seconds, score_override=score)
-            level_completed = True
-            run_completed = self._advance_level()
-            return level_completed, run_completed
-        return False, False
-
-    def _spawn_traffic(self) -> None:
-        while self._traffic_schedule and self._distance >= float(self._traffic_schedule[0]["spawn_at"]):
-            next_car = self._traffic_schedule.pop(0)
-            self._traffic.append(
-                {
-                    "lane": int(next_car["lane"]),
-                    "gap": float(next_car["gap"]),
-                    "speed": float(next_car["speed"]),
-                    "value": int(next_car["value"]),
-                }
-            )
-
-    def _advance_traffic(self) -> None:
-        survivors = []
-        for car in self._traffic:
-            car["gap"] -= max(9.0, ((self._speed - car["speed"]) * 0.38) + 10.0)
-            if car["gap"] <= 18.0:
-                if car["lane"] == self._lane:
-                    self._register_collision(car)
-                else:
-                    self._register_overtake(car)
-                continue
-            survivors.append(car)
-        self._traffic = survivors
-        self._spawn_traffic()
-
-    def _register_overtake(self, car: dict) -> None:
-        self._overtakes += 1
-        self._streak += 1
-        self._best_streak = max(self._best_streak, self._streak)
-        self._nitro = min(100.0, self._nitro + 10.0)
-        gain = int(car["value"] + min(26, self._streak * 4))
-        self._score += gain
-        self._effects.append({"lane": car["lane"], "gap": 22.0, "kind": "spark", "ticks": 5})
-        self._message = "Clean overtake. Keep the streak alive."
-
-    def _register_collision(self, car: dict) -> None:
-        self._collisions += 1
-        self._stability = max(0.0, self._stability - 24.0)
-        self._speed = max(36.0, self._speed - 14.0)
-        self._nitro = max(0.0, self._nitro - 12.0)
-        self._streak = 0
-        self._effects.append({"lane": car["lane"], "gap": 18.0, "kind": "impact", "ticks": 6})
-        self._message = "Traffic contact. Recover before the next crest."
-
-    def _tick_effects(self) -> None:
-        trimmed = []
-        for effect in self._effects:
-            updated = dict(effect)
-            updated["ticks"] = max(0, int(updated.get("ticks", 0)) - 1)
-            updated["gap"] = max(0.0, float(updated.get("gap", 0.0)) - 4.0)
-            if updated["ticks"] > 0:
-                trimmed.append(updated)
-        self._effects = trimmed
-
-    def _start_finish_overlay(self) -> None:
-        self._overlay_kind = "finish"
-        self._overlay_title = "Finish line"
-        self._overlay_subtitle = f"{self._overtakes} overtakes on the sky ramp."
-        self._overlay_timer = 7
-        self._pending_outcome = "level_complete"
-        self._message = self._overlay_title
-
-    def _start_failure_overlay(self, subtitle: str) -> None:
-        self._overlay_kind = "crash"
-        self._overlay_title = "Race interrupted"
-        self._overlay_subtitle = subtitle
-        self._overlay_timer = 7
-        self._pending_outcome = "failure"
-        self._message = subtitle
-
-    def _racer_recommendation(self, action: str | None) -> str:
-        if action == "right":
-            return "Move right"
-        if action == "left":
-            return "Move left"
-        if action == "steady":
-            return "Trigger nitro"
-        nearest = min(self._traffic, key=lambda car: car["gap"], default=None)
-        if nearest is not None and nearest["lane"] == self._lane:
-            if self._lane == 0:
-                return "Move right to pass"
-            if self._lane == 2:
-                return "Move left to pass"
-            return "Pick the clearer side"
-        if self._nitro >= 30.0:
-            return "Hold steady for nitro"
-        return "Build a clean overtake"
-
-    def _racer_view_state(self, message: str = "", music_bias: float = 0.0) -> dict:
-        progress = max(0.0, min(1.0, self._distance / max(1.0, self._finish_distance)))
-        return {
-            "mode": "neuro_racer",
-            "lane": self._lane,
-            "speed": self._speed,
-            "stability": self._stability,
-            "nitro": self._nitro,
-            "nitro_ticks": self._nitro_ticks,
-            "distance": self._distance,
-            "finish_distance": self._finish_distance,
-            "progress_ratio": progress,
-            "road_phase": "finish" if progress > 0.78 else ("crest" if progress > 0.42 else "climb"),
-            "score": self._score,
-            "star_progress": max(0.0, min(1.0, self._score / max(1, self._star_thresholds[-1]))),
-            "star_thresholds": list(self._star_thresholds),
-            "overtakes": self._overtakes,
-            "collisions": self._collisions,
-            "streak": self._streak,
-            "best_streak": self._best_streak,
-            "traffic": [dict(car) for car in self._traffic],
-            "effects": [dict(effect) for effect in self._effects],
-            "overlay_kind": self._overlay_kind,
-            "overlay_title": self._overlay_title,
-            "overlay_subtitle": self._overlay_subtitle,
-            "overlay_timer": self._overlay_timer,
-            "menu_button_rect": [18, 18, 54, 42],
-            "music_scene": "sky_racer",
-            "music_bias": music_bias,
-            "serenity": max(0.0, min(100.0, self._stability + (self._best_streak * 2.0))),
-            "restlessness": max(0.0, min(100.0, 18.0 + (self._collisions * 18.0))),
-            "message": message or self._message,
-        }
-
-
-class NeonDriftArenaController(ArcadeTrainingController):
-    LEVELS = [
-        TrainingLevel("Glow Grid", 56),
-        TrainingLevel("Pulse Plaza", 66),
-        TrainingLevel("Skyline Rush", 76),
-    ]
-    CONFIGS = [
-        {
-            "arena_length": 720.0,
-            "base_speed": 9.8,
-            "target_score": 430,
-            "target_collectibles": 11,
-            "star_thresholds": [160, 300, 430],
-            "chains": [
-                (46.0, 1.0, 3, 20.0, "violet", 30, 0.08),
-                (138.0, 3.0, 4, 18.0, "lime", 32, 0.14),
-                (244.0, 2.0, 3, 20.0, "cyan", 34, 0.00),
-                (356.0, 0.0, 3, 18.0, "gold", 36, 0.12),
-                (476.0, 4.0, 4, 18.0, "violet", 38, 0.18),
-            ],
-            "sigils": [
-                (104.0, 2.0, "sigil_gold", 56, 0.00),
-                (304.0, 4.0, "sigil_cyan", 64, 0.12),
-                (548.0, 1.0, "sigil_lime", 72, 0.00),
-            ],
-            "hazards": [
-                (188.0, 0.0, 0.78, 0.00, 28),
-                (408.0, 3.0, 0.95, 0.18, 32),
-                (612.0, 2.0, 0.88, 0.00, 36),
-            ],
-            "boosts": [
-                (216.0, 2.0, 24, 0.00),
-                (442.0, 4.0, 28, 0.10),
-            ],
-        },
-        {
-            "arena_length": 860.0,
-            "base_speed": 10.6,
-            "target_score": 620,
-            "target_collectibles": 15,
-            "star_thresholds": [220, 420, 620],
-            "chains": [
-                (44.0, 0.0, 4, 18.0, "gold", 32, 0.16),
-                (148.0, 2.0, 4, 18.0, "violet", 34, 0.00),
-                (268.0, 4.0, 4, 18.0, "cyan", 36, 0.18),
-                (396.0, 1.0, 4, 18.0, "lime", 38, 0.10),
-                (528.0, 3.0, 5, 16.0, "violet", 38, 0.22),
-                (692.0, 2.0, 3, 18.0, "gold", 42, 0.00),
-            ],
-            "sigils": [
-                (118.0, 3.0, "sigil_cyan", 62, 0.10),
-                (332.0, 0.0, "sigil_gold", 68, 0.00),
-                (604.0, 4.0, "sigil_lime", 74, 0.16),
-            ],
-            "hazards": [
-                (204.0, 1.0, 0.85, 0.20, 30),
-                (364.0, 3.0, 0.92, 0.00, 34),
-                (504.0, 2.0, 1.02, 0.25, 38),
-                (736.0, 1.0, 0.90, 0.18, 42),
-            ],
-            "boosts": [
-                (236.0, 4.0, 24, 0.18),
-                (470.0, 0.0, 28, 0.00),
-                (654.0, 2.0, 30, 0.00),
-            ],
-        },
-        {
-            "arena_length": 980.0,
-            "base_speed": 11.4,
-            "target_score": 860,
-            "target_collectibles": 19,
-            "star_thresholds": [320, 560, 860],
-            "chains": [
-                (40.0, 2.0, 4, 16.0, "violet", 34, 0.00),
-                (136.0, 4.0, 5, 16.0, "gold", 36, 0.24),
-                (268.0, 0.0, 5, 16.0, "cyan", 36, 0.20),
-                (404.0, 3.0, 5, 16.0, "lime", 40, 0.18),
-                (560.0, 1.0, 4, 18.0, "violet", 42, 0.10),
-                (704.0, 4.0, 4, 16.0, "gold", 44, 0.16),
-                (840.0, 2.0, 4, 16.0, "cyan", 46, 0.00),
-            ],
-            "sigils": [
-                (108.0, 1.0, "sigil_gold", 66, 0.00),
-                (344.0, 3.0, "sigil_cyan", 72, 0.18),
-                (628.0, 0.0, "sigil_lime", 76, 0.14),
-                (904.0, 4.0, "sigil_prism", 82, 0.00),
-            ],
-            "hazards": [
-                (188.0, 2.0, 0.95, 0.25, 32),
-                (304.0, 0.0, 0.90, 0.12, 36),
-                (472.0, 4.0, 0.98, 0.20, 40),
-                (658.0, 2.0, 1.05, 0.30, 42),
-                (820.0, 1.0, 0.90, 0.18, 46),
-            ],
-            "boosts": [
-                (228.0, 3.0, 24, 0.00),
-                (522.0, 1.0, 30, 0.12),
-                (780.0, 3.0, 34, 0.20),
-            ],
-        },
-    ]
-    LANE_COUNT = 5
-    FIELD_DEPTH = 220.0
-
-    def __init__(self):
-        super().__init__(self.LEVELS)
-
-    def _reset_level_state(self) -> None:
-        config = self.CONFIGS[self._level_index]
-        self._arena_length = float(config["arena_length"])
-        self._base_speed = float(config["base_speed"])
-        self._target_score = int(config["target_score"])
-        self._target_collectibles = int(config["target_collectibles"])
-        self._star_thresholds = list(config["star_thresholds"])
-        self._lane = self.LANE_COUNT // 2
-        self._drift_bias = 0.0
-        self._distance = 0.0
-        self._boost_meter = 28.0
-        self._boost_ticks = 0
-        self._boost_bursts = 0
-        self._boost_pad_hits = 0
-        self._line_lock_ticks = 0
-        self._score = 0
-        self._combo = 0
-        self._best_combo = 0
-        self._drift_chain = 0
-        self._best_drift_chain = 0
-        self._collectibles = 0
-        self._hazard_hits = 0
-        self._popups: list[dict] = []
-        self._overlay_kind: str | None = None
-        self._overlay_title = ""
-        self._overlay_subtitle = ""
-        self._overlay_timer = 0
-        self._pending_outcome: str | None = None
-        self._message = "Glide through the neon floor art, collect the lit chains, and dodge dark pools."
-        self._items = self._build_arena_items(config)
-        self._view_state = self._arena_view_state()
-
-    def update_gameplay(
-        self,
-        concentration: float,
-        relaxation: float,
-        valid: bool,
-        stale: bool,
-        elapsed_seconds: float,
-    ) -> GameplaySnapshot:
-        conc_delta = concentration - (self._conc_baseline or 0.0)
-        relax_delta = relaxation - (self._relax_baseline or 0.0)
-        blocked_reason = ""
-        action = None
-        moved = False
-        level_completed = False
-        run_completed = False
-        control_hint = (
-            "Concentrate to tighten right, relax to widen left, and hold a balanced steady state "
-            "to ignite boost or lock onto the next glowing lane."
-        )
-
-        if self._overlay_kind is not None:
-            level_completed, run_completed = self._tick_overlay(elapsed_seconds)
-        elif stale:
-            blocked_reason = "Metrics are stale. Neon Drift Arena paused."
-        elif not valid:
-            blocked_reason = "Artifacts detected. Neon Drift Arena paused."
-        elif elapsed_seconds >= self.current_level.target_seconds:
-            self._start_failure_overlay("The arena timer expired before the projection target was lit.")
-        else:
-            intent = self._arcade_intent(conc_delta, relax_delta)
-            if intent == "focus":
-                if self._stabilize_intent(intent):
-                    self._lane = min(self.LANE_COUNT - 1, self._lane + 1)
-                    self._drift_bias = min(1.0, self._drift_bias + 0.34)
-                    self._message = "Tightened into the right glow lane."
-                    action = "right"
-                    moved = True
-            elif intent == "relax":
-                if self._stabilize_intent(intent):
-                    self._lane = max(0, self._lane - 1)
-                    self._drift_bias = max(-1.0, self._drift_bias - 0.34)
-                    self._message = "Widened left into the softer drift lane."
-                    action = "left"
-                    moved = True
-            elif intent == "steady":
-                if self._stabilize_intent(intent):
-                    moved = True
-                    if self._boost_meter >= 36.0:
-                        self._boost_meter = max(0.0, self._boost_meter - 36.0)
-                        self._boost_ticks = 5
-                        self._boost_bursts += 1
-                        self._message = "Boost burst ignited."
-                        action = "boost"
-                    else:
-                        self._line_lock_ticks = 3
-                        nearest = self._nearest_collectible_ahead(74.0)
-                        if nearest is not None:
-                            target_lane = int(round(nearest["lane_pos"]))
-                            if target_lane > self._lane:
-                                self._lane = min(self.LANE_COUNT - 1, self._lane + 1)
-                            elif target_lane < self._lane:
-                                self._lane = max(0, self._lane - 1)
-                        self._message = "Locked onto the next neon chain."
-                        action = "steady"
-            else:
-                self._stabilize_intent(None)
-
-            if not moved:
-                self._drift_bias *= 0.82
-            if self._line_lock_ticks > 0:
-                self._line_lock_ticks -= 1
-                self._drift_bias *= 0.9
-
-            self._advance_arena()
-            self._process_items()
-            self._tick_popups()
-
-            if (
-                self._collectibles >= self._target_collectibles
-                and self._score >= self._target_score
-                and self._overlay_kind is None
-            ):
-                self._start_success_overlay()
-
-        self._view_state = self._arena_view_state(
-            message=blocked_reason,
-            music_bias=relax_delta - conc_delta,
-        )
-        return self._arcade_snapshot(
-            phase="neon_drift_arena",
-            phase_label="Neon Drift Arena",
-            direction=action,
-            blocked_reason=blocked_reason,
-            control_hint=control_hint,
-            conc_delta=conc_delta,
-            relax_delta=relax_delta,
-            moved=moved,
-            level_completed=level_completed,
-            run_completed=run_completed,
-            recommended_label=self._arena_recommendation(action),
-        )
-
-    def _build_arena_items(self, config: dict) -> list[dict]:
-        items: list[dict] = []
-        for start, lane, count, spacing, style, value, sway in config["chains"]:
-            for index in range(count):
-                items.append(
-                    {
-                        "type": "tile",
-                        "distance": float(start + (index * spacing)),
-                        "lane": float(lane),
-                        "value": int(value),
-                        "style": style,
-                        "sway": float(sway),
-                        "width": 0.62,
-                        "resolved": False,
-                    }
-                )
-        for distance, lane, style, value, sway in config["sigils"]:
-            items.append(
-                {
-                    "type": "sigil",
-                    "distance": float(distance),
-                    "lane": float(lane),
-                    "value": int(value),
-                    "style": style,
-                    "sway": float(sway),
-                    "width": 0.76,
-                    "resolved": False,
-                }
-            )
-        for distance, lane, width, sway, penalty in config["hazards"]:
-            items.append(
-                {
-                    "type": "hazard",
-                    "distance": float(distance),
-                    "lane": float(lane),
-                    "width": float(width),
-                    "sway": float(sway),
-                    "penalty": int(penalty),
-                    "resolved": False,
-                }
-            )
-        for distance, lane, charge, sway in config["boosts"]:
-            items.append(
-                {
-                    "type": "boost",
-                    "distance": float(distance),
-                    "lane": float(lane),
-                    "charge": int(charge),
-                    "sway": float(sway),
-                    "width": 0.74,
-                    "resolved": False,
-                }
-            )
-        items.sort(key=lambda item: float(item["distance"]))
-        return items
-
-    def _tick_overlay(self, elapsed_seconds: float) -> tuple[bool, bool]:
-        if self._overlay_timer > 0:
-            self._overlay_timer -= 1
-        self._tick_popups()
-        if self._overlay_timer > 0:
-            return False, False
-
-        outcome = self._pending_outcome
-        self._overlay_kind = None
-        self._overlay_title = ""
-        self._overlay_subtitle = ""
-        self._pending_outcome = None
-        if outcome == "failure":
-            self._record_level_result(False, elapsed_seconds, score_override=0)
-            self._finished = True
-            return False, True
-        if outcome == "level_complete":
-            time_penalty = max(0, elapsed_seconds - self.current_level.target_seconds)
-            score = (
-                52
-                + min(28.0, self._score / 26.0)
-                + min(18.0, self._best_combo * 2.0)
-                + min(18.0, self._best_drift_chain * 2.2)
-                + (self._boost_bursts * 4.0)
-                - (self._hazard_hits * 8.0)
-                - time_penalty
-            )
-            self._record_level_result(True, elapsed_seconds, score_override=score)
-            level_completed = True
-            run_completed = self._advance_level()
-            return level_completed, run_completed
-        return False, False
-
-    def _advance_arena(self) -> None:
-        speed = self._base_speed + min(4.2, self._combo * 0.28)
-        if self._boost_ticks > 0:
-            speed += 7.8
-            self._boost_ticks -= 1
-        self._boost_meter = min(
-            100.0,
-            self._boost_meter + 0.75 + min(1.4, self._best_drift_chain * 0.08),
-        )
-        self._distance = min(self._arena_length, self._distance + speed)
-
-    def _process_items(self) -> None:
-        kart_pos = self._kart_track_position()
-        for item in self._items:
-            if item["resolved"]:
-                continue
-            rel = float(item["distance"]) - self._distance
-            lane_pos = self._item_lane_position(item)
-            if item["type"] == "hazard":
-                if abs(rel) <= 13.0 and abs(kart_pos - lane_pos) <= float(item["width"]):
-                    item["resolved"] = True
-                    self._hit_hazard(item, lane_pos)
-                elif rel < -16.0:
-                    item["resolved"] = True
-                continue
-
-            alignment = float(item.get("width", 0.62)) + (0.12 if self._boost_ticks > 0 else 0.0)
-            if abs(rel) <= 11.0 and abs(kart_pos - lane_pos) <= alignment:
-                item["resolved"] = True
-                self._collect_item(item, lane_pos)
-            elif rel < -14.0:
-                item["resolved"] = True
-                if item["type"] in {"tile", "sigil"}:
-                    self._combo = max(0, self._combo - 1)
-                    self._drift_chain = max(0, self._drift_chain - 1)
-
-    def _collect_item(self, item: dict, lane_pos: float) -> None:
-        if item["type"] == "boost":
-            self._boost_pad_hits += 1
-            self._boost_meter = min(100.0, self._boost_meter + float(item.get("charge", 20)))
-            self._score += 14
-            self._popups.append({"lane": lane_pos, "gap": 30.0, "text": "+14", "ticks": 5, "bad": False})
-            self._message = "Boost pad charged."
-            return
-
-        self._collectibles += 1
-        if item["type"] == "sigil":
-            self._combo += 2
-            base_score = int(item["value"])
-            self._drift_chain += 1
-        else:
-            self._combo += 1
-            base_score = int(item["value"])
-            if abs(self._drift_bias) >= 0.22:
-                self._drift_chain += 1
-            else:
-                self._drift_chain = max(0, self._drift_chain - 1)
-        self._best_combo = max(self._best_combo, self._combo)
-        self._best_drift_chain = max(self._best_drift_chain, self._drift_chain)
-        gain = base_score + (self._combo * 3) + (self._drift_chain * 2)
-        self._score += gain
-        self._popups.append({"lane": lane_pos, "gap": 30.0, "text": f"+{gain}", "ticks": 6, "bad": False})
-        if item["type"] == "sigil":
-            self._message = "Projection sigil captured."
-        else:
-            self._message = "Neon chain collected."
-
-    def _hit_hazard(self, item: dict, lane_pos: float) -> None:
-        penalty = int(item.get("penalty", 28))
-        self._hazard_hits += 1
-        self._combo = 0
-        self._drift_chain = 0
-        self._score = max(0, self._score - penalty)
-        self._boost_meter = max(0.0, self._boost_meter - 14.0)
-        self._popups.append({"lane": lane_pos, "gap": 26.0, "text": f"-{penalty}", "ticks": 6, "bad": True})
-        self._message = "Dark hazard pool hit. Rebuild the chain."
-
-    def _tick_popups(self) -> None:
-        trimmed = []
-        for popup in self._popups:
-            updated = dict(popup)
-            updated["ticks"] = max(0, int(updated.get("ticks", 0)) - 1)
-            updated["gap"] = float(updated.get("gap", 0.0)) + 6.0
-            if updated["ticks"] > 0:
-                trimmed.append(updated)
-        self._popups = trimmed
-
-    def _start_success_overlay(self) -> None:
-        self._overlay_kind = "success"
-        self._overlay_title = "Arena lit"
-        self._overlay_subtitle = f"{self._collectibles} projections chained cleanly."
-        self._overlay_timer = 7
-        self._pending_outcome = "level_complete"
-        self._message = self._overlay_title
-
-    def _start_failure_overlay(self, subtitle: str) -> None:
-        self._overlay_kind = "failure"
-        self._overlay_title = "Projection lost"
-        self._overlay_subtitle = subtitle
-        self._overlay_timer = 7
-        self._pending_outcome = "failure"
-        self._message = subtitle
-
-    def _nearest_collectible_ahead(self, max_gap: float) -> dict | None:
-        best = None
-        best_gap = None
-        for item in self._items:
-            if item["resolved"] or item["type"] not in {"tile", "sigil"}:
-                continue
-            rel = float(item["distance"]) - self._distance
-            if rel <= 10.0 or rel > max_gap:
-                continue
-            if best_gap is None or rel < best_gap:
-                best_gap = rel
-                best = {"gap": rel, "lane_pos": self._item_lane_position(item), "item": item}
-        return best
-
-    def _item_lane_position(self, item: dict) -> float:
-        sway = float(item.get("sway", 0.0))
-        if sway <= 0.0:
-            return float(item["lane"])
-        phase = (self._distance + float(item["distance"])) / 54.0
-        lane_pos = float(item["lane"]) + (math.sin(phase) * sway)
-        return max(0.0, min(self.LANE_COUNT - 1.0, lane_pos))
-
-    def _kart_track_position(self) -> float:
-        return max(0.0, min(self.LANE_COUNT - 1.0, self._lane + (self._drift_bias * 0.35)))
-
-    def _arena_recommendation(self, action: str | None) -> str:
-        if action == "right":
-            return "Glide right"
-        if action == "left":
-            return "Drift left"
-        if action == "boost":
-            return "Ignite boost"
-        if action == "steady":
-            return "Hold the lane"
-
-        nearest_hazard = None
-        nearest_collectible = None
-        for item in self._items:
-            if item["resolved"]:
-                continue
-            rel = float(item["distance"]) - self._distance
-            if rel <= 8.0:
-                continue
-            if item["type"] == "hazard" and rel <= 40.0:
-                if nearest_hazard is None or rel < nearest_hazard[0]:
-                    nearest_hazard = (rel, self._item_lane_position(item))
-            if item["type"] in {"tile", "sigil"} and rel <= 80.0:
-                if nearest_collectible is None or rel < nearest_collectible[0]:
-                    nearest_collectible = (rel, self._item_lane_position(item))
-
-        kart_pos = self._kart_track_position()
-        if nearest_hazard is not None and abs(nearest_hazard[1] - kart_pos) <= 0.8:
-            if nearest_hazard[1] >= kart_pos:
-                return "Break left"
-            return "Break right"
-        if nearest_collectible is not None:
-            if nearest_collectible[1] > kart_pos + 0.18:
-                return "Follow the right chain"
-            if nearest_collectible[1] < kart_pos - 0.18:
-                return "Follow the left chain"
-            if self._boost_meter >= 36.0:
-                return "Boost the lit lane"
-            return "Hold the projection line"
-        if self._boost_meter >= 36.0:
-            return "Steady for boost"
-        return "Read the next neon trail"
-
-    def _arena_view_state(self, message: str = "", music_bias: float = 0.0) -> dict:
-        projected_collectibles = []
-        sigils = []
-        hazards = []
-        boosts = []
-        for item in self._items:
-            if item["resolved"]:
-                continue
-            gap = float(item["distance"]) - self._distance
-            if gap < -18.0 or gap > self.FIELD_DEPTH:
-                continue
-            entry = {
-                "lane": self._item_lane_position(item),
-                "gap": gap,
-                "style": item.get("style", "violet"),
-                "width": float(item.get("width", 0.62)),
-            }
-            if item["type"] == "tile":
-                projected_collectibles.append({**entry, "value": int(item["value"])})
-            elif item["type"] == "sigil":
-                sigils.append({**entry, "value": int(item["value"])})
-            elif item["type"] == "hazard":
-                hazards.append({**entry, "penalty": int(item["penalty"])})
-            elif item["type"] == "boost":
-                boosts.append({**entry, "charge": int(item["charge"])})
-
-        star_ceiling = max(1.0, float(self._star_thresholds[-1]))
-        return {
-            "mode": "neon_drift_arena",
-            "lane_count": self.LANE_COUNT,
-            "kart_lane": self._lane,
-            "kart_track_pos": self._kart_track_position(),
-            "drift_bias": self._drift_bias,
-            "boost_meter": self._boost_meter,
-            "boost_ticks": self._boost_ticks,
-            "combo": self._combo,
-            "best_combo": self._best_combo,
-            "drift_chain": self._drift_chain,
-            "best_drift_chain": self._best_drift_chain,
-            "score": self._score,
-            "target_score": self._target_score,
-            "collectibles": self._collectibles,
-            "target_collectibles": self._target_collectibles,
-            "hazard_hits": self._hazard_hits,
-            "boost_bursts": self._boost_bursts,
-            "boost_pad_hits": self._boost_pad_hits,
-            "track_progress": max(0.0, min(1.0, self._distance / max(1.0, self._arena_length))),
-            "field_depth": self.FIELD_DEPTH,
-            "arena_length": self._arena_length,
-            "star_progress": max(0.0, min(1.0, self._score / star_ceiling)),
-            "star_thresholds": list(self._star_thresholds),
-            "projected_collectibles": projected_collectibles,
-            "sigils": sigils,
-            "hazards": hazards,
-            "boost_pads": boosts,
-            "score_popups": [dict(popup) for popup in self._popups],
-            "overlay_kind": self._overlay_kind,
-            "overlay_title": self._overlay_title,
-            "overlay_subtitle": self._overlay_subtitle,
-            "menu_button_rect": [18, 18, 54, 42],
-            "music_scene": "neon_drift",
-            "music_bias": max(-1.0, min(1.0, music_bias / 2.8)),
-            "serenity": max(0.0, min(100.0, 54.0 + (self._best_combo * 3.2) + (self._best_drift_chain * 2.6) - (self._hazard_hits * 9.0))),
-            "restlessness": max(0.0, min(100.0, 22.0 + (self._hazard_hits * 16.0) + max(0.0, -self._drift_bias) * 8.0)),
-            "message": message or self._message,
-        }
-
-
 class BubbleBurstController(ArcadeTrainingController):
     LEVELS = [
         TrainingLevel("Wave 1", 60),
@@ -3826,426 +2910,802 @@ class ProstheticArmController(BaseTrainingController):
 
 
 # ---------------------------------------------------------------------------
-#  Astral Glider — gyroscope-steered space navigation
+# Neon Vice — top-down arena shooter (gyro aim · focus fire · relax shield)
 # ---------------------------------------------------------------------------
+_NV_GYRO_DEAD_ZONE = 0.05
+_NV_GYRO_EMA_ALPHA = 0.25
+_NV_AIM_SENSITIVITY = 4.5          # tilt → degrees/tick
+_NV_FIRE_FOCUS_THRESHOLD = 0.15    # conc_delta above baseline to auto-fire
+_NV_WALK_SPEED_BASE = 1.8          # px/tick at moderate focus
+_NV_SPRINT_MULTIPLIER = 2.4
+_NV_BULLET_SPEED = 10.0
+_NV_BULLET_LIFETIME = 55           # ticks before bullet despawns
+_NV_FIRE_COOLDOWN = 6              # ticks between shots
+_NV_ENEMY_BASE_SPEED = 0.55
+_NV_PLAYER_RADIUS = 12.0
+_NV_ENEMY_RADIUS = 10.0
+_NV_BULLET_RADIUS = 4.0
+_NV_PLAYER_MAX_HP = 3
+_NV_ARENA_W = 900.0
+_NV_ARENA_H = 600.0
+_NV_SHIELD_SUSTAIN_NEEDED = 6      # ticks of relax intent to activate shield
+_NV_DAMAGE_INVULN = 20             # ticks of invulnerability after taking a hit
 
-_AG_GYRO_DEAD_ZONE = 0.05      # ±G dead zone for accel tilt
-_AG_GYRO_SENSITIVITY = 2.8     # tilt-to-position multiplier
-_AG_GYRO_EMA_ALPHA = 0.25      # smoothing factor for gyro input
-_AG_SHIELD_RELAX_THRESH = 3.0  # relax delta to activate shield
-_AG_SHIELD_SUSTAIN = 8         # ticks sustained to activate (≈0.5 s)
-_AG_WARP_CHARGE_RATE = 0.012   # per tick when steady
-_AG_WARP_DRAIN = 0.35          # charge consumed per warp
-_AG_CRYSTAL_RADIUS = 0.04      # collision radius for crystals
-_AG_OBSTACLE_RADIUS = 0.035    # collision radius for obstacles
-_AG_SPAWN_INTERVAL_BASE = 6    # ticks between spawns (base)
 
-
-class AstralGliderController(ArcadeTrainingController):
-    """
-    Gyroscope-steered space navigation game.
+class NeonViceController(ArcadeTrainingController):
+    """Top-down arena shooter — Hotline Miami meets Vice City.
 
     Controls
     --------
-    * **Gyroscope tilt** → ship steering (analog, smooth)
-    * **Focus (concentration)** → thrust / speed multiplier
-    * **Relaxation** → shield mode — phase through obstacles
-    * **Steady state** → charge warp ability (teleport forward for bonus)
+    * Gyroscope (head tilt left/right) → aim direction (360°)
+    * High focus → sprint in aim direction **and** auto-fire bullets
+    * Moderate focus → walk in aim direction
+    * Relaxation → slow down + activate shield (absorbs 1 hit)
     """
 
     LEVELS = [
-        TrainingLevel("Asteroid Belt", 50),
-        TrainingLevel("Nebula Run", 60),
-        TrainingLevel("Warp Core", 70),
+        TrainingLevel("Neon Streets", 50),
+        TrainingLevel("Vice District", 60),
+        TrainingLevel("Kingpin Tower", 70),
     ]
 
     LEVEL_CONFIGS = [
-        {
-            "base_speed": 0.012, "obstacle_density": 0.35, "crystal_density": 0.55,
-            "gap_width": 0.38, "speed_focus_scale": 1.6, "score_goal": 200,
-        },
-        {
-            "base_speed": 0.017, "obstacle_density": 0.55, "crystal_density": 0.45,
-            "gap_width": 0.30, "speed_focus_scale": 1.8, "nebula": True, "score_goal": 350,
-        },
-        {
-            "base_speed": 0.023, "obstacle_density": 0.75, "crystal_density": 0.35,
-            "gap_width": 0.22, "speed_focus_scale": 2.0, "corridor": True, "score_goal": 500,
-        },
+        {"enemies_per_wave": 4, "wave_count": 3, "speed_scale": 1.0,
+         "heavy_chance": 0.0, "runner_chance": 0.1, "spawn_delay": 12},
+        {"enemies_per_wave": 5, "wave_count": 4, "speed_scale": 1.25,
+         "heavy_chance": 0.15, "runner_chance": 0.25, "spawn_delay": 10},
+        {"enemies_per_wave": 6, "wave_count": 5, "speed_scale": 1.5,
+         "heavy_chance": 0.25, "runner_chance": 0.35, "spawn_delay": 8},
     ]
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(self.LEVELS)
-        self._gyro_x = 0.0  # smoothed accel-Y (left/right tilt)
-        self._gyro_y = 0.0  # smoothed accel-X (forward/back tilt)
-        self._gyro_zero_x = 0.0
-        self._gyro_zero_y = 0.0
-        self._gyro_samples_for_zero: list[tuple[float, float]] = []
+        self._gyro_tilt = 0.0
+        self._gyro_zero: float | None = None
+        self._gyro_samples: list[float] = []
         self._gyro_calibrated = False
 
-    # -- MEMS input (called by TrainingScreen before update_gameplay) --
+    # -- MEMS / gyroscope -------------------------------------------------
 
-    def update_mems(self, accel_x: float, accel_y: float, accel_z: float,
-                    gyro_x: float, gyro_y: float, gyro_z: float) -> None:
-        raw_x = accel_y  # left/right tilt from accel Y
-        raw_y = accel_x  # up/down tilt from accel X
-
-        # Collect gyro zero samples during calibration
+    def update_mems(self, accel_x, accel_y, accel_z,
+                    gyro_x, gyro_y, gyro_z) -> None:
+        raw = accel_y  # left/right head tilt
         if not self._gyro_calibrated:
-            self._gyro_samples_for_zero.append((raw_x, raw_y))
-            if len(self._gyro_samples_for_zero) >= 60:
-                self._gyro_zero_x = sum(s[0] for s in self._gyro_samples_for_zero) / len(self._gyro_samples_for_zero)
-                self._gyro_zero_y = sum(s[1] for s in self._gyro_samples_for_zero) / len(self._gyro_samples_for_zero)
+            self._gyro_samples.append(raw)
+            if len(self._gyro_samples) >= 60:
+                self._gyro_zero = sum(self._gyro_samples) / len(self._gyro_samples)
                 self._gyro_calibrated = True
             return
+        adj = raw - (self._gyro_zero or 0.0)
+        if abs(adj) < _NV_GYRO_DEAD_ZONE:
+            adj = 0.0
+        self._gyro_tilt += _NV_GYRO_EMA_ALPHA * (adj - self._gyro_tilt)
 
-        adj_x = raw_x - self._gyro_zero_x
-        adj_y = raw_y - self._gyro_zero_y
-        if abs(adj_x) < _AG_GYRO_DEAD_ZONE:
-            adj_x = 0.0
-        if abs(adj_y) < _AG_GYRO_DEAD_ZONE:
-            adj_y = 0.0
-        self._gyro_x += _AG_GYRO_EMA_ALPHA * (adj_x - self._gyro_x)
-        self._gyro_y += _AG_GYRO_EMA_ALPHA * (adj_y - self._gyro_y)
-
-    # -- lifecycle --
+    # -- level state ------------------------------------------------------
 
     def _reset_level_state(self) -> None:
-        cfg = self.LEVEL_CONFIGS[self._level_index]
-        self._base_speed: float = cfg["base_speed"]
-        self._obstacle_density: float = cfg["obstacle_density"]
-        self._crystal_density: float = cfg["crystal_density"]
-        self._gap_width: float = cfg["gap_width"]
-        self._speed_focus_scale: float = cfg["speed_focus_scale"]
-        self._score_goal: int = cfg["score_goal"]
-        self._has_nebula: bool = cfg.get("nebula", False)
-        self._has_corridor: bool = cfg.get("corridor", False)
+        cfg = self.LEVEL_CONFIGS[self._level_index] if self._level_index < len(self.LEVEL_CONFIGS) else self.LEVEL_CONFIGS[-1]
+        self._speed_scale = cfg["speed_scale"]
+        self._enemies_per_wave = cfg["enemies_per_wave"]
+        self._wave_count = cfg["wave_count"]
+        self._heavy_chance = cfg["heavy_chance"]
+        self._runner_chance = cfg["runner_chance"]
+        self._spawn_delay = cfg["spawn_delay"]
 
-        self._ship_x: float = 0.5
-        self._ship_y: float = 0.7
-        self._thrust: float = 0.0
-        self._shield_active: bool = False
-        self._shield_sustain: int = 0
-        self._warp_charge: float = 0.0
-        self._warp_active_ticks: int = 0
-        self._score: int = 0
-        self._combo: int = 0
-        self._distance: float = 0.0
-        self._tick_count: int = 0
+        self._player_x = _NV_ARENA_W / 2
+        self._player_y = _NV_ARENA_H / 2
+        self._aim_angle = 0.0          # degrees, 0 = right
+        self._health = _NV_PLAYER_MAX_HP
+        self._shield_active = False
+        self._shield_sustain = 0
+        self._invuln_ticks = 0
 
-        self._obstacles: list[dict] = []
-        self._crystals: list[dict] = []
+        self._bullets: list[dict] = []
+        self._enemies: list[dict] = []
         self._particles: list[dict] = []
-        self._stars: list[dict] = self._generate_stars(80)
-        self._popups: list[dict] = []
+        self._fire_cooldown = 0
+
+        self._wave_number = 0
+        self._wave_spawned = False
+        self._spawn_timer = 0
+        self._score = 0
+        self._combo = 0
+        self._best_combo = 0
+        self._kills = 0
+        self._tick = 0
 
         self._overlay_kind: str | None = None
-        self._overlay_ticks: int = 0
-        self._message: str = ""
-        self._view_state = {"mode": "astral_glider"}
+        self._overlay_ticks = 0
+        self._message = ""
+        self._view_state = {"mode": "neon_vice"}
 
-    def _generate_stars(self, count: int) -> list[dict]:
-        import random
-        return [
-            {
-                "x": random.random(),
-                "y": random.random(),
-                "z": random.uniform(0.1, 1.0),
-                "brightness": random.uniform(0.3, 1.0),
-            }
-            for _ in range(count)
-        ]
+    # -- gameplay loop ----------------------------------------------------
 
-    # -- gameplay --
-
-    def update_gameplay(
-        self,
-        concentration: float,
-        relaxation: float,
-        valid: bool,
-        stale: bool,
-        elapsed_seconds: float,
-    ) -> GameplaySnapshot:
+    def update_gameplay(self, concentration, relaxation, valid, stale,
+                        elapsed_seconds) -> GameplaySnapshot:
         conc_delta = concentration - (self._conc_baseline or 0.0)
         relax_delta = relaxation - (self._relax_baseline or 0.0)
-        blocked_reason = ""
+        blocked = ""
         moved = False
-        level_completed = False
-        run_completed = False
-        self._tick_count += 1
+        level_done = False
+        run_done = False
+        self._tick += 1
 
-        # -- overlay transition --
+        # ---- overlay transitions ------------------------------------
         if self._overlay_kind is not None:
             self._overlay_ticks += 1
             if self._overlay_ticks >= 40:
+                score_pct = min(100, int(self._score / max(1, self._wave_count * self._enemies_per_wave) * 8))
                 if self._overlay_kind == "success":
-                    self._record_level_result(True, elapsed_seconds, score_override=self._score_pct())
-                    level_completed = True
-                    run_completed = self._advance_level()
+                    self._record_level_result(True, elapsed_seconds, score_override=score_pct)
                 else:
-                    self._record_level_result(False, elapsed_seconds, score_override=max(10, self._score_pct() // 2))
-                    level_completed = True
-                    run_completed = self._advance_level()
+                    self._record_level_result(False, elapsed_seconds, score_override=max(10, score_pct // 2))
+                level_done = True
+                run_done = self._advance_level()
                 self._overlay_kind = None
                 self._overlay_ticks = 0
+
         elif stale:
-            blocked_reason = "Signal unavailable — hold the headband steady"
+            blocked = "Signal unavailable — hold the headband steady"
         elif not valid:
-            blocked_reason = "Artifacts detected — relax your jaw and forehead"
-        elif elapsed_seconds >= self.current_level.target_seconds:
-            if self._score >= self._score_goal:
-                self._overlay_kind = "success"
-                self._overlay_ticks = 0
-            else:
-                self._overlay_kind = "timeout"
-                self._overlay_ticks = 0
+            blocked = "Artifacts detected — relax your jaw and forehead"
         else:
             intent = self._arcade_intent(conc_delta, relax_delta)
 
-            # -- thrust from focus --
-            if intent == "focus":
-                self._thrust = min(1.0, self._thrust + 0.06)
-            else:
-                self._thrust = max(0.0, self._thrust - 0.03)
+            # ---- aim ------------------------------------------------
+            self._aim_angle += self._gyro_tilt * _NV_AIM_SENSITIVITY
+            self._aim_angle %= 360.0
 
-            # -- shield from relaxation --
-            if intent == "relax" and relax_delta >= _AG_SHIELD_RELAX_THRESH:
+            # ---- movement -------------------------------------------
+            rad = math.radians(self._aim_angle)
+            dx = math.cos(rad)
+            dy = math.sin(rad)
+
+            if intent == "focus":
+                speed = _NV_WALK_SPEED_BASE * _NV_SPRINT_MULTIPLIER
+            elif intent == "relax":
+                speed = _NV_WALK_SPEED_BASE * 0.25
+            else:
+                speed = _NV_WALK_SPEED_BASE
+
+            self._player_x += dx * speed
+            self._player_y += dy * speed
+            self._player_x = max(_NV_PLAYER_RADIUS, min(_NV_ARENA_W - _NV_PLAYER_RADIUS, self._player_x))
+            self._player_y = max(_NV_PLAYER_RADIUS, min(_NV_ARENA_H - _NV_PLAYER_RADIUS, self._player_y))
+            moved = speed > 0.5
+
+            # ---- fire -----------------------------------------------
+            if self._fire_cooldown > 0:
+                self._fire_cooldown -= 1
+            if intent == "focus" and conc_delta > _NV_FIRE_FOCUS_THRESHOLD and self._fire_cooldown <= 0:
+                self._bullets.append({
+                    "x": self._player_x + dx * (_NV_PLAYER_RADIUS + 4),
+                    "y": self._player_y + dy * (_NV_PLAYER_RADIUS + 4),
+                    "dx": dx * _NV_BULLET_SPEED,
+                    "dy": dy * _NV_BULLET_SPEED,
+                    "life": _NV_BULLET_LIFETIME,
+                })
+                self._fire_cooldown = _NV_FIRE_COOLDOWN
+
+            # ---- shield (relax) -------------------------------------
+            if intent == "relax":
                 self._shield_sustain += 1
-                if self._shield_sustain >= _AG_SHIELD_SUSTAIN:
+                if self._shield_sustain >= _NV_SHIELD_SUSTAIN_NEEDED:
                     self._shield_active = True
             else:
                 self._shield_sustain = max(0, self._shield_sustain - 2)
                 if self._shield_sustain <= 0:
                     self._shield_active = False
 
-            # -- warp from steady --
-            if intent == "steady":
-                self._warp_charge = min(1.0, self._warp_charge + _AG_WARP_CHARGE_RATE)
-            if self._warp_charge >= 1.0 and intent == "focus":
-                self._warp_active_ticks = 12
-                self._warp_charge = max(0.0, self._warp_charge - _AG_WARP_DRAIN)
-                self._score += 50
-                self._combo += 1
-                self._popups.append({"text": "WARP +50", "x": self._ship_x, "y": self._ship_y - 0.05, "life": 18})
+            # ---- invulnerability timer ------------------------------
+            if self._invuln_ticks > 0:
+                self._invuln_ticks -= 1
 
-            if self._warp_active_ticks > 0:
-                self._warp_active_ticks -= 1
+            # ---- update bullets -------------------------------------
+            self._update_bullets()
 
-            # -- gyroscope steering --
-            self._ship_x += self._gyro_x * _AG_GYRO_SENSITIVITY * 0.016
-            self._ship_y += self._gyro_y * _AG_GYRO_SENSITIVITY * 0.012
-            self._ship_x = max(0.05, min(0.95, self._ship_x))
-            self._ship_y = max(0.15, min(0.90, self._ship_y))
-            moved = abs(self._gyro_x) > _AG_GYRO_DEAD_ZONE or intent is not None
+            # ---- wave spawning --------------------------------------
+            if not self._enemies and not self._wave_spawned:
+                self._spawn_timer += 1
+                if self._spawn_timer >= self._spawn_delay:
+                    self._spawn_wave()
+                    self._spawn_timer = 0
 
-            # -- advance distance --
-            speed = self._base_speed * (1.0 + self._thrust * self._speed_focus_scale)
-            if self._warp_active_ticks > 0:
-                speed *= 3.0
-            self._distance += speed
+            # ---- update enemies -------------------------------------
+            self._update_enemies()
 
-            # -- spawn obstacles / crystals --
-            spawn_interval = max(3, _AG_SPAWN_INTERVAL_BASE - self._level_index)
-            if self._tick_count % spawn_interval == 0:
-                self._spawn_entities()
+            # ---- collisions: bullet → enemy -------------------------
+            self._resolve_hits()
 
-            # -- update entities --
-            self._update_entities(speed)
+            # ---- collisions: enemy → player -------------------------
+            self._check_player_damage()
 
-            # -- collision detection --
-            self._check_collisions()
+            # ---- wave / level completion ----------------------------
+            if not self._enemies and self._wave_spawned:
+                if self._wave_number >= self._wave_count:
+                    self._overlay_kind = "success"
+                    self._overlay_ticks = 0
+                else:
+                    self._wave_spawned = False
+                    self._spawn_timer = 0
 
-            # -- level completion by score --
-            if self._score >= self._score_goal and self._overlay_kind is None:
-                self._overlay_kind = "success"
+            # ---- death check ----------------------------------------
+            if self._health <= 0 and self._overlay_kind is None:
+                self._overlay_kind = "fail"
                 self._overlay_ticks = 0
 
-        # -- update particles --
-        self._update_particles()
-        self._update_stars(self._base_speed * (1.0 + self._thrust))
-        self._update_popups()
+            # ---- time limit -----------------------------------------
+            if elapsed_seconds >= self.current_level.target_seconds and self._overlay_kind is None:
+                if self._wave_number >= self._wave_count and not self._enemies:
+                    self._overlay_kind = "success"
+                else:
+                    self._overlay_kind = "timeout"
+                self._overlay_ticks = 0
 
-        # -- build view state --
-        self._view_state = self._build_view_state(blocked_reason, conc_delta, relax_delta)
+        # ---- particles ----------------------------------------------
+        self._update_particles()
+
+        # ---- build view state ---------------------------------------
+        self._view_state = self._nv_view_state(blocked, conc_delta, relax_delta)
 
         return self._arcade_snapshot(
-            phase="astral_glider",
+            phase="neon_vice",
             phase_label=self.current_level.title,
-            direction=None if blocked_reason else (
-                "shield" if self._shield_active else
-                "boost" if self._warp_active_ticks > 0 else
-                "focus" if self._thrust > 0.3 else None
-            ),
-            blocked_reason=blocked_reason,
-            control_hint="Tilt to steer · Focus for thrust · Relax for shield",
+            direction=self._nv_direction(),
+            blocked_reason=blocked,
+            control_hint="Tilt to aim · Focus to fire · Relax for shield",
             conc_delta=conc_delta,
             relax_delta=relax_delta,
             moved=moved,
-            level_completed=level_completed,
-            run_completed=run_completed,
-            recommended_label="Shield!" if self._shield_active else (
-                "Warp!" if self._warp_active_ticks > 0 else
-                "Thrust!" if self._thrust > 0.5 else "Steer"
-            ),
+            level_completed=level_done,
+            run_completed=run_done,
+            recommended_label=self._nv_recommendation(),
         )
 
-    # -- entity management --
+    # -- internal helpers -------------------------------------------------
 
-    def _spawn_entities(self) -> None:
+    def _spawn_wave(self) -> None:
         import random
-        # Obstacles
-        if random.random() < self._obstacle_density:
-            ox = random.uniform(0.08, 0.92)
-            size = random.uniform(0.025, _AG_OBSTACLE_RADIUS * 1.5)
-            style = random.choice(["rock", "rock", "debris", "mine"])
-            self._obstacles.append({"x": ox, "y": -0.05, "size": size, "style": style,
-                                    "rot": random.uniform(0, 360)})
-        # Crystals
-        if random.random() < self._crystal_density:
-            cx = random.uniform(0.1, 0.9)
-            self._crystals.append({"x": cx, "y": -0.05, "value": random.choice([10, 15, 20, 25]),
-                                   "pulse": random.uniform(0, 6.28)})
-        # Corridor walls (level 3)
-        if self._has_corridor and self._tick_count % 4 == 0:
-            center = 0.5 + 0.15 * math.sin(self._distance * 2.0)
-            half = self._gap_width / 2.0
-            self._obstacles.append({"x": center - half - 0.06, "y": -0.05, "size": 0.06, "style": "wall", "rot": 0})
-            self._obstacles.append({"x": center + half + 0.06, "y": -0.05, "size": 0.06, "style": "wall", "rot": 0})
-
-    def _update_entities(self, speed: float) -> None:
-        drift = speed * 12.0
-        for obs in self._obstacles:
-            obs["y"] += drift
-            obs["rot"] = (obs.get("rot", 0) + 1.2) % 360
-        for crystal in self._crystals:
-            crystal["y"] += drift
-            crystal["pulse"] = (crystal.get("pulse", 0) + 0.12) % 6.283
-        self._obstacles = [o for o in self._obstacles if o["y"] < 1.15]
-        self._crystals = [c for c in self._crystals if c["y"] < 1.15]
-
-    def _check_collisions(self) -> None:
-        sx, sy = self._ship_x, self._ship_y
-        # Crystal collection
-        remaining_crystals: list[dict] = []
-        for crystal in self._crystals:
-            dx = crystal["x"] - sx
-            dy = crystal["y"] - sy
-            if math.hypot(dx, dy) < _AG_CRYSTAL_RADIUS + 0.03:
-                self._score += crystal["value"]
-                self._combo += 1
-                self._popups.append({"text": f"+{crystal['value']}", "x": crystal["x"], "y": crystal["y"], "life": 14})
-                self._spawn_collect_particles(crystal["x"], crystal["y"])
+        self._wave_number += 1
+        self._wave_spawned = True
+        for _ in range(self._enemies_per_wave):
+            edge = random.randint(0, 3)
+            if edge == 0:
+                ex, ey = random.uniform(20, _NV_ARENA_W - 20), 0.0
+            elif edge == 1:
+                ex, ey = random.uniform(20, _NV_ARENA_W - 20), _NV_ARENA_H
+            elif edge == 2:
+                ex, ey = 0.0, random.uniform(20, _NV_ARENA_H - 20)
             else:
-                remaining_crystals.append(crystal)
-        self._crystals = remaining_crystals
+                ex, ey = _NV_ARENA_W, random.uniform(20, _NV_ARENA_H - 20)
+            roll = random.random()
+            if roll < self._heavy_chance:
+                kind, hp, spd = "heavy", 2, 0.35
+            elif roll < self._heavy_chance + self._runner_chance:
+                kind, hp, spd = "runner", 1, 1.2
+            else:
+                kind, hp, spd = "thug", 1, 0.7
+            self._enemies.append({
+                "x": ex, "y": ey, "hp": hp, "kind": kind,
+                "speed": spd * _NV_ENEMY_BASE_SPEED * self._speed_scale,
+            })
 
-        # Obstacle collision
-        if self._shield_active or self._warp_active_ticks > 0:
+    def _update_bullets(self) -> None:
+        alive = []
+        for b in self._bullets:
+            b["x"] += b["dx"]
+            b["y"] += b["dy"]
+            b["life"] -= 1
+            if b["life"] > 0 and 0 <= b["x"] <= _NV_ARENA_W and 0 <= b["y"] <= _NV_ARENA_H:
+                alive.append(b)
+        self._bullets = alive
+
+    def _update_enemies(self) -> None:
+        for e in self._enemies:
+            dx = self._player_x - e["x"]
+            dy = self._player_y - e["y"]
+            dist = math.hypot(dx, dy)
+            if dist > 1.0:
+                e["x"] += (dx / dist) * e["speed"]
+                e["y"] += (dy / dist) * e["speed"]
+
+    def _resolve_hits(self) -> None:
+        import random
+        remaining_bullets = []
+        for b in self._bullets:
+            hit = False
+            for e in self._enemies:
+                if e["hp"] <= 0:
+                    continue
+                d = math.hypot(b["x"] - e["x"], b["y"] - e["y"])
+                if d < _NV_BULLET_RADIUS + _NV_ENEMY_RADIUS:
+                    e["hp"] -= 1
+                    hit = True
+                    if e["hp"] <= 0:
+                        self._kills += 1
+                        self._combo += 1
+                        self._best_combo = max(self._best_combo, self._combo)
+                        pts = 100 + (self._combo - 1) * 25
+                        self._score += pts
+                        for _ in range(6):
+                            self._particles.append({
+                                "x": e["x"], "y": e["y"],
+                                "dx": random.uniform(-3, 3),
+                                "dy": random.uniform(-3, 3),
+                                "life": random.randint(8, 18),
+                                "color": "pink" if e["kind"] == "thug" else "orange",
+                            })
+                    break
+            if not hit:
+                remaining_bullets.append(b)
+        self._bullets = remaining_bullets
+        self._enemies = [e for e in self._enemies if e["hp"] > 0]
+
+    def _check_player_damage(self) -> None:
+        if self._invuln_ticks > 0:
             return
-        remaining_obs: list[dict] = []
-        for obs in self._obstacles:
-            dx = obs["x"] - sx
-            dy = obs["y"] - sy
-            hit_radius = obs["size"] + 0.028
-            if math.hypot(dx, dy) < hit_radius:
-                penalty = 15 + self._level_index * 5
-                self._score = max(0, self._score - penalty)
-                self._combo = 0
-                self._popups.append({"text": f"-{penalty}", "x": obs["x"], "y": obs["y"], "life": 14})
-                self._spawn_hit_particles(obs["x"], obs["y"])
-            else:
-                remaining_obs.append(obs)
-        self._obstacles = remaining_obs
-
-    def _spawn_collect_particles(self, x: float, y: float) -> None:
-        import random
-        for _ in range(6):
-            self._particles.append({
-                "x": x, "y": y,
-                "vx": random.uniform(-0.008, 0.008),
-                "vy": random.uniform(-0.012, 0.002),
-                "life": random.randint(8, 16),
-                "color": "cyan",
-            })
-
-    def _spawn_hit_particles(self, x: float, y: float) -> None:
-        import random
-        for _ in range(8):
-            self._particles.append({
-                "x": x, "y": y,
-                "vx": random.uniform(-0.01, 0.01),
-                "vy": random.uniform(-0.01, 0.01),
-                "life": random.randint(6, 14),
-                "color": "red",
-            })
+        for e in self._enemies:
+            d = math.hypot(self._player_x - e["x"], self._player_y - e["y"])
+            if d < _NV_PLAYER_RADIUS + _NV_ENEMY_RADIUS:
+                if self._shield_active:
+                    self._shield_active = False
+                    self._shield_sustain = 0
+                    self._invuln_ticks = _NV_DAMAGE_INVULN
+                else:
+                    self._health -= 1
+                    self._combo = 0
+                    self._invuln_ticks = _NV_DAMAGE_INVULN
+                break
 
     def _update_particles(self) -> None:
+        alive = []
         for p in self._particles:
-            p["x"] += p["vx"]
-            p["y"] += p["vy"]
+            p["x"] += p["dx"]
+            p["y"] += p["dy"]
             p["life"] -= 1
-        self._particles = [p for p in self._particles if p["life"] > 0]
+            if p["life"] > 0:
+                alive.append(p)
+        self._particles = alive
 
-        # Thrust trail particles
-        if self._thrust > 0.1:
-            import random
-            for _ in range(int(self._thrust * 3)):
-                self._particles.append({
-                    "x": self._ship_x + random.uniform(-0.015, 0.015),
-                    "y": self._ship_y + 0.03,
-                    "vx": random.uniform(-0.003, 0.003),
-                    "vy": random.uniform(0.006, 0.014),
-                    "life": random.randint(4, 10),
-                    "color": "thrust",
-                })
+    def _nv_direction(self) -> str | None:
+        if self._shield_active:
+            return "shield"
+        if self._fire_cooldown == _NV_FIRE_COOLDOWN:
+            return "fire"
+        if self._health <= 1:
+            return "shield"
+        return "focus"
 
-    def _update_stars(self, speed: float) -> None:
-        for star in self._stars:
-            star["y"] += speed * star["z"] * 8.0
-            if star["y"] > 1.05:
-                import random
-                star["y"] = -0.05
-                star["x"] = random.random()
-                star["brightness"] = random.uniform(0.3, 1.0)
+    def _nv_recommendation(self) -> str:
+        if self._overlay_kind == "success":
+            return "Level clear!"
+        if self._overlay_kind == "fail":
+            return "Game over"
+        if self._overlay_kind == "timeout":
+            return "Time up"
+        if self._health <= 1:
+            return "Find cover!"
+        if self._shield_active:
+            return "Shield up!"
+        if self._combo >= 3:
+            return f"x{self._combo} Combo!"
+        if self._fire_cooldown == _NV_FIRE_COOLDOWN:
+            return "Fire!"
+        return "Stay focused"
 
-    def _update_popups(self) -> None:
-        for p in self._popups:
-            p["y"] -= 0.008
-            p["life"] -= 1
-        self._popups = [p for p in self._popups if p["life"] > 0]
-
-    def _score_pct(self) -> int:
-        return min(100, max(0, int(self._score / max(1, self._score_goal) * 100)))
-
-    def _build_view_state(self, message: str, conc_delta: float, relax_delta: float) -> dict:
+    def _nv_view_state(self, blocked: str, conc_delta: float, relax_delta: float) -> dict:
         return {
-            "mode": "astral_glider",
-            "ship_x": self._ship_x,
-            "ship_y": self._ship_y,
-            "thrust": self._thrust,
+            "mode": "neon_vice",
+            "player_x": self._player_x,
+            "player_y": self._player_y,
+            "aim_angle": self._aim_angle,
+            "health": self._health,
             "shield_active": self._shield_active,
-            "warp_charge": self._warp_charge,
-            "warp_active": self._warp_active_ticks > 0,
-            "score": self._score,
-            "score_goal": self._score_goal,
-            "combo": self._combo,
-            "distance": self._distance,
-            "stars": list(self._stars),
-            "obstacles": list(self._obstacles),
-            "crystals": list(self._crystals),
+            "bullets": [{"x": b["x"], "y": b["y"]} for b in self._bullets],
+            "enemies": [{"x": e["x"], "y": e["y"], "kind": e["kind"], "hp": e["hp"]} for e in self._enemies],
             "particles": list(self._particles),
-            "popups": list(self._popups),
-            "has_nebula": self._has_nebula,
-            "has_corridor": self._has_corridor,
+            "score": self._score,
+            "combo": self._combo,
+            "best_combo": self._best_combo,
+            "kills": self._kills,
+            "wave_number": self._wave_number,
+            "wave_count": self._wave_count,
+            "tick": self._tick,
             "overlay_kind": self._overlay_kind,
             "level_title": self.current_level.title,
             "headline": self.current_level.title,
-            "speed": self._base_speed * (1.0 + self._thrust * self._speed_focus_scale),
+            "blocked": blocked,
+            "conc_delta": conc_delta,
+            "relax_delta": relax_delta,
+            "arena_w": _NV_ARENA_W,
+            "arena_h": _NV_ARENA_H,
             "serenity": max(0.0, min(100.0, 50.0 + relax_delta * 5.0)),
             "restlessness": max(0.0, min(100.0, 50.0 + conc_delta * 5.0)),
-            "music_scene": "astral_glider",
+            "music_scene": "neon_vice",
             "music_bias": max(-1.0, min(1.0, (conc_delta - relax_delta) / 3.0)),
-            "message": message or self._message,
+            "message": self._message,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Hill Climb Racer — side-scrolling physics racer (focus gas · relax brake · gyro tilt)
+# ---------------------------------------------------------------------------
+_HC_GYRO_DEAD_ZONE = 0.05
+_HC_GYRO_EMA_ALPHA = 0.25
+_HC_TILT_SENSITIVITY = 3.0         # degrees per tick from head tilt
+_HC_MAX_TILT = 60.0                # max car rotation degrees
+_HC_GRAVITY = 0.35                 # downward acceleration
+_HC_GAS_ACCEL = 0.18               # focus → forward acceleration
+_HC_BRAKE_DECEL = 0.25             # relax → braking strength
+_HC_DRAG = 0.985                   # velocity drag each tick
+_HC_MAX_SPEED = 6.0                # max horizontal speed
+_HC_FUEL_MAX = 100.0
+_HC_FUEL_DRAIN = 0.12              # fuel consumed per tick while moving
+_HC_FUEL_REFILL = 25.0             # fuel gained from canister
+_HC_COIN_VALUE = 50                # points per coin
+_HC_FLIP_BONUS = 200               # points for a full flip
+_HC_AIR_BONUS_RATE = 2             # points per tick in air
+_HC_CAR_W = 48.0
+_HC_CAR_H = 24.0
+_HC_ROAD_Y_BASE = 400.0            # base ground Y in logical coords
+_HC_VIEW_W = 900.0                 # logical viewport width
+_HC_VIEW_H = 500.0                 # logical viewport height
+_HC_HILL_SEG_W = 60.0              # width of each terrain segment
+_HC_PICKUP_RADIUS = 22.0           # collection radius for coins/fuel
+
+
+class HillClimbRacerController(ArcadeTrainingController):
+    """Side-scrolling physics racer — Hill Climb Racing meets BCI.
+
+    Controls
+    --------
+    * Focus (concentration) → Gas pedal — accelerate forward
+    * Relaxation → Brake — slow down
+    * Gyroscope (head tilt) → Tilt car in mid-air to land safely
+    * Steady state → Coast at current speed
+    """
+
+    LEVELS = [
+        TrainingLevel("Countryside", 60),
+        TrainingLevel("Desert Canyon", 70),
+        TrainingLevel("Arctic Ridge", 80),
+    ]
+
+    LEVEL_CONFIGS = [
+        {"hill_intensity": 0.6, "fuel_freq": 8, "coin_freq": 5, "speed_scale": 1.0,
+         "target_distance": 2500},
+        {"hill_intensity": 0.85, "fuel_freq": 10, "coin_freq": 6, "speed_scale": 1.15,
+         "target_distance": 3200},
+        {"hill_intensity": 1.1, "fuel_freq": 12, "coin_freq": 7, "speed_scale": 1.3,
+         "target_distance": 4000},
+    ]
+
+    def __init__(self) -> None:
+        super().__init__(self.LEVELS)
+        self._gyro_tilt = 0.0
+        self._gyro_zero: float | None = None
+        self._gyro_samples: list[float] = []
+        self._gyro_calibrated = False
+
+    # -- MEMS / gyroscope -------------------------------------------------
+
+    def update_mems(self, accel_x, accel_y, accel_z,
+                    gyro_x, gyro_y, gyro_z) -> None:
+        raw = accel_y
+        if not self._gyro_calibrated:
+            self._gyro_samples.append(raw)
+            if len(self._gyro_samples) >= 60:
+                self._gyro_zero = sum(self._gyro_samples) / len(self._gyro_samples)
+                self._gyro_calibrated = True
+            return
+        adj = raw - (self._gyro_zero or 0.0)
+        if abs(adj) < _HC_GYRO_DEAD_ZONE:
+            adj = 0.0
+        self._gyro_tilt += _HC_GYRO_EMA_ALPHA * (adj - self._gyro_tilt)
+
+    # -- level state ------------------------------------------------------
+
+    def _reset_level_state(self) -> None:
+        import random
+        cfg = self.LEVEL_CONFIGS[self._level_index] if self._level_index < len(self.LEVEL_CONFIGS) else self.LEVEL_CONFIGS[-1]
+        self._hill_intensity = cfg["hill_intensity"]
+        self._fuel_freq = cfg["fuel_freq"]
+        self._coin_freq = cfg["coin_freq"]
+        self._speed_scale = cfg["speed_scale"]
+        self._target_distance = cfg["target_distance"]
+
+        self._car_x = 120.0          # screen-space X (stays roughly fixed)
+        self._world_x = 0.0          # world distance traveled
+        self._car_vx = 0.0           # horizontal velocity
+        self._car_vy = 0.0           # vertical velocity
+        self._car_angle = 0.0        # rotation degrees
+        self._on_ground = True
+        self._air_ticks = 0
+        self._total_rotation = 0.0   # tracks rotation for flip detection
+        self._flips = 0
+
+        self._fuel = _HC_FUEL_MAX
+        self._coins = 0
+        self._score = 0
+        self._distance = 0.0
+        self._best_distance = 0.0
+        self._tick = 0
+
+        # Generate terrain as list of ground heights per segment
+        self._terrain: list[float] = []
+        self._generate_terrain(200, random)
+
+        # Pickups: list of {world_x, kind, collected}
+        self._pickups: list[dict] = []
+        self._generate_pickups(random)
+
+        self._overlay_kind: str | None = None
+        self._overlay_ticks = 0
+        self._message = ""
+        self._view_state = {"mode": "hill_climb_racer"}
+
+    def _generate_terrain(self, num_segments: int, rng) -> None:
+        """Create a hilly terrain using simple sine-wave composition."""
+        self._terrain = []
+        for i in range(num_segments):
+            base = _HC_ROAD_Y_BASE
+            x_pos = i * _HC_HILL_SEG_W
+            # Layer multiple sine waves for natural hills
+            h1 = math.sin(x_pos * 0.008) * 60 * self._hill_intensity
+            h2 = math.sin(x_pos * 0.015 + 1.5) * 35 * self._hill_intensity
+            h3 = math.sin(x_pos * 0.003 + 3.0) * 80 * self._hill_intensity
+            self._terrain.append(base - h1 - h2 - h3)
+
+    def _generate_pickups(self, rng) -> None:
+        """Place fuel canisters and coins along the terrain."""
+        self._pickups = []
+        for i in range(len(self._terrain)):
+            wx = i * _HC_HILL_SEG_W
+            if i > 3 and i % self._fuel_freq == 0:
+                self._pickups.append({"world_x": wx, "y_offset": -40.0,
+                                      "kind": "fuel", "collected": False})
+            if i > 2 and i % self._coin_freq == 0:
+                self._pickups.append({"world_x": wx, "y_offset": -35.0,
+                                      "kind": "coin", "collected": False})
+
+    def _ground_height_at(self, world_x: float) -> float:
+        """Interpolate terrain height at a world X position."""
+        seg = world_x / _HC_HILL_SEG_W
+        idx = int(seg)
+        frac = seg - idx
+        if idx < 0:
+            return self._terrain[0] if self._terrain else _HC_ROAD_Y_BASE
+        if idx >= len(self._terrain) - 1:
+            return self._terrain[-1] if self._terrain else _HC_ROAD_Y_BASE
+        return self._terrain[idx] * (1 - frac) + self._terrain[idx + 1] * frac
+
+    def _slope_angle_at(self, world_x: float) -> float:
+        """Get the slope angle in degrees at a world X position."""
+        seg = int(world_x / _HC_HILL_SEG_W)
+        if seg < 0 or seg >= len(self._terrain) - 1:
+            return 0.0
+        dy = self._terrain[seg + 1] - self._terrain[seg]
+        return math.degrees(math.atan2(dy, _HC_HILL_SEG_W))
+
+    # -- gameplay loop ----------------------------------------------------
+
+    def update_gameplay(self, concentration, relaxation, valid, stale,
+                        elapsed_seconds) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation - (self._relax_baseline or 0.0)
+        blocked = ""
+        moved = False
+        level_done = False
+        run_done = False
+        self._tick += 1
+
+        if self._overlay_kind is not None:
+            self._overlay_ticks += 1
+            if self._overlay_ticks >= 40:
+                pct = min(100, int(self._distance / max(1, self._target_distance) * 100))
+                if self._overlay_kind == "success":
+                    self._record_level_result(True, elapsed_seconds, score_override=pct)
+                else:
+                    self._record_level_result(False, elapsed_seconds, score_override=max(10, pct // 2))
+                level_done = True
+                run_done = self._advance_level()
+                self._overlay_kind = None
+                self._overlay_ticks = 0
+
+        elif stale:
+            blocked = "Signal unavailable — hold the headband steady"
+        elif not valid:
+            blocked = "Artifacts detected — relax your jaw and forehead"
+        else:
+            intent = self._arcade_intent(conc_delta, relax_delta)
+            ground_y = self._ground_height_at(self._world_x)
+            car_y = ground_y  # simplified — car follows terrain when on ground
+
+            # ---- gas / brake ----------------------------------------
+            if intent == "focus" and self._fuel > 0:
+                self._car_vx += _HC_GAS_ACCEL * self._speed_scale
+                self._fuel -= _HC_FUEL_DRAIN
+                moved = True
+            elif intent == "relax":
+                self._car_vx -= _HC_BRAKE_DECEL
+                if self._car_vx < 0:
+                    self._car_vx = 0.0
+
+            # ---- drag -----------------------------------------------
+            self._car_vx *= _HC_DRAG
+            if self._car_vx > _HC_MAX_SPEED * self._speed_scale:
+                self._car_vx = _HC_MAX_SPEED * self._speed_scale
+
+            # ---- world movement -------------------------------------
+            self._world_x += self._car_vx
+            self._distance = self._world_x
+            self._best_distance = max(self._best_distance, self._distance)
+
+            # ---- terrain following / air detection -------------------
+            new_ground = self._ground_height_at(self._world_x)
+            slope = self._slope_angle_at(self._world_x)
+
+            # Check if car is in the air (going over a hill crest)
+            prev_ground = self._ground_height_at(self._world_x - self._car_vx)
+            if self._on_ground and new_ground > prev_ground + 3.0 and self._car_vx > 1.5:
+                self._on_ground = False
+                self._car_vy = -self._car_vx * 0.3  # launch upward
+                self._air_ticks = 0
+                self._total_rotation = 0.0
+
+            if not self._on_ground:
+                # Air physics — gyro controls rotation
+                self._car_angle += self._gyro_tilt * _HC_TILT_SENSITIVITY
+                self._car_angle = max(-_HC_MAX_TILT, min(_HC_MAX_TILT, self._car_angle))
+                self._total_rotation += abs(self._gyro_tilt * _HC_TILT_SENSITIVITY)
+                self._car_vy += _HC_GRAVITY
+                self._air_ticks += 1
+                self._score += _HC_AIR_BONUS_RATE
+
+                # Check landing
+                if self._car_vy > 0:  # falling
+                    if car_y + self._car_vy >= new_ground:
+                        self._on_ground = True
+                        self._car_vy = 0.0
+                        # Check if landed safely (not too tilted)
+                        if abs(self._car_angle) > 50:
+                            # Crash! — flip too extreme
+                            self._overlay_kind = "crash"
+                            self._overlay_ticks = 0
+                        else:
+                            # Check for flip bonus
+                            if self._total_rotation > 300:
+                                self._flips += 1
+                                self._score += _HC_FLIP_BONUS
+                            self._car_angle = slope  # align to slope
+            else:
+                self._car_angle = slope
+
+            # ---- pickup collection ----------------------------------
+            for p in self._pickups:
+                if p["collected"]:
+                    continue
+                dx = abs(p["world_x"] - self._world_x)
+                if dx < _HC_PICKUP_RADIUS:
+                    p["collected"] = True
+                    if p["kind"] == "fuel":
+                        self._fuel = min(_HC_FUEL_MAX, self._fuel + _HC_FUEL_REFILL)
+                    elif p["kind"] == "coin":
+                        self._coins += 1
+                        self._score += _HC_COIN_VALUE
+
+            # ---- fuel empty -----------------------------------------
+            if self._fuel <= 0 and self._car_vx < 0.1 and self._overlay_kind is None:
+                self._overlay_kind = "fuel"
+                self._overlay_ticks = 0
+
+            # ---- level completion -----------------------------------
+            if self._distance >= self._target_distance and self._overlay_kind is None:
+                self._overlay_kind = "success"
+                self._overlay_ticks = 0
+
+            # ---- time limit -----------------------------------------
+            if elapsed_seconds >= self.current_level.target_seconds and self._overlay_kind is None:
+                if self._distance >= self._target_distance:
+                    self._overlay_kind = "success"
+                else:
+                    self._overlay_kind = "timeout"
+                self._overlay_ticks = 0
+
+        self._view_state = self._hc_view_state(blocked, conc_delta, relax_delta)
+
+        return self._arcade_snapshot(
+            phase="hill_climb_racer",
+            phase_label=self.current_level.title,
+            direction=self._hc_direction(),
+            blocked_reason=blocked,
+            control_hint="Focus to gas · Relax to brake · Tilt to balance",
+            conc_delta=conc_delta,
+            relax_delta=relax_delta,
+            moved=moved,
+            level_completed=level_done,
+            run_completed=run_done,
+            recommended_label=self._hc_recommendation(),
+        )
+
+    # -- helpers ----------------------------------------------------------
+
+    def _hc_direction(self) -> str:
+        if self._fuel <= 15:
+            return "fuel"
+        if not self._on_ground:
+            return "balance"
+        if self._car_vx > _HC_MAX_SPEED * 0.7:
+            return "fast"
+        return "focus"
+
+    def _hc_recommendation(self) -> str:
+        if self._overlay_kind == "success":
+            return "Level clear!"
+        if self._overlay_kind == "crash":
+            return "You crashed!"
+        if self._overlay_kind == "fuel":
+            return "Out of fuel!"
+        if self._overlay_kind == "timeout":
+            return "Time up"
+        if self._fuel <= 15:
+            return "Low fuel!"
+        if not self._on_ground:
+            return "Balance the car!"
+        if self._car_vx < 0.5:
+            return "Focus to accelerate"
+        if self._flips > 0 and self._air_ticks > 0:
+            return f"Nice flip! x{self._flips}"
+        return "Keep driving!"
+
+    def _hc_view_state(self, blocked: str, conc_delta: float, relax_delta: float) -> dict:
+        # Build visible terrain segments centered on car position
+        vis_start = int(self._world_x / _HC_HILL_SEG_W) - 2
+        vis_end = vis_start + int(_HC_VIEW_W / _HC_HILL_SEG_W) + 4
+        terrain_vis = []
+        for i in range(max(0, vis_start), min(len(self._terrain), vis_end)):
+            terrain_vis.append({
+                "world_x": i * _HC_HILL_SEG_W,
+                "y": self._terrain[i],
+            })
+
+        # Visible pickups
+        vis_pickups = []
+        for p in self._pickups:
+            if not p["collected"] and abs(p["world_x"] - self._world_x) < _HC_VIEW_W:
+                vis_pickups.append(p)
+
+        return {
+            "mode": "hill_climb_racer",
+            "world_x": self._world_x,
+            "car_x": self._car_x,
+            "car_angle": self._car_angle,
+            "car_vx": self._car_vx,
+            "on_ground": self._on_ground,
+            "air_ticks": self._air_ticks,
+            "fuel": self._fuel,
+            "coins": self._coins,
+            "score": self._score,
+            "distance": self._distance,
+            "target_distance": self._target_distance,
+            "best_distance": self._best_distance,
+            "flips": self._flips,
+            "terrain": terrain_vis,
+            "pickups": vis_pickups,
+            "tick": self._tick,
+            "overlay_kind": self._overlay_kind,
+            "level_title": self.current_level.title,
+            "headline": self.current_level.title,
+            "blocked": blocked,
+            "conc_delta": conc_delta,
+            "relax_delta": relax_delta,
+            "view_w": _HC_VIEW_W,
+            "view_h": _HC_VIEW_H,
+            "serenity": max(0.0, min(100.0, 50.0 + relax_delta * 5.0)),
+            "restlessness": max(0.0, min(100.0, 50.0 + conc_delta * 5.0)),
+            "music_scene": "hill_climb",
+            "music_bias": max(-1.0, min(1.0, (conc_delta - relax_delta) / 3.0)),
+            "message": self._message,
         }
 
 
@@ -4481,57 +3941,6 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         music_profile="arcade",
     ),
     TrainingGameSpec(
-        game_id="neuro_racer",
-        section="Arcade neurofeedback",
-        eyebrow="Focus speedway",
-        card_title="Neuro Racer",
-        detail_title="A sky-ramp racer for steering, nitro timing, and calm recovery",
-        duration="10 min",
-        description="Overtake traffic on a floating speedway, save nitro for clean stretches, and recover after impacts.",
-        detail_body=(
-            "Neuro Racer now presents a behind-the-car sky-ramp view. Concentration steers toward the right lane, "
-            "relaxation steers left into recovery space, and a balanced steady hold triggers nitro when charged or "
-            "locks the racing line when you need a calmer correction. The goal is to chain clean overtakes without losing stability."
-        ),
-        instructions=(
-            "Concentrate to steer right, relax to steer left, and hold a balanced steady state to activate nitro when "
-            "the meter is ready. Avoid traffic, protect stability, and reach the finish arch on every track."
-        ),
-        calibration_copy="Build a stable baseline first so steering and nitro cues stay readable.",
-        preview_label="RACE",
-        colors=("#27144b", "#f04868"),
-        enabled=True,
-        controller_factory=NeuroRacerController,
-        widget_kind="neuro_racer",
-        music_profile="arcade",
-    ),
-    TrainingGameSpec(
-        game_id="neon_drift_arena",
-        section="Arcade neurofeedback",
-        eyebrow="Projection arena",
-        card_title="Neon Drift Arena",
-        detail_title="A neon floor-projection kart arena for drift chains, boost bursts, and collectible runs",
-        duration="10 min",
-        description="Glide through a luminous arena, collect projected chains, and dodge dark hazard pools with EEG-guided drift control.",
-        detail_body=(
-            "Neon Drift Arena turns the projected kart look into a top-down neurofeedback collector. "
-            "Concentration tightens the kart into the right-side glow lanes, relaxation widens the line back left, "
-            "and a balanced steady hold either locks onto the next collectible path or ignites a short boost burst "
-            "when the meter is charged."
-        ),
-        instructions=(
-            "Concentrate to steer right, relax to steer left, and hold a balanced steady state to trigger boost or "
-            "lock onto the brightest projected lane. Collect enough chains and sigils before the stage timer runs out."
-        ),
-        calibration_copy="Settle into a clean baseline so lane shifts and boost timing feel smooth across the arena.",
-        preview_label="DRIFT",
-        colors=("#35185d", "#f0d24d"),
-        enabled=True,
-        controller_factory=NeonDriftArenaController,
-        widget_kind="neon_drift_arena",
-        music_profile="arcade",
-    ),
-    TrainingGameSpec(
         game_id="bubble_burst",
         section="Arcade neurofeedback",
         eyebrow="Arcade puzzler",
@@ -4605,31 +4014,56 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         music_profile="memory",
     ),
     TrainingGameSpec(
-        game_id="astral_glider",
+        game_id="neon_vice",
         section="Arcade neurofeedback",
-        eyebrow="GYRO + BRAIN CONTROL",
-        card_title="Astral Glider",
-        detail_title="Pilot a starship through asteroid fields using your mind and head tilt",
-        duration="3 min",
-        description="The first game combining gyroscope head-tilt steering with focus thrust and relaxation shields.",
+        eyebrow="BCI Shooter",
+        card_title="Neon Vice",
+        detail_title="Top-down arena shooter with BCI controls",
+        duration="9 min",
+        description="Take on waves of enemies in a neon-soaked Vice City–style arena. Aim with gyroscope, fire with focus, shield with relaxation.",
         detail_body=(
-            "Astral Glider is a breakthrough neurofeedback game that combines three input modalities: "
-            "tilt your head to steer the ship, concentrate to engage thrust and fly faster, and relax to "
-            "activate energy shields that phase through obstacles. Hold a balanced steady state to charge "
-            "a warp ability that teleports you forward for bonus points. Navigate asteroid belts, nebula "
-            "corridors, and warp-speed gauntlets across three increasingly challenging levels."
+            "Neon Vice is a top-down arena shooter inspired by Hotline Miami and GTA Vice City. "
+            "Use your brain signals to control movement speed and trigger auto-fire while tilting your head to aim. "
+            "Clear enemy waves across three increasingly dangerous levels and climb the combo leaderboard."
         ),
         instructions=(
-            "Tilt your head left/right to steer. Concentrate to engage thrust and gain speed. "
-            "Relax to activate shields and pass through obstacles. Stay balanced to charge warp. "
-            "Collect crystals for score and avoid asteroids."
+            "Tilt your head left/right to aim. Concentrate to sprint and auto-fire bullets. "
+            "Relax to slow down and activate a shield that absorbs one hit. "
+            "Clear all waves to complete each level."
         ),
         calibration_copy="Hold your head in a comfortable neutral position while we calibrate the gyroscope and EEG baseline.",
-        preview_label="🚀",
-        colors=("#0a0a2e", "#1a6aff"),
+        preview_label="VICE",
+        colors=("#ff2d95", "#1a0a2e"),
         enabled=True,
-        controller_factory=AstralGliderController,
-        widget_kind="astral_glider",
+        controller_factory=NeonViceController,
+        widget_kind="neon_vice",
+        music_profile="arcade",
+    ),
+    TrainingGameSpec(
+        game_id="hill_climb_racer",
+        section="Arcade neurofeedback",
+        eyebrow="Physics Racer",
+        card_title="Hill Climb Racer",
+        detail_title="Side-scrolling physics racer with BCI controls",
+        duration="10 min",
+        description="Drive over hilly terrain using focus to accelerate and relaxation to brake. Tilt your head to balance in mid-air and pull off flips for bonus points.",
+        detail_body=(
+            "Hill Climb Racer is a side-scrolling physics racer inspired by the classic Hill Climb Racing. "
+            "Your brain signals control the gas and brake — concentrate to speed up and relax to slow down. "
+            "When you launch off hills, tilt your head to balance the car and land safely. "
+            "Collect coins and fuel canisters across three terrains: Countryside, Desert Canyon, and Arctic Ridge."
+        ),
+        instructions=(
+            "Focus to accelerate (gas pedal). Relax to brake and slow down. "
+            "Tilt your head left/right to balance the car in mid-air. "
+            "Collect fuel canisters to keep driving and coins for score. Complete the target distance to clear each level."
+        ),
+        calibration_copy="Hold your head in a comfortable neutral position while we calibrate the gyroscope and EEG baseline.",
+        preview_label="🏔️",
+        colors=("#2d8f4e", "#1a3a2e"),
+        enabled=True,
+        controller_factory=HillClimbRacerController,
+        widget_kind="hill_climb_racer",
         music_profile="arcade",
     ),
 ]

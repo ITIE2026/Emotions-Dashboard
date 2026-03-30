@@ -28,10 +28,10 @@ from gui.training_games import (  # noqa: E402
     CalmCurrentController,
     CandyCascadeController,
     FullRebootController,
+    HillClimbRacerController,
     JumpBallController,
-    NeonDriftArenaController,
+    NeonViceController,
     NeuroMusicFlowController,
-    NeuroRacerController,
     PatternRecallController,
     ProstheticArmController,
     SpaceShooterController,
@@ -586,7 +586,7 @@ class TrainingGameControllerTests(unittest.TestCase):
 
     def test_active_specs_include_arcade_games(self):
         active_ids = {spec.game_id for spec in active_training_specs()}
-        self.assertTrue({"tug_of_war", "space_shooter", "jump_ball", "neuro_racer", "neon_drift_arena", "bubble_burst"}.issubset(active_ids))
+        self.assertTrue({"tug_of_war", "space_shooter", "jump_ball", "bubble_burst"}.issubset(active_ids))
         self.assertIn("full_reboot", active_ids)
         self.assertIn("neuro_music_flow", active_ids)
         self.assertIn("candy_cascade", active_ids)
@@ -881,151 +881,120 @@ class TrainingGameControllerTests(unittest.TestCase):
         self.assertIn(snapshot.recommended_label, {"Jump!", "Stay focused", "Nice combo!", "Keep running", "Jump now!", "Hold air", "Slowing down", "Duck!"})
         self.assertTrue(controller.view_state["cleared"] >= 1 or controller.view_state["misses"] >= 1)
 
-    def test_neuro_racer_focus_and_relax_steer_between_lanes(self):
-        controller = NeuroRacerController()
+    def test_neon_vice_gyro_aiming(self):
+        controller = NeonViceController()
         self._calibrate(controller)
-        start_lane = controller.view_state["lane"]
-
-        controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=2.0)
-        snapshot = controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=2.0)
-        self.assertEqual(snapshot.direction, "right")
-        self.assertEqual(controller.view_state["lane"], start_lane + 1)
-
-        controller.update_gameplay(49.0, 52.0, valid=True, stale=False, elapsed_seconds=3.0)
-        snapshot = controller.update_gameplay(49.0, 52.0, valid=True, stale=False, elapsed_seconds=3.0)
-        self.assertEqual(snapshot.direction, "left")
-        self.assertEqual(controller.view_state["lane"], start_lane)
-
-    def test_neuro_racer_steady_nitro_consumes_charge_and_raises_speed(self):
-        controller = NeuroRacerController()
-        self._calibrate(controller)
-        controller._nitro = 50.0
-        start_speed = controller.view_state["speed"]
-
+        # Calibrate gyroscope (60 zero samples)
+        for _ in range(60):
+            controller.update_mems(0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+        # Run one tick to populate view_state
+        controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=1.0)
+        initial_aim = controller.view_state["aim_angle"]
+        # Tilt head right
+        controller.update_mems(0.0, 0.2, 1.0, 0.0, 0.0, 0.0)
         controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=2.0)
+        self.assertNotEqual(controller.view_state["aim_angle"], initial_aim)
+
+    def test_neon_vice_focus_fires(self):
+        controller = NeonViceController()
+        self._calibrate(controller)
+        for _ in range(60):
+            controller.update_mems(0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+        # High focus → should fire bullets
+        for i in range(1, 6):
+            controller.update_gameplay(55.0, 45.0, valid=True, stale=False, elapsed_seconds=float(i))
+        self.assertGreater(len(controller.view_state["bullets"]), 0)
+
+    def test_neon_vice_wave_spawning(self):
+        controller = NeonViceController()
+        self._calibrate(controller)
+        for _ in range(60):
+            controller.update_mems(0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+        # Tick through spawn delay to trigger wave
+        for i in range(1, 20):
+            controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=float(i))
+        self.assertGreater(controller.view_state["wave_number"], 0)
+        self.assertGreater(len(controller.view_state["enemies"]), 0)
+
+    def test_neon_vice_relaxation_shield(self):
+        controller = NeonViceController()
+        self._calibrate(controller)
+        for _ in range(60):
+            controller.update_mems(0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+        # Sustained relaxation → shield activates
+        for i in range(1, 15):
+            controller.update_gameplay(45.0, 55.0, valid=True, stale=False, elapsed_seconds=float(i))
+        self.assertTrue(controller.view_state["shield_active"])
+
+    def test_neon_vice_level_completion(self):
+        controller = NeonViceController()
+        self._calibrate(controller)
+        for _ in range(60):
+            controller.update_mems(0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+        # Spawn a wave manually, kill all enemies, check level completion
+        controller._spawn_wave()
+        controller._enemies.clear()
+        controller._wave_number = controller._wave_count
+        controller._wave_spawned = True
         snapshot = controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=2.0)
-
-        self.assertEqual(snapshot.direction, "steady")
-        self.assertGreater(controller.view_state["speed"], start_speed)
-        self.assertLess(controller.view_state["nitro"], 50.0)
-
-    def test_neuro_racer_collisions_reduce_stability_and_break_streaks(self):
-        controller = NeuroRacerController()
-        self._calibrate(controller)
-        controller._lane = 1
-        controller._streak = 3
-        controller._best_streak = 3
-        controller._traffic = [{"lane": 1, "gap": 12.0, "speed": 56.0, "value": 45}]
-        start_stability = controller.view_state["stability"]
-
-        controller.update_gameplay(50.1, 50.0, valid=True, stale=False, elapsed_seconds=2.0)
-
-        self.assertLess(controller.view_state["stability"], start_stability)
-        self.assertEqual(controller.view_state["streak"], 0)
-        self.assertEqual(controller.view_state["collisions"], 1)
-
-    def test_neuro_racer_finish_overlay_before_progression(self):
-        controller = NeuroRacerController()
-        self._calibrate(controller)
-        controller._distance = controller._finish_distance
-        controller._view_state = controller._racer_view_state()
-
-        snapshot = controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=8.0)
-
-        self.assertFalse(snapshot.level_completed)
-        self.assertEqual(controller.view_state["overlay_kind"], "finish")
-
-        for _ in range(7):
-            snapshot = controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=8.0)
-
-        self.assertTrue(snapshot.level_completed)
-        self.assertEqual(controller.current_level_number, 2)
-
-    def test_neon_drift_arena_focus_and_relax_shift_kart_between_lanes(self):
-        controller = NeonDriftArenaController()
-        self._calibrate(controller)
-        start_lane = controller.view_state["kart_lane"]
-
-        controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=2.0)
-        snapshot = controller.update_gameplay(52.0, 49.0, valid=True, stale=False, elapsed_seconds=2.0)
-        self.assertEqual(snapshot.direction, "right")
-        self.assertEqual(controller.view_state["kart_lane"], start_lane + 1)
-
-        controller.update_gameplay(49.0, 52.0, valid=True, stale=False, elapsed_seconds=3.0)
-        snapshot = controller.update_gameplay(49.0, 52.0, valid=True, stale=False, elapsed_seconds=3.0)
-        self.assertEqual(snapshot.direction, "left")
-        self.assertEqual(controller.view_state["kart_lane"], start_lane)
-
-    def test_neon_drift_arena_steady_boost_consumes_charge(self):
-        controller = NeonDriftArenaController()
-        self._calibrate(controller)
-        controller._boost_meter = 52.0
-        start_progress = controller.view_state["track_progress"]
-
-        controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=2.0)
-        snapshot = controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=2.0)
-
-        self.assertEqual(snapshot.direction, "boost")
-        self.assertGreater(controller.view_state["track_progress"], start_progress)
-        self.assertGreater(controller.view_state["boost_ticks"], 0)
-        self.assertLess(controller.view_state["boost_meter"], 52.0)
-
-    def test_neon_drift_arena_hazard_hit_resets_combo_and_drains_score(self):
-        controller = NeonDriftArenaController()
-        self._calibrate(controller)
-        controller._lane = 2
-        controller._drift_bias = 0.0
-        controller._combo = 4
-        controller._best_combo = 4
-        controller._score = 180
-        controller._items = [
-            {
-                "type": "hazard",
-                "distance": 9.0,
-                "lane": 2.0,
-                "width": 0.9,
-                "sway": 0.0,
-                "penalty": 40,
-                "resolved": False,
-            }
-        ]
-        controller._view_state = controller._arena_view_state()
-
-        controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=2.0)
-
-        self.assertEqual(controller.view_state["hazard_hits"], 1)
-        self.assertEqual(controller.view_state["combo"], 0)
-        self.assertLess(controller.view_state["score"], 180)
-
-    def test_neon_drift_arena_completion_uses_overlay_before_level_progression(self):
-        controller = NeonDriftArenaController()
-        self._calibrate(controller)
-        controller._target_collectibles = 1
-        controller._target_score = 20
-        controller._items = [
-            {
-                "type": "tile",
-                "distance": 8.0,
-                "lane": float(controller._lane),
-                "value": 28,
-                "style": "violet",
-                "sway": 0.0,
-                "width": 0.62,
-                "resolved": False,
-            }
-        ]
-        controller._view_state = controller._arena_view_state()
-
-        snapshot = controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=3.0)
-
-        self.assertFalse(snapshot.level_completed)
         self.assertEqual(controller.view_state["overlay_kind"], "success")
 
-        for _ in range(7):
-            snapshot = controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=3.0)
+    def test_hill_climb_racer_focus_accelerates(self):
+        controller = HillClimbRacerController()
+        self._calibrate(controller)
+        for _ in range(60):
+            controller.update_mems(0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+        controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=1.0)
+        initial_dist = controller.view_state["distance"]
+        for i in range(2, 12):
+            controller.update_gameplay(55.0, 45.0, valid=True, stale=False, elapsed_seconds=float(i))
+        self.assertGreater(controller.view_state["distance"], initial_dist)
+        self.assertGreater(controller.view_state["car_vx"], 0)
 
-        self.assertTrue(snapshot.level_completed)
-        self.assertEqual(controller.current_level_number, 2)
+    def test_hill_climb_racer_relax_brakes(self):
+        controller = HillClimbRacerController()
+        self._calibrate(controller)
+        for _ in range(60):
+            controller.update_mems(0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+        # Build up speed first
+        for i in range(1, 8):
+            controller.update_gameplay(55.0, 45.0, valid=True, stale=False, elapsed_seconds=float(i))
+        speed_before = controller.view_state["car_vx"]
+        # Now brake
+        for i in range(8, 14):
+            controller.update_gameplay(45.0, 55.0, valid=True, stale=False, elapsed_seconds=float(i))
+        self.assertLess(controller.view_state["car_vx"], speed_before)
+
+    def test_hill_climb_racer_fuel_depletes(self):
+        controller = HillClimbRacerController()
+        self._calibrate(controller)
+        for _ in range(60):
+            controller.update_mems(0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+        for i in range(1, 20):
+            controller.update_gameplay(55.0, 45.0, valid=True, stale=False, elapsed_seconds=float(i))
+        self.assertLess(controller.view_state["fuel"], 100.0)
+
+    def test_hill_climb_racer_gyro_tilts_car(self):
+        controller = HillClimbRacerController()
+        self._calibrate(controller)
+        for _ in range(60):
+            controller.update_mems(0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+        # Put car in the air manually
+        controller._on_ground = False
+        controller._air_ticks = 5
+        controller.update_mems(0.0, 0.3, 1.0, 0.0, 0.0, 0.0)
+        controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=1.0)
+        self.assertNotEqual(controller.view_state["car_angle"], 0.0)
+
+    def test_hill_climb_racer_level_completion(self):
+        controller = HillClimbRacerController()
+        self._calibrate(controller)
+        for _ in range(60):
+            controller.update_mems(0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
+        controller._distance = controller._target_distance + 1
+        controller._world_x = controller._target_distance + 1
+        snapshot = controller.update_gameplay(50.0, 50.0, valid=True, stale=False, elapsed_seconds=2.0)
+        self.assertEqual(controller.view_state["overlay_kind"], "success")
 
     def test_space_shooter_stale_metrics_pause_progression(self):
         controller = SpaceShooterController()
@@ -1036,16 +1005,6 @@ class TrainingGameControllerTests(unittest.TestCase):
 
         self.assertIn("stale", snapshot.blocked_reason.lower())
         self.assertEqual(start_enemies, controller.view_state["enemies"])
-
-    def test_neuro_racer_stale_metrics_pause_progression(self):
-        controller = NeuroRacerController()
-        self._calibrate(controller)
-        start_distance = controller.view_state["distance"]
-
-        snapshot = controller.update_gameplay(52.0, 49.0, valid=False, stale=True, elapsed_seconds=1.0)
-
-        self.assertIn("stale", snapshot.blocked_reason.lower())
-        self.assertEqual(start_distance, controller.view_state["distance"])
 
     def test_bubble_burst_focus_and_relax_move_aim(self):
         controller = BubbleBurstController()

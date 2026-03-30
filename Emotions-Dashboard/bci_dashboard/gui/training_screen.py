@@ -26,15 +26,14 @@ from gui.training_audio import AdaptiveMusicEngine, TRAINING_AUDIO_ASSET_DIR
 from gui.training_games import TRAINING_SPECS, active_training_specs
 from gui.widgets.mind_maze_board import MindMazeBoard, MindMazeControlBar
 from gui.widgets.training_game_widgets import (
-    AstralGliderWidget,
     BubbleBurstWidget,
     CandyCascadeWidget,
     CalmCurrentWidget,
     FullRebootWidget,
+    HillClimbRacerWidget,
     JumpBallWidget,
-    NeonDriftArenaWidget,
+    NeonViceWidget,
     NeuroMusicFlowWidget,
-    NeuroRacerWidget,
     PatternRecallWidget,
     ProstheticArmWidget,
     SpaceShooterWidget,
@@ -199,7 +198,7 @@ class SoundtrackCard(QFrame):
 
 class TrainingScreen(QWidget):
     neuroflow_quick_calibration_requested = Signal()
-    IMMERSIVE_GAME_IDS = {"tug_of_war", "space_shooter", "neuro_racer", "bubble_burst", "neon_drift_arena", "astral_glider", "jump_ball"}
+    IMMERSIVE_GAME_IDS = {"tug_of_war", "space_shooter", "bubble_burst", "jump_ball", "neon_vice", "hill_climb_racer"}
 
     SOUNDTRACKS = {
         "Aurora Drift": {
@@ -245,17 +244,7 @@ class TrainingScreen(QWidget):
 
     ALL_SOUNDTRACKS = {**SOUNDTRACKS, **MUSIC_FLOW_SOUNDTRACKS}
 
-    PREVIEW_CARDS = [
-        {
-            "section": "Improve concentration",
-            "eyebrow": "Skill builder",
-            "title": "Training skills",
-            "duration": "12 min",
-            "description": "A roadmap card for a future procedural-learning trainer.",
-            "preview_label": "FOCUS",
-            "colors": ("#61533f", "#c9aa7a"),
-        },
-    ]
+    PREVIEW_CARDS = []
 
     def __init__(self, parent=None, runtime=None):
         super().__init__(parent)
@@ -848,20 +837,18 @@ class TrainingScreen(QWidget):
         self._tug_of_war_widget = TugOfWarWidget()
         self._space_shooter_widget = SpaceShooterWidget()
         self._jump_ball_widget = JumpBallWidget()
-        self._neuro_racer_widget = NeuroRacerWidget()
-        self._neon_drift_arena_widget = NeonDriftArenaWidget()
         self._bubble_burst_widget = BubbleBurstWidget()
         self._pattern_widget = PatternRecallWidget()
         self._candy_cascade_widget = CandyCascadeWidget()
         self._prosthetic_arm_widget = ProstheticArmWidget()
-        self._astral_glider_widget = AstralGliderWidget()
+        self._neon_vice_widget = NeonViceWidget()
+        self._hill_climb_racer_widget = HillClimbRacerWidget()
         self._tug_of_war_widget.set_menu_callback(self._cancel_gameplay)
         self._space_shooter_widget.set_menu_callback(self._cancel_gameplay)
-        self._neuro_racer_widget.set_menu_callback(self._cancel_gameplay)
-        self._neon_drift_arena_widget.set_menu_callback(self._cancel_gameplay)
         self._bubble_burst_widget.set_menu_callback(self._cancel_gameplay)
         self._bubble_burst_widget.set_swap_callback(self._swap_bubble_queue)
-        self._astral_glider_widget.set_menu_callback(self._cancel_gameplay)
+        self._neon_vice_widget.set_menu_callback(self._cancel_gameplay)
+        self._hill_climb_racer_widget.set_menu_callback(self._cancel_gameplay)
         self._game_widget_map = {
             "mind_maze": self._maze_board,
             "calm_current": self._current_widget,
@@ -870,13 +857,12 @@ class TrainingScreen(QWidget):
             "tug_of_war": self._tug_of_war_widget,
             "space_shooter": self._space_shooter_widget,
             "jump_ball": self._jump_ball_widget,
-            "neuro_racer": self._neuro_racer_widget,
-            "neon_drift_arena": self._neon_drift_arena_widget,
             "bubble_burst": self._bubble_burst_widget,
             "pattern_recall": self._pattern_widget,
             "candy_cascade": self._candy_cascade_widget,
             "prosthetic_arm": self._prosthetic_arm_widget,
-            "astral_glider": self._astral_glider_widget,
+            "neon_vice": self._neon_vice_widget,
+            "hill_climb_racer": self._hill_climb_racer_widget,
         }
         for widget in self._game_widget_map.values():
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
