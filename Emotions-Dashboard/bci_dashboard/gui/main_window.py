@@ -24,28 +24,33 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from calibration.calibration_manager import CalibrationManager
-from calibration.calibration_store import load_calibration
-from classifiers.cardio_handler import CardioHandler
-from classifiers.emotions_handler import EmotionsHandler
-from classifiers.mems_handler import MemsHandler
-from classifiers.physio_handler import PhysioHandler
-from classifiers.productivity_handler import ProductivityHandler
 from device.capsule_bridge import CapsuleBridge
 from device.device_manager import DeviceManager
-from device.device_status_monitor import DeviceStatusMonitor
 from gui.calibration_screen import CalibrationScreen
 from gui.connection_screen import ConnectionScreen
 from gui.dashboard_screen import DashboardScreen
-from gui.metric_graph_windows import CognitiveStatesWindow, TimeSeriesGraphWindow, graph_spec
+from gui.graph_window_manager import GraphWindowManagerMixin
 from gui.mems_screen import MemsScreen
 from gui.phaseon_screen import PhaseonScreen
+from gui.screen_router import (
+    PAGE_CALIBRATION,
+    PAGE_CONNECTION,
+    PAGE_DASHBOARD,
+    PAGE_MEMS,
+    PAGE_PHASEON,
+    PAGE_SESSIONS,
+    PAGE_TRAINING,
+    PAGE_YOUTUBE,
+    ScreenRouterMixin,
+)
 from gui.sessions_screen import SessionsScreen
+from gui.signal_dispatcher import SignalDispatcherMixin
 from gui.training_screen import TrainingScreen
 from gui.youtube_screen import YouTubeScreen
 from gui.widgets.nav_bar import NavBar
 from prosthetic_arm.phaseon_runtime import PhaseonRuntime
 from storage.session_recorder import SessionRecorder
+from utils.psd_worker import PsdWorker
 from utils.config import (
     ACCENT_GREEN,
     BG_NAV,
@@ -65,18 +70,6 @@ from utils.helpers import (
 
 
 log = logging.getLogger(__name__)
-
-GRAPH_HISTORY_RETENTION_SEC = 15.0 * 60.0
-
-PAGE_CONNECTION = 0
-PAGE_CALIBRATION = 1
-PAGE_DASHBOARD = 2
-PAGE_MEMS = 3
-PAGE_TRAINING = 4
-PAGE_SESSIONS = 5
-PAGE_PHASEON = 6
-PAGE_YOUTUBE = 7
-
 
 class AsyncSessionRecorder:
     def __init__(self):
@@ -283,7 +276,7 @@ class AsyncSessionRecorder:
         self._thread.join(timeout=5.0)
 
 
-class MainWindow(QMainWindow):
+class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
@@ -338,6 +331,9 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._connect_device_signals()
+
+        self._psd_worker = PsdWorker(parent=self)
+        self._psd_worker.result_ready.connect(self._on_psd_computed)
 
         self._log_timer = QTimer(self)
         self._log_timer.setInterval(1000)
@@ -559,247 +555,6 @@ class MainWindow(QMainWindow):
         )
         return btn
 
-    def _show_dashboard(self, section: str = ""):
-        self._stack.setCurrentIndex(PAGE_DASHBOARD)
-        section_map = {
-            "Rhythms Diagram": "rhythms_diagram",
-        }
-        section_id = section_map.get(section)
-        if section_id:
-            QTimer.singleShot(0, lambda sid=section_id: self._dash_screen.show_section(sid))
-
-    def _show_metric_graph(self, graph_id: str):
-        window = self._graph_windows.get(graph_id)
-        if window is None:
-            window = self._create_metric_graph_window(graph_id)
-            if window is None:
-                return
-            self._graph_windows[graph_id] = window
-        if not self.is_graph_active(graph_id):
-            self.activate_graph(graph_id)
-        else:
-            self._refresh_metric_graph_window(graph_id)
-        window.show()
-        window.raise_()
-        window.activateWindow()
-
-    def _show_mems(self, section: str = ""):
-        self._stack.setCurrentIndex(PAGE_MEMS)
-        section_map = {
-            "Rhythms Diagram": "rhythms_diagram",
-            "Accelerometer": "accelerometer",
-            "Accelerometer Tab": "accelerometer",
-            "Gyroscope": "gyroscope",
-            "Gyroscope Tab": "gyroscope",
-        }
-        section_id = section_map.get(section)
-        if section_id:
-            QTimer.singleShot(0, lambda sid=section_id: self._mems_screen.show_section(sid))
-
-    def _show_phaseon(self):
-        self._stack.setCurrentIndex(PAGE_PHASEON)
-
-    @staticmethod
-    def _build_graph_history_store(graph_id: str):
-        spec = graph_spec(graph_id)
-        if spec is None:
-            return {}
-        return {series.key: deque() for series in spec.series}
-
-    def _create_metric_graph_window(self, graph_id: str):
-        if graph_id == "cognitive_states":
-            window = CognitiveStatesWindow(self)
-        else:
-            spec = graph_spec(graph_id)
-            if spec is None:
-                return None
-            window = TimeSeriesGraphWindow(spec, self)
-        window.setAttribute(Qt.WA_DeleteOnClose, False)
-        window.window_closed.connect(lambda gid=graph_id: self.deactivate_graph(gid))
-        return window
-
-    def is_graph_active(self, graph_id: str) -> bool:
-        return graph_id in self._active_graphs
-
-    def activate_graph(self, graph_id: str):
-        if graph_id not in self._graph_windows:
-            return
-        self._active_graphs.add(graph_id)
-        self.reset_graph_history(graph_id)
-        self._seed_graph_history(graph_id)
-        self._refresh_metric_graph_window(graph_id)
-
-    def deactivate_graph(self, graph_id: str):
-        self._active_graphs.discard(graph_id)
-        self._graph_histories.pop(graph_id, None)
-        self._graph_session_starts.pop(graph_id, None)
-
-    def reset_graph_history(self, graph_id: str):
-        self._graph_session_starts[graph_id] = time.monotonic()
-        self._graph_histories[graph_id] = self._build_graph_history_store(graph_id)
-
-    def append_graph_point(self, graph_id: str, series_key: str, value, timestamp: float | None = None):
-        if not self.is_graph_active(graph_id):
-            return
-        history_store = self._graph_histories.setdefault(
-            graph_id,
-            self._build_graph_history_store(graph_id),
-        )
-        if series_key not in history_store or value is None:
-            return
-        try:
-            numeric = float(value)
-        except (TypeError, ValueError):
-            return
-        ts = float(timestamp if timestamp is not None else time.monotonic())
-        history = history_store[series_key]
-        history.append((ts, numeric))
-        cutoff = ts - GRAPH_HISTORY_RETENTION_SEC
-        while history and history[0][0] < cutoff:
-            history.popleft()
-
-    def _seed_graph_history(self, graph_id: str):
-        timestamp = time.monotonic()
-        if graph_id == "frequency_peaks":
-            self.append_graph_point(graph_id, "alpha_peak", self._latest_peak_freqs.get("alpha_peak"), timestamp)
-            self.append_graph_point(graph_id, "beta_peak", self._latest_peak_freqs.get("beta_peak"), timestamp)
-            self.append_graph_point(graph_id, "theta_peak", self._latest_peak_freqs.get("theta_peak"), timestamp)
-            return
-
-        graph_seed_values = {
-            "concentration_index": ("concentrationScore", self._latest_prod.get("concentrationScore")),
-            "relaxation_index": ("relaxationScore", self._latest_prod.get("relaxationScore")),
-            "fatigue_score": ("fatigueScore", self._latest_prod.get("fatigueScore")),
-            "reverse_fatigue_score": ("reverseFatigueScore", self._latest_prod.get("reverseFatigueScore")),
-            "alpha_gravity": ("gravityScore", self._latest_prod.get("gravityScore")),
-            "productivity_score": ("currentValue", self._latest_prod.get("currentValue")),
-            "accumulated_fatigue": ("accumulatedFatigue", self._latest_prod.get("accumulatedFatigue")),
-            "eeg_quality": ("eegQuality", self._latest_eeg_quality_value()),
-        }
-        series = graph_seed_values.get(graph_id)
-        if series is not None:
-            self.append_graph_point(graph_id, series[0], series[1], timestamp)
-
-    def _refresh_metric_graph_window(self, graph_id: str):
-        window = self._graph_windows.get(graph_id)
-        if window is None or not self.is_graph_active(graph_id):
-            return
-        if graph_id == "cognitive_states":
-            window.set_bar_values(
-                {
-                    "Attention": float(self._latest_emo.get("attention", 0.0) or 0.0),
-                    "Relaxation": float(self._latest_emo.get("relaxation", 0.0) or 0.0),
-                    "Cognitive Load": float(self._latest_emo.get("cognitiveLoad", 0.0) or 0.0),
-                    "Cognitive Control": float(self._latest_emo.get("cognitiveControl", 0.0) or 0.0),
-                }
-            )
-            return
-
-        spec = graph_spec(graph_id)
-        if spec is None:
-            return
-        history = {
-            series.key: list(self._graph_histories.get(graph_id, {}).get(series.key, ()))
-            for series in spec.series
-        }
-        window.set_session_start(self._graph_session_starts.get(graph_id, time.monotonic()))
-        window.set_history_data(history, references=self._graph_references)
-
-    def _refresh_all_metric_graphs(self):
-        for graph_id in list(self._active_graphs):
-            self._refresh_metric_graph_window(graph_id)
-
-    def _append_graph_history(self, key: str, value, timestamp: float | None = None):
-        raise NotImplementedError("Use append_graph_point(graph_id, series_key, value, timestamp) instead.")
-
-    def _reset_metric_graph_history(self):
-        for graph_id in list(self._active_graphs):
-            self.reset_graph_history(graph_id)
-            self._seed_graph_history(graph_id)
-        self._refresh_all_metric_graphs()
-
-    def _load_saved_graph_references(self, serial: str):
-        self._graph_references.clear()
-        if not serial:
-            self._refresh_all_metric_graphs()
-            return
-        try:
-            data = load_calibration(serial) or {}
-        except Exception:
-            data = {}
-        prod = data.get("prod_baselines") or {}
-        if prod:
-            self._graph_references.update(
-                {
-                    "gravityBaseline": float(prod.get("gravity")) if prod.get("gravity") is not None else None,
-                    "productivityBaseline": float(prod.get("productivity")) if prod.get("productivity") is not None else None,
-                    "fatigueBaseline": float(prod.get("fatigue")) if prod.get("fatigue") is not None else None,
-                    "reverseFatigueBaseline": float(prod.get("reverseFatigue")) if prod.get("reverseFatigue") is not None else None,
-                    "relaxationBaseline": float(prod.get("relaxation")) if prod.get("relaxation") is not None else None,
-                    "concentrationBaseline": float(prod.get("concentration")) if prod.get("concentration") is not None else None,
-                }
-            )
-        self._refresh_all_metric_graphs()
-
-    def _update_graph_references_from_prod_baselines(self, data: dict):
-        if not data:
-            return
-        mapping = {
-            "gravity": "gravityBaseline",
-            "productivity": "productivityBaseline",
-            "fatigue": "fatigueBaseline",
-            "reverseFatigue": "reverseFatigueBaseline",
-            "relaxation": "relaxationBaseline",
-            "concentration": "concentrationBaseline",
-        }
-        for source_key, target_key in mapping.items():
-            value = data.get(source_key)
-            if value is None:
-                continue
-            try:
-                self._graph_references[target_key] = float(value)
-            except (TypeError, ValueError):
-                continue
-        self._refresh_all_metric_graphs()
-
-    def _update_graph_references_from_indexes(self, data: dict):
-        if not data:
-            return
-        for key in (
-            "gravityBaseline",
-            "productivityBaseline",
-            "fatigueBaseline",
-            "reverseFatigueBaseline",
-            "relaxationBaseline",
-            "concentrationBaseline",
-        ):
-            value = data.get(key)
-            if value is None:
-                continue
-            try:
-                self._graph_references[key] = float(value)
-            except (TypeError, ValueError):
-                continue
-        self._refresh_all_metric_graphs()
-
-    def _append_eeg_quality_history(self, timestamp: float | None = None):
-        self.append_graph_point(
-            "eeg_quality",
-            "eegQuality",
-            self._latest_eeg_quality_value(),
-            timestamp=timestamp,
-        )
-
-    def _latest_eeg_quality_value(self) -> float | None:
-        has_prod_artifacts = bool(self._latest_indexes.get("hasArtifacts", False))
-        has_physio_artifacts = bool(
-            self._latest_physio.get("nfbArtifacts", False)
-            or self._latest_physio.get("cardioArtifacts", False)
-        )
-        if not self._latest_indexes and not self._latest_physio:
-            return None
-        return 0.0 if (has_prod_artifacts or has_physio_artifacts) else 100.0
-
     def _on_stop_signal(self):
         if self._streaming:
             self._streaming = False
@@ -878,174 +633,6 @@ class MainWindow(QMainWindow):
             self._stack.setCurrentIndex(self._calibration_return_page)
         self._embedded_neuroflow_calibration = False
 
-    def _connect_device_signals(self):
-        self._dm.connection_changed.connect(self._on_device_connected)
-        self._dm.battery_updated.connect(self._on_battery_updated)
-        self._dm.resistance_updated.connect(self._on_resistance_updated)
-        self._dm.mode_changed.connect(self._on_mode_updated)
-        self._dm.error_occurred.connect(self._on_error)
-
-    def _on_battery_updated(self, pct: int):
-        self._dash_screen.set_battery(pct)
-        self._mems_screen.set_battery(pct)
-        self._phaseon_runtime.update_device_status(battery=pct)
-
-    def _on_resistance_updated(self, data: dict):
-        self._latest_resistances = data or {}
-        self._dash_screen.on_resistance(data)
-        if self._training_screen.is_neuroflow_active():
-            self._training_screen.on_resistance(data or {})
-        self._phaseon_runtime.ingest_resistances(data)
-        if self._session_active:
-            self._recorder.record_resistances(data or {})
-
-    def _on_mode_updated(self, mode: int):
-        mode_map = {
-            0: "Resistance",
-            1: "Signal",
-            2: "Signal+Resistance",
-            3: "MEMS",
-            4: "Stop MEMS",
-            5: "PPG",
-            6: "Stop PPG",
-        }
-        mode_str = mode_map.get(int(mode), "Unspecified")
-        self._dash_screen.set_mode(mode_str)
-        self._mems_screen.set_mode(mode_str)
-        self._phaseon_runtime.update_device_status(mode=mode_str)
-
-    def _on_device_connected(self, status: int):
-        try:
-            status = int(status)
-        except (ValueError, TypeError):
-            log.warning("Invalid connection status: %r", status)
-            return
-
-        if status == 1:
-            log.info("Device connected - serial %s", self._dm.device_serial)
-            self._disconnect_timer.stop()
-            self._dash_screen.set_session_info(
-                connected=True,
-                serial=self._dm.device_serial or "",
-            )
-            self._training_screen.on_connection_state(
-                connected=True,
-                serial=self._dm.device_serial or "",
-            )
-            self._mems_screen.set_session_info(
-                connected=True,
-                serial=self._dm.device_serial or "",
-            )
-            self._dash_screen.set_eeg_stream_metadata(
-                sample_rate_hz=self._dm.eeg_sample_rate,
-                channel_names=self._dm.display_channel_names,
-            )
-            self._training_screen.set_eeg_stream_metadata(
-                sample_rate_hz=self._dm.eeg_sample_rate,
-                channel_names=self._dm.display_channel_names,
-            )
-            self._phaseon_runtime.update_device_status(
-                connected=True,
-                serial=self._dm.device_serial or "",
-                sample_rate_hz=self._dm.eeg_sample_rate,
-                channel_names=self._dm.display_channel_names,
-            )
-            self._refresh_battery_now()
-
-            if not self._classifiers_created:
-                self._create_classifiers()
-
-            serial = self._dm.device_serial or ""
-            if self._cal_mgr and serial and self._cal_mgr.can_import(serial):
-                self._cal_mgr.import_saved(serial)
-                self._load_saved_graph_references(serial)
-            else:
-                self._load_saved_graph_references("")
-            if not self._session_active:
-                self._safe_start_streaming()
-                if self._streaming:
-                    self._begin_session()
-                else:
-                    QMessageBox.warning(
-                        self,
-                        "Start Signal Failed",
-                        "The device connected, but live streaming could not be started.",
-                    )
-        elif status == 0:
-            log.info("Device disconnected signal - starting debounce timer")
-            self._phaseon_runtime.update_device_status(connected=False)
-            if not self._disconnect_timer.isActive():
-                self._disconnect_timer.start()
-
-    def _confirm_disconnected(self):
-        if not self._dm.is_connected():
-            log.info("Device confirmed disconnected")
-            self._streaming = False
-            self._dash_screen.set_session_info(connected=False)
-            self._training_screen.on_connection_state(
-                connected=False,
-                serial=self._dm.device_serial or "",
-            )
-            self._mems_screen.set_session_info(connected=False)
-            self._phaseon_runtime.update_device_status(connected=False, session_id="")
-            self._dash_screen.set_streaming_active(False)
-            self._mems_screen.set_streaming_active(False)
-            self._stop_session()
-
-    def _create_classifiers(self):
-        dev = self._dm.device
-        lib = self._bridge.lib
-        if dev is None:
-            return
-
-        try:
-            self._emotions_h = EmotionsHandler(dev, lib, parent=self)
-            self._prod_h = ProductivityHandler(dev, lib, parent=self)
-            self._cardio_h = CardioHandler(dev, lib, parent=self)
-            self._physio_h = PhysioHandler(dev, lib, parent=self)
-        except Exception as exc:
-            log.error("Failed to create classifiers: %s", _safe_str(exc))
-            return
-
-        try:
-            self._mems_h = MemsHandler(dev, lib, parent=self)
-        except Exception as exc:
-            self._mems_h = None
-            log.warning("MEMS handler unavailable: %s", _safe_str(exc))
-
-        self._classifiers_created = True
-        self._cal_mgr = CalibrationManager(dev, lib, self._prod_h, self._physio_h, parent=self)
-        self._status_mon = DeviceStatusMonitor(self._dm, parent=self)
-
-        self._emotions_h.states_updated.connect(self._on_emotions)
-        self._prod_h.metrics_updated.connect(self._on_productivity)
-        self._prod_h.indexes_updated.connect(self._on_productivity_indexes)
-        self._cardio_h.cardio_updated.connect(self._on_cardio)
-        self._cardio_h.ppg_updated.connect(self._on_ppg)
-        self._cardio_h.calibrated.connect(lambda: self._dash_screen.set_ppg_calibrated(True))
-        self._physio_h.states_updated.connect(self._on_physio_states)
-        if self._mems_h:
-            self._mems_h.mems_updated.connect(self._on_mems)
-
-        self._dm.psd_received.connect(self._on_psd)
-        self._dm.eeg_received.connect(self._on_eeg)
-        self._dm.artifacts_received.connect(self._on_artifacts)
-
-        self._emotions_h.error_occurred.connect(self._on_error)
-
-        self._cal_mgr.stage_changed.connect(self._cal_screen.set_stage)
-        self._cal_mgr.progress_updated.connect(self._cal_screen.set_progress)
-        self._cal_mgr.calibration_complete.connect(self._on_calibration_done)
-        self._cal_mgr.calibration_failed.connect(self._on_calibration_failed)
-        self._cal_mgr.iapf_updated.connect(self._on_iapf_updated)
-
-        self._cal_screen.cancel_button.clicked.connect(self._cancel_calibration)
-
-        self._status_mon.battery_polled.connect(self._on_battery_updated)
-        self._status_mon.disconnection_detected.connect(self._on_disconnect_detected)
-        self._status_mon.reconnection_failed.connect(self._on_reconnect_failed)
-        self._status_mon.reconnection_succeeded.connect(self._on_reconnect_ok)
-
     def _on_calibration_done(self, cal_data: dict):
         mode = cal_data.get("mode", "quick")
         nfb = cal_data.get("nfb", {})
@@ -1062,50 +649,6 @@ class MainWindow(QMainWindow):
         if self._embedded_neuroflow_calibration:
             self._training_screen.on_neuroflow_calibration_finished(True, text)
         QTimer.singleShot(1200, self._finish_calibration_flow)
-
-    def _on_nav_tab_selected(self, tab_idx: int):
-        """Map NavBar tab index (0-4) to stack page."""
-        mapping = {
-            0: PAGE_CONNECTION,
-            1: PAGE_DASHBOARD,
-            2: PAGE_TRAINING,
-            3: PAGE_SESSIONS,
-            4: PAGE_YOUTUBE,
-        }
-        page = mapping.get(tab_idx, PAGE_CONNECTION)
-        if page == PAGE_TRAINING and self._stack.currentIndex() == PAGE_TRAINING:
-            return  # already there
-        self._stack.setCurrentIndex(page)
-
-    def _sync_nav_bar(self, page_index: int):
-        """Keep NavBar indicator in sync when page changes programmatically."""
-        reverse_map = {
-            PAGE_CONNECTION: 0,
-            PAGE_CALIBRATION: 0,   # calibration belongs to Home flow
-            PAGE_DASHBOARD: 1,
-            PAGE_MEMS: 1,          # MEMS is part of Monitoring
-            PAGE_TRAINING: 2,
-            PAGE_SESSIONS: 3,
-            PAGE_PHASEON: 2,       # PhaseON is a training mode
-            PAGE_YOUTUBE: 4,       # Media tab
-        }
-        tab = reverse_map.get(page_index, 0)
-        self._nav_bar.set_active_tab(tab)
-
-    def _go_home(self):
-        current_index = self._stack.currentIndex()
-        if current_index == PAGE_DASHBOARD:
-            return
-        if current_index == PAGE_TRAINING:
-            self._training_screen.stop_active_flow()
-            self._stack.setCurrentIndex(PAGE_DASHBOARD)
-            return
-        if current_index == PAGE_CALIBRATION:
-            self._calibration_return_page = PAGE_DASHBOARD
-            self._cancel_calibration()
-            return
-        self._stack.setCurrentIndex(PAGE_DASHBOARD)
-
     def _on_calibration_failed(self, reason: str):
         log.warning("Calibration failed: %s", reason)
         self._cal_screen.set_result_text(reason)
@@ -1215,143 +758,6 @@ class MainWindow(QMainWindow):
         self._dash_screen.stop_eeg_timer()
         if self._status_mon:
             self._status_mon.stop()
-
-    def _on_emotions(self, data: dict):
-        self._latest_emo = data or {}
-        self._dash_screen.on_emotions(data)
-        self._training_screen.on_emotions(data)
-        self._youtube_screen.on_emotions(data)
-        if self.is_graph_active("cognitive_states"):
-            self._refresh_metric_graph_window("cognitive_states")
-        if self._session_active:
-            self._recorder.record_emotions(self._latest_emo)
-
-    def _on_productivity(self, data: dict):
-        self._latest_prod = data or {}
-        self._dash_screen.on_productivity(data)
-        self._phaseon_runtime.ingest_productivity(data)
-        self._training_screen.on_productivity(data)
-        self._youtube_screen.on_productivity(data)
-        now = time.monotonic()
-        self.append_graph_point("concentration_index", "concentrationScore", self._latest_prod.get("concentrationScore"), timestamp=now)
-        self.append_graph_point("relaxation_index", "relaxationScore", self._latest_prod.get("relaxationScore"), timestamp=now)
-        self.append_graph_point("fatigue_score", "fatigueScore", self._latest_prod.get("fatigueScore"), timestamp=now)
-        self.append_graph_point("reverse_fatigue_score", "reverseFatigueScore", self._latest_prod.get("reverseFatigueScore"), timestamp=now)
-        self.append_graph_point("alpha_gravity", "gravityScore", self._latest_prod.get("gravityScore"), timestamp=now)
-        self.append_graph_point("productivity_score", "currentValue", self._latest_prod.get("currentValue"), timestamp=now)
-        self.append_graph_point("accumulated_fatigue", "accumulatedFatigue", self._latest_prod.get("accumulatedFatigue"), timestamp=now)
-        for graph_id in (
-            "concentration_index",
-            "relaxation_index",
-            "fatigue_score",
-            "reverse_fatigue_score",
-            "alpha_gravity",
-            "productivity_score",
-            "accumulated_fatigue",
-        ):
-            self._refresh_metric_graph_window(graph_id)
-        if self._session_active:
-            self._recorder.record_productivity_metrics(self._latest_prod)
-
-    def _on_productivity_indexes(self, data: dict):
-        self._latest_indexes = data or {}
-        self._dash_screen.on_indexes(data)
-        self._update_graph_references_from_indexes(self._latest_indexes)
-        self._append_eeg_quality_history(timestamp=time.monotonic())
-        for graph_id in (
-            "concentration_index",
-            "relaxation_index",
-            "fatigue_score",
-            "reverse_fatigue_score",
-            "alpha_gravity",
-            "eeg_quality",
-        ):
-            self._refresh_metric_graph_window(graph_id)
-        if self._session_active:
-            self._recorder.record_productivity_indexes(self._latest_indexes)
-
-    def _on_cardio(self, data: dict):
-        self._latest_cardio = data or {}
-        self._dash_screen.on_cardio(data)
-        self._training_screen.on_cardio(data)
-
-    def _on_ppg(self, ppg_timed_data):
-        if not self._streaming:
-            return
-        self._dash_screen.on_ppg(ppg_timed_data)
-        if self._session_active:
-            self._recorder.record_ppg_packet(ppg_timed_data)
-
-    def _on_physio_states(self, data: dict):
-        self._latest_physio = data or {}
-        self._dash_screen.on_physio_states(data)
-        self._training_screen.on_physio_states(data)
-        self._append_eeg_quality_history(timestamp=time.monotonic())
-        self._refresh_metric_graph_window("eeg_quality")
-
-    def _on_psd(self, psd_data):
-        if not self._streaming:
-            return
-        psd_snapshot = self._extract_psd_snapshot(psd_data)
-        if not psd_snapshot:
-            return
-        self._latest_psd_t = float(psd_snapshot.get("received_at", time.monotonic()))
-        self._latest_band_powers = dict(psd_snapshot.get("band_powers", {}))
-        self._latest_peak_freqs = dict(psd_snapshot.get("peak_frequencies", {}))
-        self.append_graph_point("frequency_peaks", "alpha_peak", self._latest_peak_freqs.get("alpha_peak"), timestamp=self._latest_psd_t)
-        self.append_graph_point("frequency_peaks", "beta_peak", self._latest_peak_freqs.get("beta_peak"), timestamp=self._latest_psd_t)
-        self.append_graph_point("frequency_peaks", "theta_peak", self._latest_peak_freqs.get("theta_peak"), timestamp=self._latest_psd_t)
-        self._training_screen.update_signal_snapshot(
-            self._latest_band_powers,
-            self._latest_peak_freqs,
-            self._latest_psd_t,
-        )
-        self._refresh_metric_graph_window("frequency_peaks")
-        if self._stack.currentIndex() == PAGE_DASHBOARD:
-            if hasattr(self._dash_screen, "on_psd_snapshot"):
-                self._dash_screen.on_psd_snapshot(psd_snapshot)
-            else:
-                self._dash_screen.on_psd(psd_data)
-        if self._stack.currentIndex() == PAGE_MEMS:
-            self._mems_screen.on_band_powers(self._latest_band_powers)
-
-    def _on_eeg(self, eeg_timed_data):
-        if not self._streaming:
-            return
-        dashboard_visible = self._stack.currentIndex() == PAGE_DASHBOARD
-        if not dashboard_visible and not self._session_active:
-            return
-        eeg_snapshot = self._extract_eeg_snapshot(eeg_timed_data)
-        if not eeg_snapshot:
-            return
-        if dashboard_visible:
-            if hasattr(self._dash_screen, "on_eeg_snapshot"):
-                self._dash_screen.on_eeg_snapshot(eeg_snapshot)
-            else:
-                self._dash_screen.on_eeg(eeg_timed_data)
-        if self._session_active:
-            if hasattr(self._recorder, "record_raw_eeg_snapshot"):
-                self._recorder.record_raw_eeg_snapshot(eeg_snapshot)
-            else:
-                self._recorder.record_raw_eeg_packet(eeg_timed_data)
-
-    def _on_artifacts(self, artifacts):
-        if not self._streaming:
-            return
-        self._dash_screen.on_artifacts(artifacts)
-        if self._session_active:
-            self._recorder.record_artifacts(artifacts)
-
-    def _on_mems(self, mems_timed_data):
-        if not self._streaming:
-            return
-        if self._stack.currentIndex() == PAGE_MEMS:
-            self._mems_screen.on_mems(mems_timed_data)
-        if self._stack.currentIndex() == PAGE_TRAINING:
-            self._training_screen.on_mems(mems_timed_data)
-        if self._session_active:
-            self._recorder.record_mems_packet(mems_timed_data)
-
     def _log_tick(self):
         self._recorder.log_metrics_row(
             emotions=self._latest_emo,
@@ -1382,50 +788,6 @@ class MainWindow(QMainWindow):
         if self._filter_act.isChecked() != bool(checked):
             self._filter_act.setChecked(bool(checked))
 
-    def _on_disconnect_detected(self):
-        log.warning("Device disconnected - attempting to reconnect")
-        self._dash_screen.set_session_info(connected=False)
-        self._training_screen.on_connection_state(
-            connected=False, serial=self._dm.device_serial or ""
-        )
-        self._mems_screen.set_session_info(connected=False)
-        self._phaseon_runtime.update_device_status(connected=False)
-
-    def _on_reconnect_failed(self):
-        log.error("Reconnection failed after max attempts")
-        QMessageBox.warning(
-            self,
-            "Disconnected",
-            "Could not reconnect to the device.\nPlease check the hardware and try again.",
-        )
-        self._stop_session()
-        self._stack.setCurrentIndex(PAGE_CONNECTION)
-
-    def _on_reconnect_ok(self):
-        log.info("Reconnected successfully")
-        self._dash_screen.set_session_info(
-            connected=True, serial=self._dm.device_serial or ""
-        )
-        self._training_screen.on_connection_state(
-            connected=True, serial=self._dm.device_serial or ""
-        )
-        self._training_screen.set_eeg_stream_metadata(
-            sample_rate_hz=self._dm.eeg_sample_rate,
-            channel_names=self._dm.display_channel_names,
-        )
-        self._mems_screen.set_session_info(
-            connected=True, serial=self._dm.device_serial or ""
-        )
-        self._phaseon_runtime.update_device_status(
-            connected=True,
-            serial=self._dm.device_serial or "",
-            sample_rate_hz=self._dm.eeg_sample_rate,
-            channel_names=self._dm.display_channel_names,
-        )
-
-    def _on_error(self, msg):
-        log.error("Error: %s", _safe_str(msg))
-
     def _refresh_battery_now(self):
         pct = self._dm.get_battery()
         if pct is None:
@@ -1445,28 +807,29 @@ class MainWindow(QMainWindow):
         self._dm.disconnect()
         self._streaming = False
         self._recorder.shutdown()
+        self._psd_worker.shutdown()
         self._bridge.shutdown()
         super().closeEvent(event)
 
-    def _update_live_view_activity(self, index: int):
-        dashboard_active = index == PAGE_DASHBOARD
-        mems_active = index == PAGE_MEMS
-        training_active = index == PAGE_TRAINING
-        self._dash_screen.set_view_active(dashboard_active)
-        if hasattr(self._mems_screen, "set_view_active"):
-            self._mems_screen.set_view_active(mems_active)
-        if hasattr(self._training_screen, "set_view_active"):
-            self._training_screen.set_view_active(training_active)
-
     @staticmethod
-    def _extract_psd_summary(psd_data):
-        snapshot = MainWindow._extract_psd_snapshot(psd_data)
-        if not snapshot:
-            return {}, {}
-        return (
-            dict(snapshot.get("band_powers", {})),
-            dict(snapshot.get("peak_frequencies", {})),
-        )
+    def _extract_psd_raw(psd_data):
+        """Read raw frequency/power arrays from the DLL object (main-thread only)."""
+        try:
+            n_freq = psd_data.get_frequencies_count()
+            n_channels = psd_data.get_channels_count()
+            if n_freq <= 0 or n_channels <= 0:
+                return None
+            freqs = np.asarray(
+                [float(psd_data.get_frequency(idx)) for idx in range(n_freq)],
+                dtype=float,
+            )
+            channel_powers = np.zeros((n_channels, n_freq), dtype=float)
+            for ch_idx in range(n_channels):
+                for f_idx in range(n_freq):
+                    channel_powers[ch_idx, f_idx] = float(psd_data.get_psd(ch_idx, f_idx))
+            return freqs, channel_powers
+        except Exception:
+            return None
 
     @staticmethod
     def _extract_psd_snapshot(psd_data):

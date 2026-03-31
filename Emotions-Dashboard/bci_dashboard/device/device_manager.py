@@ -2,11 +2,10 @@
 DeviceManager – scan, connect, subscribe to device-level callbacks,
 and expose Qt signals for the UI layer.
 """
-import json
 import logging
 import os
 import sys
-from PySide6.QtCore import QObject, QProcess, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from utils.config import DEVICE_SEARCH_TIMEOUT_SEC, BIPOLAR_CHANNELS, CAPSULE_SDK_DIR
 from utils.sdk_scalars import coerce_float, coerce_int, coerce_percent
@@ -19,20 +18,6 @@ from Device import Device            # noqa: E402
 
 
 log = logging.getLogger(__name__)
-
-
-def _clean_scan_stderr(stderr: str) -> str:
-    text = (stderr or "").strip()
-    if not text:
-        return ""
-    lowered = text.lower()
-    if "bluetooth is disabled" in lowered:
-        return "Bluetooth is disabled. Please enable Bluetooth and try again."
-    if "failed start ble scanner" in lowered:
-        return "Bluetooth scan failed. Please make sure the Bluetooth adapter is available and try again."
-    if "fatal python error" in lowered or "oleinitialize" in lowered or "qwindowscontext" in lowered:
-        return "Bluetooth scan crashed. Retrying may help."
-    return ""
 
 
 class DeviceManager(QObject):
@@ -61,7 +46,6 @@ class DeviceManager(QObject):
         self._active_bipolar_mode = bool(BIPOLAR_CHANNELS)
         self._eeg_sample_rate = None
         self._eeg_channel_names = []
-        self._scan_process: QProcess | None = None
         self._scan_active = False
         self._requested_device_type = int(DeviceType.Band)
         self._scan_timeout = QTimer(self)
@@ -71,7 +55,8 @@ class DeviceManager(QObject):
     # ── Scanning ──────────────────────────────────────────────────────
     def scan_devices(self, device_type: int = DeviceType.Band, timeout_sec: int = DEVICE_SEARCH_TIMEOUT_SEC):
         """Start BLE scan using the shared app locator."""
-        self._stop_scan_process()
+        self._scan_active = False
+        self._scan_timeout.stop()
         self._requested_device_type = int(device_type)
         self._scan_active = True
         self._scan_timeout.start(max(int(timeout_sec) + 3, 5) * 1000)
@@ -118,105 +103,11 @@ class DeviceManager(QObject):
         except Exception:
             pass
 
-    def _on_scan_finished(self, exit_code: int, _exit_status):
-        process = self._scan_process
-        self._scan_timeout.stop()
-        self._scan_process = None
-        if process is None:
-            return
-
-        stdout = bytes(process.readAllStandardOutput()).decode("utf-8", errors="replace").strip()
-        stderr = bytes(process.readAllStandardError()).decode("utf-8", errors="replace").strip()
-        process.deleteLater()
-
-        if stdout:
-            log.info("Scan helper stdout: %s", stdout)
-        if stderr:
-            log.warning("Scan helper stderr: %s", stderr)
-
-        payload = None
-        if stdout:
-            for line in reversed([line.strip() for line in stdout.splitlines() if line.strip()]):
-                try:
-                    payload = json.loads(line)
-                    break
-                except json.JSONDecodeError:
-                    continue
-
-        if payload is None:
-            cleaned_stderr = _clean_scan_stderr(stderr)
-            if cleaned_stderr:
-                self.scan_error.emit(cleaned_stderr)
-            elif exit_code < 0:
-                self.scan_error.emit("Bluetooth scan crashed. Retrying may help.")
-            elif exit_code != 0:
-                self.scan_error.emit("Bluetooth scan crashed. Retrying may help.")
-            else:
-                self.devices_found.emit([])
-            return
-
-        devices = payload.get("devices") or []
-        normalized_devices = []
-        for item in devices:
-            if not isinstance(item, (list, tuple)) or len(item) < 3:
-                continue
-            normalized_devices.append((str(item[0]), str(item[1]), int(item[2])))
-
-        if payload.get("status") == "ok":
-            self.devices_found.emit(normalized_devices)
-            return
-
-        self.devices_found.emit(normalized_devices)
-        self.scan_error.emit(str(payload.get("error") or "Bluetooth scan failed. Please try again."))
-
-    def _on_scan_process_error(self, _error):
-        if self._scan_process is None:
-            return
-        self._scan_timeout.stop()
-        process = self._scan_process
-        self._scan_process = None
-        message = bytes(process.readAllStandardError()).decode("utf-8", errors="replace").strip()
-        process.deleteLater()
-        if message:
-            log.warning("Scan helper process error: %s", message)
-        self.scan_error.emit(_clean_scan_stderr(message) or "Bluetooth scan crashed. Retrying may help.")
-
     def _on_scan_timeout(self):
-        if self._scan_process is not None:
-            process = self._scan_process
-            self._scan_process = None
-            try:
-                process.kill()
-            except Exception:
-                pass
-            process.deleteLater()
         if not self._scan_active:
             return
         self._scan_active = False
         self.scan_error.emit("Bluetooth scan timed out. Please try again.")
-
-    def _stop_scan_process(self):
-        self._scan_active = False
-        self._scan_timeout.stop()
-        process = self._scan_process
-        self._scan_process = None
-        if process is None:
-            return
-        try:
-            process.finished.disconnect(self._on_scan_finished)
-        except Exception:
-            pass
-        try:
-            process.errorOccurred.disconnect(self._on_scan_process_error)
-        except Exception:
-            pass
-        if process.state() != QProcess.NotRunning:
-            try:
-                process.kill()
-            except Exception:
-                pass
-            process.waitForFinished(1000)
-        process.deleteLater()
 
 
     # ── Connection ────────────────────────────────────────────────────

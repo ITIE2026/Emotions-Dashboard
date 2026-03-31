@@ -4,10 +4,12 @@ Application configuration constants and paths.
 import os
 import sys
 
+from utils.platform import native_lib_name
+
 # ── Paths ──────────────────────────────────────────────────────────────
 APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIB_DIR = os.path.join(APP_DIR, "lib")
-CAPSULE_DLL_PATH = os.path.join(LIB_DIR, "CapsuleClient.dll")
+CAPSULE_DLL_PATH = os.path.join(LIB_DIR, native_lib_name("CapsuleClient"))
 CAPSULE_SDK_DIR = os.path.join(APP_DIR, "capsule_sdk")
 LOG_DIR = os.path.join(APP_DIR, "logs")
 SESSION_DIR = os.path.join(APP_DIR, "sessions")

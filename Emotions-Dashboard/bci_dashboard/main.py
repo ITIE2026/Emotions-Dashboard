@@ -7,6 +7,7 @@ Usage:
 import sys
 import os
 import logging
+import logging.handlers
 import traceback
 
 # ── Ensure project root is on sys.path ────────────────────────────────
@@ -65,8 +66,10 @@ def _setup_logging():
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler(
+            logging.handlers.RotatingFileHandler(
                 os.path.join(log_dir, "dashboard.log"),
+                maxBytes=10_485_760,
+                backupCount=5,
                 encoding="utf-8",
             ),
         ],
@@ -93,10 +96,52 @@ def _exception_hook(exc_type, exc_value, exc_tb):
     QMessageBox.critical(None, "Error", display)
 
 
+def _run_preflight_checks(log):
+    """Validate critical dependencies before the UI starts."""
+    from utils.config import CAPSULE_DLL_PATH, CAPSULE_SDK_DIR, LOG_DIR
+
+    errors = []
+
+    if not os.path.isfile(CAPSULE_DLL_PATH):
+        errors.append(f"Capsule native library not found at:\n  {CAPSULE_DLL_PATH}")
+
+    if not os.path.isdir(CAPSULE_SDK_DIR):
+        errors.append(f"Capsule SDK directory not found at:\n  {CAPSULE_SDK_DIR}")
+
+    test_file = os.path.join(LOG_DIR, ".write_test")
+    try:
+        with open(test_file, "w") as f:
+            f.write("ok")
+        os.remove(test_file)
+    except OSError:
+        errors.append(f"Log directory is not writable:\n  {LOG_DIR}")
+
+    # Optional dependency warnings (non-fatal)
+    for mod_name, purpose in [("serial", "Prosthetic-arm serial features"),
+                               ("h5py", "HDF5 session recording")]:
+        try:
+            __import__(mod_name)
+        except ImportError:
+            log.warning("Optional dependency '%s' is not installed (%s will be unavailable)", mod_name, purpose)
+
+    if errors:
+        summary = "Startup preflight failed:\n\n" + "\n\n".join(errors)
+        log.critical(summary)
+        return summary
+    return None
+
+
 def main():
     _setup_logging()
     log = logging.getLogger("main")
     log.info("Starting BCI Dashboard")
+
+    # ── Preflight checks before heavy UI init ─────────────────────────
+    preflight_error = _run_preflight_checks(log)
+    if preflight_error:
+        app = QApplication(sys.argv)
+        QMessageBox.critical(None, "Startup Failed", preflight_error)
+        sys.exit(1)
 
     sys.excepthook = _exception_hook
 

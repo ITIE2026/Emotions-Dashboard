@@ -1,0 +1,37 @@
+[
+    {
+        "name": "Google Chrome",
+        "icon": "\ud83c\udf10",
+        "cmd": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "fallback": ["start", "chrome"],
+        "shell": false
+    },
+    {
+        "name": "System Settings",
+        "icon": "\u2699\ufe0f",
+        "cmd": null,
+        "fallback": ["start", "ms-settings:"],
+        "shell": true
+    },
+    {
+        "name": "Microsoft Word",
+        "icon": "\ud83d\udcdd",
+        "cmd": null,
+        "fallback": ["start", "winword"],
+        "shell": true
+    },
+    {
+        "name": "Microsoft Excel",
+        "icon": "\ud83d\udcca",
+        "cmd": null,
+        "fallback": ["start", "excel"],
+        "shell": true
+    },
+    {
+        "name": "Microsoft PowerPoint",
+        "icon": "\ud83d\udcc1",
+        "cmd": null,
+        "fallback": ["start", "powerpnt"],
+        "shell": true
+    }
+]

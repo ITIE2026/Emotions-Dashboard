@@ -64,8 +64,8 @@ class CalibrationManager(QObject):
     STAGE_1_END = 0.33
     STAGE_2_END = 0.66
     STAGE_3_END = 1.0
-    BASELINE_TIMEOUT_MS = 45_000
-    MAX_PHY_RETRIES = 1
+    BASELINE_TIMEOUT_MS = 90_000
+    MAX_PHY_RETRIES = 3
 
     def __init__(self, device, lib, prod_handler, physio_handler, parent=None):
         super().__init__(parent)
@@ -450,7 +450,9 @@ class CalibrationManager(QObject):
 
     def _arm_stage_watchdog(self, stage: int):
         self._watchdog_stage = stage
-        self._stage_watchdog.start(self.BASELINE_TIMEOUT_MS)
+        backoff = 1.0 + 0.25 * self._phy_retry_count if stage == self.STAGE_PHY else 1.0
+        timeout = int(self.BASELINE_TIMEOUT_MS * backoff)
+        self._stage_watchdog.start(timeout)
 
     def _clear_stage_watchdog(self, stage: int | None = None):
         if stage is None or self._watchdog_stage == stage:
@@ -463,18 +465,24 @@ class CalibrationManager(QObject):
         if self._terminal_emitted:
             return
         if stage == self.STAGE_PROD and self._current_stage == self.STAGE_PROD:
-            log.warning("Calibration productivity baseline timed out")
+            log.warning("Calibration productivity baseline timed out after %d ms", self.BASELINE_TIMEOUT_MS)
             self._fail("Productivity baseline calibration timed out. Please retry.")
             return
         if stage == self.STAGE_PHY and self._current_stage == self.STAGE_PHY:
+            elapsed_ms = int(self.BASELINE_TIMEOUT_MS * (1.0 + 0.25 * self._phy_retry_count))
             if self._phy_retry_count < self.MAX_PHY_RETRIES:
                 self._phy_retry_count += 1
                 log.warning(
-                    "Calibration physiological baseline timed out; retrying (%d/%d)",
+                    "Calibration physiological baseline timed out after %d ms; retrying (%d/%d)",
+                    elapsed_ms,
                     self._phy_retry_count,
                     self.MAX_PHY_RETRIES,
                 )
                 self._queue_phy_stage_start(retry=True)
                 return
-            log.warning("Calibration physiological baseline timed out after retry")
+            log.warning(
+                "Calibration physiological baseline timed out after %d ms and %d retries",
+                elapsed_ms,
+                self.MAX_PHY_RETRIES,
+            )
             self._fail("Physiological baseline calibration timed out. Please retry.")

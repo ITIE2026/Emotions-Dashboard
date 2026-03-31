@@ -189,12 +189,17 @@ class _SignalButtonStub:
 
 
 class _ConnectionScreenStub(QWidget):
+    filter_signal_changed = _SignalStub()
     selected_device_type_value = 0
     selected_device_type_label = "Headband"
     selected_write_options = {"raw_eeg": True}
 
     def __init__(self, *args, **kwargs):
         super().__init__()
+        self.filter_signal_changed = _SignalStub()
+
+    def set_filter_signal_checked(self, *args, **kwargs):
+        return None
 
 
 class _CalibrationScreenStub(QWidget):
@@ -240,6 +245,15 @@ class _DashboardScreenStub(QWidget):
     def set_mode(self, *args, **kwargs):
         return None
 
+    def set_view_active(self, *args, **kwargs):
+        return None
+
+    def set_eeg_stream_metadata(self, *args, **kwargs):
+        return None
+
+    def set_ppg_calibrated(self, *args, **kwargs):
+        return None
+
     def on_resistance(self, *args, **kwargs):
         return None
 
@@ -247,6 +261,9 @@ class _DashboardScreenStub(QWidget):
         return None
 
     def on_productivity(self, *args, **kwargs):
+        return None
+
+    def on_indexes(self, *args, **kwargs):
         return None
 
     def on_cardio(self, *args, **kwargs):
@@ -261,7 +278,13 @@ class _DashboardScreenStub(QWidget):
     def on_psd(self, *args, **kwargs):
         return None
 
+    def on_psd_snapshot(self, *args, **kwargs):
+        return None
+
     def on_eeg(self, *args, **kwargs):
+        return None
+
+    def on_eeg_snapshot(self, *args, **kwargs):
         return None
 
     def on_artifacts(self, *args, **kwargs):
@@ -308,8 +331,11 @@ class _MemsScreenStub(QWidget):
 
 
 class _TrainingScreenStub(QWidget):
+    neuroflow_quick_calibration_requested = _SignalStub()
+
     def __init__(self, *args, **kwargs):
         super().__init__()
+        self.neuroflow_quick_calibration_requested = _SignalStub()
 
     def on_emotions(self, *args, **kwargs):
         return None
@@ -321,6 +347,36 @@ class _TrainingScreenStub(QWidget):
         return None
 
     def on_physio_states(self, *args, **kwargs):
+        return None
+
+    def on_connection_state(self, *args, **kwargs):
+        return None
+
+    def set_streaming_active(self, *args, **kwargs):
+        return None
+
+    def set_eeg_stream_metadata(self, *args, **kwargs):
+        return None
+
+    def is_neuroflow_active(self, *args, **kwargs):
+        return False
+
+    def on_resistance(self, *args, **kwargs):
+        return None
+
+    def on_iapf_status(self, *args, **kwargs):
+        return None
+
+    def update_signal_snapshot(self, *args, **kwargs):
+        return None
+
+    def on_mems(self, *args, **kwargs):
+        return None
+
+    def stop_active_flow(self, *args, **kwargs):
+        return None
+
+    def on_neuroflow_calibration_finished(self, *args, **kwargs):
         return None
 
     def shutdown(self):
