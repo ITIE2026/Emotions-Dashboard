@@ -46,7 +46,12 @@ from gui.screen_router import (
 from gui.sessions_screen import SessionsScreen
 from gui.signal_dispatcher import SignalDispatcherMixin
 from gui.training_screen import TrainingScreen
+from gui.games_window import GamesWindow
 from gui.youtube_screen import YouTubeScreen
+from gui.aim_trainer import AimTrainerWindow
+from gui.brain_speller import BrainSpellerWindow
+from gui.bci_music_dj import BciMusicDjWindow
+from gui.focus_timer import FocusTimerWindow
 from gui.bci_mouse_controller import BciMouseController
 from gui.widgets.nav_bar import NavBar
 from prosthetic_arm.phaseon_runtime import PhaseonRuntime
@@ -318,6 +323,8 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._graph_histories: dict[str, dict[str, deque]] = {}
         self._graph_references: dict[str, float | None] = {}
         self._graph_session_starts: dict[str, float] = {}
+        self._bg_graph_histories: dict[str, dict[str, deque]] = {}
+        self._bg_graph_session_start: float | None = None
         self._iapf_status: dict = {
             "frequency": None,
             "source": "Not set",
@@ -402,6 +409,11 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._dash_screen = DashboardScreen()
         self._mems_screen = MemsScreen()
         self._training_screen = TrainingScreen(runtime=self._phaseon_runtime)
+        self._games_window = GamesWindow()
+        self._aim_trainer = AimTrainerWindow()
+        self._brain_speller = BrainSpellerWindow()
+        self._music_dj = BciMusicDjWindow()
+        self._focus_timer = FocusTimerWindow()
         self._sessions_screen = SessionsScreen()
         self._phaseon_screen = PhaseonScreen(self._phaseon_runtime)
         self._youtube_screen = YouTubeScreen()
@@ -441,6 +453,44 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         )
         self._update_live_view_activity(self._stack.currentIndex())
 
+    def _on_nav_tab_selected(self, tab_idx: int):
+        """Override mixin: intercept tab 3 (Games) to open separate window."""
+        if tab_idx == 3:
+            self._open_games_window()
+            return
+        from gui.screen_router import ScreenRouterMixin
+        ScreenRouterMixin._on_nav_tab_selected(self, tab_idx)
+
+    def _open_games_window(self):
+        """Show and raise the standalone Games window."""
+        self._games_window.show()
+        self._games_window.raise_()
+        self._games_window.activateWindow()
+
+    def _open_aim_trainer(self):
+        """Show and raise the BCI Aim Trainer window."""
+        self._aim_trainer.show()
+        self._aim_trainer.raise_()
+        self._aim_trainer.activateWindow()
+
+    def _open_brain_speller(self):
+        """Show and raise the BCI Brain Speller window."""
+        self._brain_speller.show()
+        self._brain_speller.raise_()
+        self._brain_speller.activateWindow()
+
+    def _open_music_dj(self):
+        """Show and raise the BCI Music DJ window."""
+        self._music_dj.show()
+        self._music_dj.raise_()
+        self._music_dj.activateWindow()
+
+    def _open_focus_timer(self):
+        """Show and raise the BCI Focus Timer window."""
+        self._focus_timer.show()
+        self._focus_timer.raise_()
+        self._focus_timer.activateWindow()
+
     def _build_menu_bar(self):
         mb = self.menuBar()
         mb.setStyleSheet(
@@ -458,6 +508,21 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         training_act = QAction("Training Lab", self)
         training_act.triggered.connect(lambda: self._stack.setCurrentIndex(PAGE_TRAINING))
         file_menu.addAction(training_act)
+        games_act = QAction("Games", self)
+        games_act.triggered.connect(lambda: self._open_games_window())
+        file_menu.addAction(games_act)
+        aim_act = QAction("Aim Trainer", self)
+        aim_act.triggered.connect(lambda: self._open_aim_trainer())
+        file_menu.addAction(aim_act)
+        speller_act = QAction("Brain Speller", self)
+        speller_act.triggered.connect(lambda: self._open_brain_speller())
+        file_menu.addAction(speller_act)
+        dj_act = QAction("Music DJ", self)
+        dj_act.triggered.connect(lambda: self._open_music_dj())
+        file_menu.addAction(dj_act)
+        timer_act = QAction("Focus Timer", self)
+        timer_act.triggered.connect(lambda: self._open_focus_timer())
+        file_menu.addAction(timer_act)
         sessions_act = QAction("Sessions Data", self)
         sessions_act.triggered.connect(lambda: self._stack.setCurrentIndex(PAGE_SESSIONS))
         file_menu.addAction(sessions_act)
@@ -570,6 +635,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
             self._streaming = False
             self._dash_screen.set_streaming_active(False)
             self._training_screen.set_streaming_active(False)
+            self._games_window.set_streaming_active(False)
             self._update_live_view_activity(self._stack.currentIndex())
             self._dm.stop_streaming()
             self._stop_session()
@@ -636,6 +702,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         if not self._session_active and not self._streaming_before_calibration and not embedded_neuroflow:
             self._dash_screen.set_streaming_active(False)
             self._training_screen.set_streaming_active(False)
+            self._games_window.set_streaming_active(False)
             self._mems_screen.set_streaming_active(False)
             self._dm.stop_streaming()
             self._streaming = False
@@ -646,12 +713,17 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
     def _on_calibration_done(self, cal_data: dict):
         mode = cal_data.get("mode", "quick")
         nfb = cal_data.get("nfb", {})
+        phy_status = cal_data.get("phy_status")
         freq = float(nfb.get("individualFrequency", 0.0) or 0.0) if nfb else 0.0
         self._update_graph_references_from_prod_baselines(cal_data.get("prod_baselines", {}))
+        self._init_background_graph_histories()
         if mode == "detect":
             text = f"iAPF detection finished successfully ({freq:.2f} Hz)"
         else:
-            text = f"Calibration finished successfully ({freq:.2f} Hz)"
+            if phy_status == "timed_out":
+                text = f"Calibration finished with physiological baseline timeout ({freq:.2f} Hz)"
+            else:
+                text = f"Calibration finished successfully ({freq:.2f} Hz)"
             if self._session_active:
                 self._recorder.record_baselines(cal_data)
         log.info("Calibration finished: %s", text)
@@ -724,6 +796,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         )
         self._dash_screen.set_streaming_active(True)
         self._training_screen.set_streaming_active(True)
+        self._games_window.set_streaming_active(True)
         self._training_screen.set_eeg_stream_metadata(
             sample_rate_hz=self._dm.eeg_sample_rate,
             channel_names=self._dm.display_channel_names,
@@ -759,6 +832,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
     def _stop_session(self):
         self._dash_screen.set_streaming_active(False)
         self._training_screen.set_streaming_active(False)
+        self._games_window.set_streaming_active(False)
         self._mems_screen.set_streaming_active(False)
         self._update_live_view_activity(self._stack.currentIndex())
         self._log_timer.stop()
@@ -768,6 +842,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._session_active = False
         self._phaseon_runtime.update_device_status(session_id="")
         self._dash_screen.stop_eeg_timer()
+        self._clear_background_graph_histories()
         if self._status_mon:
             self._status_mon.stop()
     def _log_tick(self):
@@ -815,6 +890,11 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
             except Exception:
                 pass
         self._training_screen.shutdown()
+        self._games_window.shutdown()
+        self._aim_trainer.shutdown()
+        self._brain_speller.shutdown()
+        self._music_dj.shutdown()
+        self._focus_timer.shutdown()
         self._phaseon_runtime.shutdown()
         self._dm.disconnect()
         self._streaming = False

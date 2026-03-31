@@ -210,6 +210,18 @@ class SignalDispatcherMixin:
         gyro_mouse = getattr(self, "_gyro_mouse", None)
         if gyro_mouse is not None:
             gyro_mouse.on_emotions(data)
+        aim_trainer = getattr(self, "_aim_trainer", None)
+        if aim_trainer is not None:
+            aim_trainer.on_emotions(data)
+        brain_speller = getattr(self, "_brain_speller", None)
+        if brain_speller is not None:
+            brain_speller.on_emotions(data)
+        music_dj = getattr(self, "_music_dj", None)
+        if music_dj is not None:
+            music_dj.on_emotions(data)
+        focus_timer = getattr(self, "_focus_timer", None)
+        if focus_timer is not None:
+            focus_timer.on_emotions(data)
         if self.is_graph_active("cognitive_states"):
             self._refresh_metric_graph_window("cognitive_states")
         if self._session_active:
@@ -220,6 +232,8 @@ class SignalDispatcherMixin:
         self._dash_screen.on_productivity(data)
         self._phaseon_runtime.ingest_productivity(data)
         self._training_screen.on_productivity(data)
+        if hasattr(self, "_games_window"):
+            self._games_window.on_productivity(data)
         youtube_screen = getattr(self, "_youtube_screen", None)
         if youtube_screen is not None and hasattr(youtube_screen, "on_productivity"):
             youtube_screen.on_productivity(data)
@@ -277,6 +291,8 @@ class SignalDispatcherMixin:
         self._latest_physio = data or {}
         self._dash_screen.on_physio_states(data)
         self._training_screen.on_physio_states(data)
+        if hasattr(self, "_games_window"):
+            self._games_window.on_physio_states(data)
         self._append_eeg_quality_history(timestamp=time.monotonic())
         self._refresh_metric_graph_window("eeg_quality")
 
@@ -300,6 +316,12 @@ class SignalDispatcherMixin:
             self._latest_peak_freqs,
             self._latest_psd_t,
         )
+        if hasattr(self, "_games_window"):
+            self._games_window.update_signal_snapshot(
+                self._latest_band_powers,
+                self._latest_peak_freqs,
+                self._latest_psd_t,
+            )
         self._refresh_metric_graph_window("frequency_peaks")
         if self._stack.currentIndex() == PAGE_DASHBOARD:
             if hasattr(self._dash_screen, "on_psd_snapshot"):
@@ -343,9 +365,20 @@ class SignalDispatcherMixin:
             self._mems_screen.on_mems(mems_timed_data)
         if self._stack.currentIndex() == PAGE_TRAINING:
             self._training_screen.on_mems(mems_timed_data)
+        if hasattr(self, "_games_window") and self._games_window.isVisible():
+            self._games_window.on_mems(mems_timed_data)
         gyro_mouse = getattr(self, "_gyro_mouse", None)
         if gyro_mouse is not None:
             gyro_mouse.on_mems(mems_timed_data)
+        aim_trainer = getattr(self, "_aim_trainer", None)
+        if aim_trainer is not None:
+            aim_trainer.on_mems(mems_timed_data)
+        brain_speller = getattr(self, "_brain_speller", None)
+        if brain_speller is not None:
+            brain_speller.on_mems(mems_timed_data)
+        music_dj = getattr(self, "_music_dj", None)
+        if music_dj is not None:
+            music_dj.on_mems(mems_timed_data)
         if self._session_active:
             self._recorder.record_mems_packet(mems_timed_data)
 

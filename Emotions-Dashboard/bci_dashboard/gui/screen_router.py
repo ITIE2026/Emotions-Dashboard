@@ -42,15 +42,18 @@ class ScreenRouterMixin:
         self._stack.setCurrentIndex(PAGE_PHASEON)
 
     def _on_nav_tab_selected(self, tab_idx: int):
-        """Map NavBar tab index (0-4) to stack page."""
+        """Map NavBar tab index to stack page. Tab 3 (Games) opens a separate window."""
         mapping = {
             0: PAGE_CONNECTION,
             1: PAGE_DASHBOARD,
             2: PAGE_TRAINING,
-            3: PAGE_SESSIONS,
-            4: PAGE_YOUTUBE,
+            # 3 = Games → separate window, handled by MainWindow override
+            4: PAGE_SESSIONS,
+            5: PAGE_YOUTUBE,
         }
-        page = mapping.get(tab_idx, PAGE_CONNECTION)
+        page = mapping.get(tab_idx)
+        if page is None:
+            return  # Not a stack page (e.g. Games tab)
         if page == PAGE_TRAINING and self._stack.currentIndex() == PAGE_TRAINING:
             return  # already there
         self._stack.setCurrentIndex(page)
@@ -63,9 +66,10 @@ class ScreenRouterMixin:
             PAGE_DASHBOARD: 1,
             PAGE_MEMS: 1,          # MEMS is part of Monitoring
             PAGE_TRAINING: 2,
-            PAGE_SESSIONS: 3,
+            # tab 3 = Games (external window, no stack page)
+            PAGE_SESSIONS: 4,
             PAGE_PHASEON: 2,       # PhaseON is a training mode
-            PAGE_YOUTUBE: 4,       # Media tab
+            PAGE_YOUTUBE: 5,       # Media tab
         }
         tab = reverse_map.get(page_index, 0)
         self._nav_bar.set_active_tab(tab)

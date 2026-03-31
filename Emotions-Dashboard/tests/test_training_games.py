@@ -1855,7 +1855,7 @@ class CalibrationStabilityTests(unittest.TestCase):
         self.assertEqual(coerce_percent(b"\x32\x00\x00\x00", default=-1), 50)
         self.assertEqual(coerce_percent(b"\x80\xf2\xaeI", default=-1), -1)
 
-    def test_quick_calibration_runs_three_stages_in_sequence(self):
+    def test_quick_calibration_runs_three_stages_with_early_physio_start(self):
         manager, prod, phy = self._build_manager()
         stages = []
         progress = []
@@ -1881,26 +1881,64 @@ class CalibrationStabilityTests(unittest.TestCase):
         ), patch("calibration.calibration_manager.save_calibration"):
             manager.start_quick("SERIAL-1")
             self.assertEqual(stages[0][0], manager.STAGE_NFB)
-
-            manager._on_nfb_finished(None, object())
             self.assertEqual(prod.started, 0)
             self.assertEqual(phy.started, 0)
             APP.processEvents()
-            self.assertEqual(prod.started, 1)
-
-            manager._on_prod_progress(0.5)
-            prod.baselines_updated.emit(object())
-            self.assertEqual(phy.started, 0)
-            APP.processEvents()
+            self.assertEqual(prod.started, 0)
             self.assertEqual(phy.started, 1)
 
+            manager._on_nfb_finished(None, object())
+            self.assertEqual(prod.started, 0)
+            APP.processEvents()
+            self.assertEqual(prod.started, 1)
+            self.assertEqual(phy.started, 1)
+
+            manager._on_prod_progress(0.5)
             manager._on_phy_progress(0.5)
+            prod.baselines_updated.emit(object())
+            manager._on_phy_progress(0.75)
             phy.baselines_updated.emit(object())
 
         self.assertEqual([stage for stage, _ in stages], [1, 2, 3])
         self.assertTrue(all(left <= right for left, right in zip(progress, progress[1:])))
         self.assertAlmostEqual(progress[-1], 1.0)
         self.assertEqual(completed[-1]["mode"], manager.MODE_QUICK)
+        self.assertEqual(completed[-1]["phy_status"], manager.PHY_STATUS_COMPLETE)
+
+    def test_quick_calibration_allows_physio_to_finish_before_productivity(self):
+        manager, prod, phy = self._build_manager()
+        stages = []
+        completed = []
+        manager.stage_changed.connect(lambda stage, text: stages.append((stage, text)))
+        manager.calibration_complete.connect(completed.append)
+
+        with patch("calibration.calibration_manager.Calibrator", _CalFakeCalibrator), patch(
+            "calibration.calibration_manager.nfb_to_dict",
+            return_value={"individualFrequency": 10.0},
+        ), patch(
+            "calibration.calibration_manager.prod_baselines_to_dict",
+            return_value={"focus": 1.0},
+        ), patch(
+            "calibration.calibration_manager.phy_baselines_to_dict",
+            return_value={"relaxation": 1.0},
+        ), patch("calibration.calibration_manager.save_calibration"):
+            manager.start_quick("SERIAL-1B")
+            APP.processEvents()
+            self.assertEqual(prod.started, 0)
+            self.assertEqual(phy.started, 1)
+
+            phy.baselines_updated.emit(object())
+            self.assertFalse(completed)
+
+            manager._on_nfb_finished(None, object())
+            APP.processEvents()
+            self.assertEqual(prod.started, 1)
+            self.assertEqual(phy.started, 1)
+
+            prod.baselines_updated.emit(object())
+
+        self.assertEqual([stage for stage, _ in stages], [1, 2, 3])
+        self.assertEqual(completed[-1]["phy_status"], manager.PHY_STATUS_COMPLETE)
 
     def test_detect_mode_finishes_after_nfb_only(self):
         manager, prod, phy = self._build_manager()
@@ -1951,14 +1989,16 @@ class CalibrationStabilityTests(unittest.TestCase):
                 },
             )()
             manager._on_nfb_finished(None, nfb)
+            APP.processEvents()
             prod.baselines_updated.emit(object())
             phy.baselines_updated.emit(object())
 
         self.assertFalse(failures)
         self.assertEqual(completed[-1]["mode"], manager.MODE_QUICK)
         self.assertTrue(completed[-1]["applied"])
+        self.assertEqual(completed[-1]["phy_status"], manager.PHY_STATUS_COMPLETE)
 
-    def test_quick_calibration_schedules_stage_handoffs_on_next_event_loop_turn(self):
+    def test_quick_calibration_schedules_baseline_starts_on_next_event_loop_turn(self):
         manager, prod, phy = self._build_manager()
 
         with patch("calibration.calibration_manager.Calibrator", _CalFakeCalibrator), patch(
@@ -1966,19 +2006,24 @@ class CalibrationStabilityTests(unittest.TestCase):
             return_value={"individualFrequency": 10.0},
         ):
             manager.start_quick("SERIAL-4")
-            manager._on_nfb_finished(None, object())
             self.assertEqual(prod.started, 0)
-            APP.processEvents()
-            self.assertEqual(prod.started, 1)
-
-            prod.baselines_updated.emit(object())
             self.assertEqual(phy.started, 0)
             APP.processEvents()
+            self.assertEqual(prod.started, 0)
             self.assertEqual(phy.started, 1)
 
-    def test_quick_calibration_retries_physio_once_then_fails(self):
+            manager._on_nfb_finished(None, object())
+            self.assertEqual(prod.started, 0)
+            self.assertEqual(phy.started, 1)
+            APP.processEvents()
+            self.assertEqual(prod.started, 1)
+            self.assertEqual(phy.started, 1)
+
+    def test_quick_calibration_completes_partially_after_phy_timeouts(self):
         manager, prod, phy = self._build_manager()
+        completed = []
         failures = []
+        manager.calibration_complete.connect(completed.append)
         manager.calibration_failed.connect(failures.append)
 
         with patch("calibration.calibration_manager.Calibrator", _CalFakeCalibrator), patch(
@@ -1989,22 +2034,27 @@ class CalibrationStabilityTests(unittest.TestCase):
             return_value={"focus": 1.0},
         ):
             manager.start_quick("SERIAL-5")
+            APP.processEvents()
+            self.assertEqual(prod.started, 0)
+            self.assertEqual(phy.started, 1)
+
             manager._on_nfb_finished(None, object())
             APP.processEvents()
+            self.assertEqual(prod.started, 1)
+            self.assertEqual(phy.started, 1)
             prod.baselines_updated.emit(object())
             APP.processEvents()
 
-            self.assertEqual(phy.started, 1)
-            manager._on_stage_timeout()
-            APP.processEvents()
-            self.assertEqual(phy.started, 2)
+            for _ in range(manager.MAX_PHY_RETRIES):
+                manager._on_phy_timeout()
+                APP.processEvents()
 
-            manager._on_stage_timeout()
+            self.assertEqual(phy.started, manager.MAX_PHY_RETRIES + 1)
+            manager._on_phy_timeout()
 
-        self.assertEqual(
-            failures[-1],
-            "Physiological baseline calibration timed out. Please retry.",
-        )
+        self.assertFalse(failures)
+        self.assertEqual(completed[-1]["phy_status"], manager.PHY_STATUS_TIMED_OUT)
+        self.assertEqual(completed[-1]["mode"], manager.MODE_QUICK)
 
     def test_quick_calibration_fails_if_productivity_stage_times_out(self):
         manager, prod, phy = self._build_manager()
@@ -2016,19 +2066,23 @@ class CalibrationStabilityTests(unittest.TestCase):
             return_value={"individualFrequency": 10.0},
         ):
             manager.start_quick("SERIAL-5B")
+            APP.processEvents()
+            self.assertEqual(prod.started, 0)
+            self.assertEqual(phy.started, 1)
+
             manager._on_nfb_finished(None, object())
             APP.processEvents()
 
             self.assertEqual(prod.started, 1)
-            self.assertEqual(phy.started, 0)
-            manager._on_stage_timeout()
+            self.assertEqual(phy.started, 1)
+            manager._on_prod_timeout()
 
         self.assertEqual(
             failures[-1],
             "Productivity baseline calibration timed out. Please retry.",
         )
 
-    def test_late_physio_callback_after_timeout_failure_is_ignored(self):
+    def test_late_physio_callback_after_partial_completion_is_ignored(self):
         manager, prod, phy = self._build_manager()
         completed = []
         failures = []
@@ -2043,21 +2097,25 @@ class CalibrationStabilityTests(unittest.TestCase):
             return_value={"focus": 1.0},
         ):
             manager.start_quick("SERIAL-6")
+            APP.processEvents()
+            self.assertEqual(prod.started, 0)
+            self.assertEqual(phy.started, 1)
+
             manager._on_nfb_finished(None, object())
             APP.processEvents()
             prod.baselines_updated.emit(object())
             APP.processEvents()
 
-            manager._on_stage_timeout()
-            APP.processEvents()
-            manager._on_stage_timeout()
+            for _ in range(manager.MAX_PHY_RETRIES + 1):
+                manager._on_phy_timeout()
+                APP.processEvents()
+
+            completed_count = len(completed)
             phy.baselines_updated.emit(object())
 
-        self.assertFalse(completed)
-        self.assertEqual(
-            failures[-1],
-            "Physiological baseline calibration timed out. Please retry.",
-        )
+        self.assertFalse(failures)
+        self.assertEqual(len(completed), completed_count)
+        self.assertEqual(completed[-1]["phy_status"], manager.PHY_STATUS_TIMED_OUT)
 
     def test_device_manager_battery_path_ignores_invalid_values(self):
         manager = DeviceManager(_BridgeLite())

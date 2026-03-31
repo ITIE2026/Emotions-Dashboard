@@ -38,6 +38,9 @@ from gui.training_games_arcade import (  # noqa: F401
     BubbleBurstController,
     NeonViceController,
     HillClimbRacerController,
+    GravityDriftController,
+    SynapseSerpentController,
+    AeroZenController,
 )
 from gui.training_games_memory import (  # noqa: F401
     MemoryGameController,
@@ -404,8 +407,110 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         widget_kind="hill_climb_racer",
         music_profile="arcade",
     ),
+    TrainingGameSpec(
+        game_id="gravity_drift",
+        section="Arcade neurofeedback",
+        eyebrow="Neon Tunnel",
+        card_title="Gravity Drift",
+        detail_title="A neon tunnel flyer with gyro steering and brain-powered shields",
+        duration="9 min",
+        description="Pilot an orb through a neon tunnel. Tilt to steer, focus for speed & shield, relax for bullet-time.",
+        detail_body=(
+            "Gravity Drift combines gyroscope head-tilt with concentration and relaxation for a hybrid piloting "
+            "experience. Focus engages a speed boost and shield, relaxation triggers slow-motion bullet-time to "
+            "thread tight gaps, and steady control cruises through the neon corridor."
+        ),
+        instructions=(
+            "Tilt your head to steer the orb. Focus to activate speed boost and shield. "
+            "Relax to enter bullet-time for tight gaps. Survive all three tunnels."
+        ),
+        calibration_copy="Hold your head centred for gyro calibration and settle into a stable EEG baseline.",
+        preview_label="DRIFT",
+        colors=("#0a0218", "#00ffe6"),
+        enabled=True,
+        controller_factory=GravityDriftController,
+        widget_kind="gravity_drift",
+        music_profile="arcade",
+    ),
+    TrainingGameSpec(
+        game_id="synapse_serpent",
+        section="Arcade neurofeedback",
+        eyebrow="Neural Snake",
+        card_title="Synapse Serpent",
+        detail_title="A brain-controlled snake on a neural circuit board",
+        duration="8 min",
+        description="Tilt to steer the serpent, focus for points, and relax to phase-shift through your own tail.",
+        detail_body=(
+            "Synapse Serpent reimagines the classic snake game on a neon circuit-board grid. Gyroscope tilt steers "
+            "the serpent, concentration scores bonus points and grows the snake faster, while relaxation activates "
+            "a phase-shift that lets you pass through your own tail for a limited time."
+        ),
+        instructions=(
+            "Tilt your head to steer the snake. Eat food to grow. Focus for combo points. "
+            "Relax to phase-shift through your tail."
+        ),
+        calibration_copy="Centre your head and build a stable baseline for clean gyro direction and EEG response.",
+        preview_label="SNAKE",
+        colors=("#040610", "#00ffc8"),
+        enabled=True,
+        controller_factory=SynapseSerpentController,
+        widget_kind="synapse_serpent",
+        music_profile="arcade",
+    ),
+    TrainingGameSpec(
+        game_id="aero_zen",
+        section="Arcade neurofeedback",
+        eyebrow="Ink-wash Flyer",
+        card_title="Aero Zen",
+        detail_title="A minimalist crane flyer through an ink-wash landscape",
+        duration="9 min",
+        description="Fly a paper crane through mountains. Relax for thermal lift and clear skies, focus for wind bursts.",
+        detail_body=(
+            "Aero Zen is a meditative side-scroller drawn in Japanese sumi-e ink-wash style. Gyroscope Y-axis "
+            "controls altitude, relaxation generates thermal updrafts and clears storm clouds while colouring the "
+            "monochrome world, and focus triggers wind bursts for speed. Collect torii gates for zen score."
+        ),
+        instructions=(
+            "Tilt to change altitude. Relax to ride thermals, clear storms, and paint colour into the world. "
+            "Focus for wind bursts. Fly through torii gates for zen points."
+        ),
+        calibration_copy="Hold a comfortable neutral tilt while we calibrate altitude control and EEG baseline.",
+        preview_label="ZEN",
+        colors=("#f0ebe1", "#3c3732"),
+        enabled=True,
+        controller_factory=AeroZenController,
+        widget_kind="aero_zen",
+        music_profile="calm",
+    ),
 ]
 
 
 def active_training_specs() -> list[TrainingGameSpec]:
     return [spec for spec in TRAINING_SPECS if spec.enabled]
+
+
+# ── Game IDs that belong to the dedicated GAMES section ──────────────
+GAME_SECTION_IDS: set[str] = {
+    "tug_of_war",
+    "space_shooter",
+    "jump_ball",
+    "bubble_burst",
+    "neon_vice",
+    "hill_climb_racer",
+    "pattern_recall",
+    "candy_cascade",
+    "mind_maze",
+    "gravity_drift",
+    "synapse_serpent",
+    "aero_zen",
+}
+
+
+def active_game_specs() -> list[TrainingGameSpec]:
+    """Return enabled specs that belong to the GAMES section."""
+    return [spec for spec in TRAINING_SPECS if spec.enabled and spec.game_id in GAME_SECTION_IDS]
+
+
+def active_training_only_specs() -> list[TrainingGameSpec]:
+    """Return enabled specs that stay in the Training Lab (non-game exercises)."""
+    return [spec for spec in TRAINING_SPECS if spec.enabled and spec.game_id not in GAME_SECTION_IDS]

@@ -2165,3 +2165,590 @@ class HillClimbRacerController(ArcadeTrainingController):
             "music_bias": max(-1.0, min(1.0, (conc_delta - relax_delta) / 3.0)),
             "message": self._message,
         }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  GRAVITY DRIFT – Neon tunnel flyer (gyro steer + focus/relax powers)
+# ═══════════════════════════════════════════════════════════════════════
+
+_GD_GYRO_DEAD_ZONE = 0.04
+_GD_GYRO_EMA = 0.30
+
+
+class GravityDriftController(ArcadeTrainingController):
+    """Pilot an orb through a neon tunnel. Gyro steers, focus = speed/shield,
+    relax = bullet-time to navigate tight gaps."""
+
+    LEVELS = [
+        TrainingLevel("Neon Gate", 55),
+        TrainingLevel("Plasma Corridor", 65),
+        TrainingLevel("Void Run", 80),
+    ]
+    LEVEL_CONFIGS = [
+        {"base_speed": 2.5, "gap_min": 0.45, "gap_shrink": 0.02, "obstacle_interval": 1.8},
+        {"base_speed": 3.5, "gap_min": 0.35, "gap_shrink": 0.025, "obstacle_interval": 1.4},
+        {"base_speed": 4.5, "gap_min": 0.25, "gap_shrink": 0.03, "obstacle_interval": 1.0},
+    ]
+
+    def __init__(self) -> None:
+        super().__init__(self.LEVELS)
+        self._gyro_x = 0.0
+        self._gyro_y = 0.0
+        self._gyro_zero_x = 0.0
+        self._gyro_zero_y = 0.0
+        self._gyro_samples: list[tuple[float, float]] = []
+        self._gyro_calibrated = False
+
+    def update_mems(self, accel_x: float, accel_y: float, accel_z: float,
+                    gyro_x: float, gyro_y: float, gyro_z: float) -> None:
+        raw_x, raw_y = accel_y, accel_x
+        if not self._gyro_calibrated:
+            self._gyro_samples.append((raw_x, raw_y))
+            if len(self._gyro_samples) >= 60:
+                self._gyro_zero_x = sum(s[0] for s in self._gyro_samples) / len(self._gyro_samples)
+                self._gyro_zero_y = sum(s[1] for s in self._gyro_samples) / len(self._gyro_samples)
+                self._gyro_calibrated = True
+            return
+        ax = raw_x - self._gyro_zero_x
+        ay = raw_y - self._gyro_zero_y
+        if abs(ax) < _GD_GYRO_DEAD_ZONE:
+            ax = 0.0
+        if abs(ay) < _GD_GYRO_DEAD_ZONE:
+            ay = 0.0
+        self._gyro_x += _GD_GYRO_EMA * (ax - self._gyro_x)
+        self._gyro_y += _GD_GYRO_EMA * (ay - self._gyro_y)
+
+    def _reset_level_state(self) -> None:
+        cfg = self.LEVEL_CONFIGS[self._level_index]
+        self._base_speed: float = cfg["base_speed"]
+        self._gap_min: float = cfg["gap_min"]
+        self._gap_shrink: float = cfg["gap_shrink"]
+        self._obstacle_interval: float = cfg["obstacle_interval"]
+        self._orb_x: float = 0.5
+        self._orb_y: float = 0.5
+        self._speed: float = self._base_speed
+        self._shield_active: bool = False
+        self._bullet_time: bool = False
+        self._score: int = 0
+        self._distance: float = 0.0
+        self._hull: int = 4
+        self._obstacles: list[dict] = []
+        self._particles: list[dict] = []
+        self._spawn_timer: float = 0.0
+        self._tick: int = 0
+        self._message = ""
+
+    def update_gameplay(self, concentration: float, relaxation: float,
+                        valid: bool, stale: bool, elapsed_seconds: float) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation - (self._relax_baseline or 0.0)
+        blocked = ""
+        moved = False
+        level_completed = False
+        run_completed = False
+
+        if stale:
+            blocked = "Waiting for signal…"
+        elif not valid:
+            blocked = "Artifacts detected – paused"
+        else:
+            intent = self._arcade_intent(conc_delta, relax_delta)
+            self._orb_x = max(0.05, min(0.95, self._orb_x + self._gyro_x * 0.08))
+            self._orb_y = max(0.10, min(0.90, self._orb_y + self._gyro_y * 0.06))
+            moved = abs(self._gyro_x) > _GD_GYRO_DEAD_ZONE or abs(self._gyro_y) > _GD_GYRO_DEAD_ZONE
+
+            self._shield_active = False
+            self._bullet_time = False
+            speed_mult = 1.0
+            if intent == "focus":
+                speed_mult = 1.6
+                self._shield_active = True
+            elif intent == "relax":
+                speed_mult = 0.4
+                self._bullet_time = True
+
+            self._speed = self._base_speed * speed_mult
+            dt = 0.25
+            self._distance += self._speed * dt
+            self._spawn_timer += dt
+
+            if self._spawn_timer >= self._obstacle_interval:
+                self._spawn_timer = 0.0
+                gap_center = 0.15 + (hash(int(self._distance * 100)) % 70) / 100.0
+                gap_width = max(self._gap_min, 0.55 - self._gap_shrink * len(self._obstacles))
+                self._obstacles.append({
+                    "y": -0.05, "gap_center": gap_center, "gap_width": gap_width,
+                    "color_shift": (hash(int(self._distance * 37)) % 360),
+                })
+
+            survived = []
+            for obs in self._obstacles:
+                obs["y"] += self._speed * dt * 0.018
+                if obs["y"] > 1.15:
+                    self._score += 10 + int(speed_mult * 5)
+                    continue
+                if 0.80 < obs["y"] < 0.95:
+                    gc, gw = obs["gap_center"], obs["gap_width"]
+                    if self._orb_x < gc - gw / 2 or self._orb_x > gc + gw / 2:
+                        if not self._shield_active:
+                            self._hull -= 1
+                            self._message = "Impact!"
+                            self._particles.extend([
+                                {"x": self._orb_x, "y": self._orb_y, "dx": (i - 4) * 0.02,
+                                 "dy": -0.03 + i * 0.005, "life": 12}
+                                for i in range(8)
+                            ])
+                            if self._hull <= 0:
+                                run_completed = True
+                        else:
+                            self._score += 25
+                            self._message = "Shielded!"
+                        obs["y"] = 1.2
+                survived.append(obs)
+            self._obstacles = survived
+
+            alive_p = []
+            for p in self._particles:
+                p["x"] += p["dx"]
+                p["y"] += p["dy"]
+                p["life"] -= 1
+                if p["life"] > 0:
+                    alive_p.append(p)
+            self._particles = alive_p
+
+            target_dist = self.current_level.target_seconds * self._base_speed * 0.8
+            if self._distance >= target_dist and not run_completed:
+                level_completed = True
+                self._record_level_result(True, elapsed_seconds)
+                run_completed = self._advance_level()
+
+            self._tick += 1
+
+        self._view_state = {
+            "mode": "gravity_drift",
+            "orb_x": self._orb_x, "orb_y": self._orb_y,
+            "speed": self._speed, "shield": self._shield_active,
+            "bullet_time": self._bullet_time,
+            "score": self._score, "hull": self._hull,
+            "distance": self._distance,
+            "obstacles": list(self._obstacles),
+            "particles": list(self._particles),
+            "tick": self._tick,
+            "message": self._message if not blocked else blocked,
+            "level_title": self.current_level.title,
+            "headline": self.current_level.title,
+            "blocked": blocked,
+            "conc_delta": conc_delta,
+            "relax_delta": relax_delta,
+            "serenity": max(0.0, min(100.0, 50.0 + relax_delta * 5.0)),
+            "restlessness": max(0.0, min(100.0, 50.0 + conc_delta * 5.0)),
+            "music_scene": "gravity_drift",
+            "music_bias": max(-1.0, min(1.0, (conc_delta - relax_delta) / 3.0)),
+        }
+
+        action = "focus" if self._shield_active else ("relax" if self._bullet_time else None)
+        return self._arcade_snapshot(
+            phase="gravity_drift", phase_label="Gravity Drift",
+            direction=action, blocked_reason=blocked,
+            control_hint="Tilt head to steer • Focus for shield • Relax for slow-motion",
+            conc_delta=conc_delta, relax_delta=relax_delta,
+            moved=moved, level_completed=level_completed, run_completed=run_completed,
+            recommended_label="Steer through gaps",
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  SYNAPSE SERPENT – Brain-controlled snake (gyro tilts board, focus/relax powers)
+# ═══════════════════════════════════════════════════════════════════════
+
+_SS_GRID = 20
+_SS_CELL = 30.0
+
+
+class SynapseSerpentController(ArcadeTrainingController):
+    """Snake on a tiltable neural circuit board. Gyro tilts the board causing
+    the snake to slide. Focus = grow + points. Relax = phase-shift (pass through tail)."""
+
+    LEVELS = [
+        TrainingLevel("Cortex", 60),
+        TrainingLevel("Thalamus", 70),
+        TrainingLevel("Brainstem", 85),
+    ]
+    LEVEL_CONFIGS = [
+        {"food_value": 10, "slide_speed": 1.0, "phase_duration": 12},
+        {"food_value": 15, "slide_speed": 1.3, "phase_duration": 10},
+        {"food_value": 20, "slide_speed": 1.6, "phase_duration": 8},
+    ]
+
+    def __init__(self) -> None:
+        super().__init__(self.LEVELS)
+        self._gyro_x = 0.0
+        self._gyro_y = 0.0
+        self._gyro_zero_x = 0.0
+        self._gyro_zero_y = 0.0
+        self._gyro_samples: list[tuple[float, float]] = []
+        self._gyro_calibrated = False
+
+    def update_mems(self, accel_x: float, accel_y: float, accel_z: float,
+                    gyro_x: float, gyro_y: float, gyro_z: float) -> None:
+        raw_x, raw_y = accel_y, accel_x
+        if not self._gyro_calibrated:
+            self._gyro_samples.append((raw_x, raw_y))
+            if len(self._gyro_samples) >= 60:
+                self._gyro_zero_x = sum(s[0] for s in self._gyro_samples) / len(self._gyro_samples)
+                self._gyro_zero_y = sum(s[1] for s in self._gyro_samples) / len(self._gyro_samples)
+                self._gyro_calibrated = True
+            return
+        ax = raw_x - self._gyro_zero_x
+        ay = raw_y - self._gyro_zero_y
+        if abs(ax) < _GD_GYRO_DEAD_ZONE:
+            ax = 0.0
+        if abs(ay) < _GD_GYRO_DEAD_ZONE:
+            ay = 0.0
+        self._gyro_x += _GD_GYRO_EMA * (ax - self._gyro_x)
+        self._gyro_y += _GD_GYRO_EMA * (ay - self._gyro_y)
+
+    def _reset_level_state(self) -> None:
+        cfg = self.LEVEL_CONFIGS[self._level_index]
+        self._food_value: int = cfg["food_value"]
+        self._slide_speed: float = cfg["slide_speed"]
+        self._max_phase: int = cfg["phase_duration"]
+        mid = _SS_GRID // 2
+        self._snake: list[tuple[int, int]] = [(mid, mid), (mid - 1, mid), (mid - 2, mid)]
+        self._direction: tuple[int, int] = (1, 0)
+        self._food: tuple[int, int] = self._place_food()
+        self._score: int = 0
+        self._phase_shift: bool = False
+        self._phase_ticks: int = 0
+        self._combo: int = 0
+        self._synapses: list[dict] = []
+        self._tick: int = 0
+        self._alive: bool = True
+        self._message = ""
+
+    def _place_food(self) -> tuple[int, int]:
+        import random as _rng
+        for _ in range(200):
+            x = _rng.randint(1, _SS_GRID - 2)
+            y = _rng.randint(1, _SS_GRID - 2)
+            if (x, y) not in self._snake:
+                return (x, y)
+        return (1, 1)
+
+    def update_gameplay(self, concentration: float, relaxation: float,
+                        valid: bool, stale: bool, elapsed_seconds: float) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation - (self._relax_baseline or 0.0)
+        blocked = ""
+        moved = False
+        level_completed = False
+        run_completed = False
+
+        if stale:
+            blocked = "Waiting for signal…"
+        elif not valid:
+            blocked = "Artifacts – serpent frozen"
+        elif not self._alive:
+            blocked = "Game over"
+            run_completed = True
+        else:
+            intent = self._arcade_intent(conc_delta, relax_delta)
+
+            threshold = 0.08 * self._slide_speed
+            if abs(self._gyro_x) > abs(self._gyro_y):
+                if self._gyro_x > threshold:
+                    new_dir = (1, 0)
+                elif self._gyro_x < -threshold:
+                    new_dir = (-1, 0)
+                else:
+                    new_dir = self._direction
+            else:
+                if self._gyro_y > threshold:
+                    new_dir = (0, 1)
+                elif self._gyro_y < -threshold:
+                    new_dir = (0, -1)
+                else:
+                    new_dir = self._direction
+
+            if (new_dir[0] + self._direction[0], new_dir[1] + self._direction[1]) != (0, 0):
+                self._direction = new_dir
+
+            head = self._snake[0]
+            nx = (head[0] + self._direction[0]) % _SS_GRID
+            ny = (head[1] + self._direction[1]) % _SS_GRID
+            moved = True
+
+            if (nx, ny) in self._snake[1:] and not self._phase_shift:
+                self._alive = False
+                self._message = "Collision!"
+                run_completed = True
+            else:
+                self._snake.insert(0, (nx, ny))
+                if (nx, ny) == self._food:
+                    self._score += self._food_value + self._combo * 5
+                    self._combo += 1
+                    self._food = self._place_food()
+                    self._synapses.append({"x": nx, "y": ny, "life": 15})
+                else:
+                    self._snake.pop()
+
+            if intent == "relax" and not self._phase_shift:
+                self._phase_shift = True
+                self._phase_ticks = self._max_phase
+            if self._phase_shift:
+                self._phase_ticks -= 1
+                if self._phase_ticks <= 0:
+                    self._phase_shift = False
+
+            if intent == "focus":
+                self._score += 2
+
+            self._synapses = [s for s in self._synapses if (s.__setitem__("life", s["life"] - 1) or s["life"] > 0)]  # noqa: E501
+
+            self._tick += 1
+            target_ticks = self.current_level.target_seconds * 4
+            if self._tick >= target_ticks and self._alive:
+                level_completed = True
+                self._record_level_result(True, elapsed_seconds)
+                run_completed = self._advance_level()
+
+        self._view_state = {
+            "mode": "synapse_serpent",
+            "grid": _SS_GRID, "cell": _SS_CELL,
+            "snake": list(self._snake), "food": self._food,
+            "direction": self._direction,
+            "score": self._score, "combo": self._combo,
+            "phase_shift": self._phase_shift, "phase_ticks": self._phase_ticks,
+            "synapses": [dict(s) for s in self._synapses],
+            "alive": self._alive, "tick": self._tick,
+            "message": self._message if not blocked else blocked,
+            "level_title": self.current_level.title,
+            "headline": self.current_level.title,
+            "blocked": blocked,
+            "conc_delta": conc_delta,
+            "relax_delta": relax_delta,
+            "serenity": max(0.0, min(100.0, 50.0 + relax_delta * 5.0)),
+            "restlessness": max(0.0, min(100.0, 50.0 + conc_delta * 5.0)),
+            "music_scene": "synapse_serpent",
+            "music_bias": max(-1.0, min(1.0, (conc_delta - relax_delta) / 3.0)),
+        }
+
+        action = "relax" if self._phase_shift else ("focus" if conc_delta > relax_delta else None)
+        return self._arcade_snapshot(
+            phase="synapse_serpent", phase_label="Synapse Serpent",
+            direction=action, blocked_reason=blocked,
+            control_hint="Tilt to steer • Focus for points • Relax to phase-shift",
+            conc_delta=conc_delta, relax_delta=relax_delta,
+            moved=moved, level_completed=level_completed, run_completed=run_completed,
+            recommended_label="Navigate the neural network",
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  AERO ZEN – Minimalist crane flyer (gyro altitude + focus/relax weather)
+# ═══════════════════════════════════════════════════════════════════════
+
+_AZ_GYRO_DEAD_ZONE = 0.04
+_AZ_GYRO_EMA = 0.28
+
+
+class AeroZenController(ArcadeTrainingController):
+    """Fly a paper crane through a parallax landscape. Gyro Y controls altitude.
+    Focus = wind burst, relaxation = thermal updraft + sky clears."""
+
+    LEVELS = [
+        TrainingLevel("Morning Mist", 50),
+        TrainingLevel("Mountain Pass", 60),
+        TrainingLevel("Sky Temple", 75),
+    ]
+    LEVEL_CONFIGS = [
+        {"wind_strength": 0.8, "obstacle_rate": 2.2, "storm_threshold": 0.65},
+        {"wind_strength": 1.2, "obstacle_rate": 1.6, "storm_threshold": 0.50},
+        {"wind_strength": 1.6, "obstacle_rate": 1.1, "storm_threshold": 0.40},
+    ]
+
+    def __init__(self) -> None:
+        super().__init__(self.LEVELS)
+        self._gyro_y = 0.0
+        self._gyro_zero_y = 0.0
+        self._gyro_samples: list[float] = []
+        self._gyro_calibrated = False
+
+    def update_mems(self, accel_x: float, accel_y: float, accel_z: float,
+                    gyro_x: float, gyro_y: float, gyro_z: float) -> None:
+        raw_y = accel_x
+        if not self._gyro_calibrated:
+            self._gyro_samples.append(raw_y)
+            if len(self._gyro_samples) >= 60:
+                self._gyro_zero_y = sum(self._gyro_samples) / len(self._gyro_samples)
+                self._gyro_calibrated = True
+            return
+        adj = raw_y - self._gyro_zero_y
+        if abs(adj) < _AZ_GYRO_DEAD_ZONE:
+            adj = 0.0
+        self._gyro_y += _AZ_GYRO_EMA * (adj - self._gyro_y)
+
+    def _reset_level_state(self) -> None:
+        cfg = self.LEVEL_CONFIGS[self._level_index]
+        self._wind_strength: float = cfg["wind_strength"]
+        self._obstacle_rate: float = cfg["obstacle_rate"]
+        self._storm_threshold: float = cfg["storm_threshold"]
+        self._crane_y: float = 0.5
+        self._crane_vy: float = 0.0
+        self._scroll_x: float = 0.0
+        self._score: int = 0
+        self._zen_score: float = 0.0
+        self._zen_streak: float = 0.0
+        self._sky_serenity: float = 0.5
+        self._obstacles: list[dict] = []
+        self._zen_gates: list[dict] = []
+        self._blossoms: list[dict] = []
+        self._mountains: list[dict] = self._gen_mountains()
+        self._spawn_timer: float = 0.0
+        self._hull: int = 3
+        self._tick: int = 0
+        self._message = ""
+        self._color_saturation: float = 0.1
+
+    def _gen_mountains(self) -> list[dict]:
+        return [
+            {"x": i * 0.15, "height": 0.2 + (hash(i * 79 + self._level_index) % 30) / 100.0,
+             "width": 0.12 + (hash(i * 41) % 8) / 100.0}
+            for i in range(12)
+        ]
+
+    def update_gameplay(self, concentration: float, relaxation: float,
+                        valid: bool, stale: bool, elapsed_seconds: float) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation - (self._relax_baseline or 0.0)
+        blocked = ""
+        moved = False
+        level_completed = False
+        run_completed = False
+
+        if stale:
+            blocked = "Waiting for signal…"
+        elif not valid:
+            blocked = "Artifacts – gliding…"
+        else:
+            intent = self._arcade_intent(conc_delta, relax_delta)
+
+            self._crane_vy += self._gyro_y * 0.015
+            self._crane_vy *= 0.92
+
+            if intent == "relax":
+                self._crane_vy -= 0.008
+                self._sky_serenity = min(1.0, self._sky_serenity + 0.015)
+                self._zen_streak += 0.25
+                self._color_saturation = min(1.0, self._color_saturation + 0.008)
+                if self._tick % 8 == 0:
+                    self._blossoms.append({
+                        "x": 1.05, "y": 0.2 + (self._tick * 17 % 60) / 100.0,
+                        "drift": -0.008, "life": 40,
+                    })
+            elif intent == "focus":
+                self._scroll_x += self._wind_strength * 0.02
+                self._score += 3
+                self._sky_serenity = max(0.0, self._sky_serenity - 0.005)
+                self._zen_streak = 0.0
+            else:
+                self._sky_serenity = max(0.3, self._sky_serenity - 0.003)
+                self._zen_streak = max(0.0, self._zen_streak - 0.1)
+
+            self._crane_y = max(0.05, min(0.95, self._crane_y + self._crane_vy))
+            moved = abs(self._gyro_y) > _AZ_GYRO_DEAD_ZONE
+
+            if self._zen_streak > 4.0:
+                self._zen_score += 0.5
+
+            self._scroll_x += 0.005 + (self._sky_serenity * 0.003)
+            self._spawn_timer += 0.25
+
+            if self._spawn_timer >= self._obstacle_rate:
+                self._spawn_timer = 0.0
+                if self._sky_serenity < self._storm_threshold:
+                    cloud_y = 0.15 + (hash(int(self._scroll_x * 100)) % 60) / 100.0
+                    self._obstacles.append({
+                        "x": 1.1, "y": cloud_y, "width": 0.12, "height": 0.08, "kind": "storm",
+                    })
+                else:
+                    gate_y = 0.2 + (hash(int(self._scroll_x * 77)) % 50) / 100.0
+                    self._zen_gates.append({"x": 1.1, "y": gate_y, "collected": False})
+
+            alive_obs = []
+            for obs in self._obstacles:
+                obs["x"] -= 0.012
+                if obs["x"] < -0.15:
+                    continue
+                if (abs(obs["x"] - 0.15) < obs["width"] / 2 and
+                        abs(obs["y"] - self._crane_y) < obs["height"] / 2):
+                    self._hull -= 1
+                    self._message = "Storm hit!"
+                    if self._hull <= 0:
+                        run_completed = True
+                    obs["x"] = -0.2
+                alive_obs.append(obs)
+            self._obstacles = alive_obs
+
+            alive_gates = []
+            for g in self._zen_gates:
+                g["x"] -= 0.010
+                if g["x"] < -0.1:
+                    continue
+                if not g["collected"] and abs(g["x"] - 0.15) < 0.04 and abs(g["y"] - self._crane_y) < 0.06:
+                    g["collected"] = True
+                    self._score += 30
+                    self._zen_score += 2.0
+                alive_gates.append(g)
+            self._zen_gates = alive_gates
+
+            alive_b = []
+            for b in self._blossoms:
+                b["x"] += b["drift"]
+                b["y"] += math.sin(b["life"] * 0.3) * 0.003
+                b["life"] -= 1
+                if b["life"] > 0 and b["x"] > -0.05:
+                    alive_b.append(b)
+            self._blossoms = alive_b
+
+            self._tick += 1
+            target_ticks = self.current_level.target_seconds * 4
+            if self._tick >= target_ticks and not run_completed:
+                level_completed = True
+                self._record_level_result(True, elapsed_seconds)
+                run_completed = self._advance_level()
+
+        self._view_state = {
+            "mode": "aero_zen",
+            "crane_y": self._crane_y, "crane_vy": self._crane_vy,
+            "scroll_x": self._scroll_x,
+            "score": self._score, "zen_score": self._zen_score,
+            "zen_streak": self._zen_streak,
+            "sky_serenity": self._sky_serenity,
+            "color_saturation": self._color_saturation,
+            "hull": self._hull,
+            "obstacles": list(self._obstacles),
+            "zen_gates": list(self._zen_gates),
+            "blossoms": list(self._blossoms),
+            "mountains": list(self._mountains),
+            "tick": self._tick, "message": self._message if not blocked else blocked,
+            "level_title": self.current_level.title,
+            "headline": self.current_level.title,
+            "blocked": blocked,
+            "conc_delta": conc_delta,
+            "relax_delta": relax_delta,
+            "serenity": max(0.0, min(100.0, 50.0 + relax_delta * 5.0)),
+            "restlessness": max(0.0, min(100.0, 50.0 + conc_delta * 5.0)),
+            "music_scene": "aero_zen",
+            "music_bias": max(-1.0, min(1.0, (conc_delta - relax_delta) / 3.0)),
+        }
+
+        action = "relax" if self._zen_streak > 2 else ("focus" if conc_delta > 0.15 else None)
+        return self._arcade_snapshot(
+            phase="aero_zen", phase_label="Aero Zen",
+            direction=action, blocked_reason=blocked,
+            control_hint="Tilt to fly • Relax for lift & clear skies • Focus for wind burst",
+            conc_delta=conc_delta, relax_delta=relax_delta,
+            moved=moved, level_completed=level_completed, run_completed=run_completed,
+            recommended_label="Find your zen altitude",
+        )

@@ -1,12 +1,14 @@
 """
-CalibrationManager – orchestrates the multi-stage calibration workflow.
+CalibrationManager orchestrates the multi-stage calibration workflow.
 
 Stages:
   1. Closed-eyes NFB calibration
   2. Productivity baseline calibration
   3. PhysiologicalStates baseline calibration
 
-Supports importing saved calibration to skip the process.
+Quick mode keeps the same 3-step UI, but the physiological baseline starts
+quietly during the NFB stage to match the SDK sample flow. Stage 3 becomes
+visible only after productivity completes.
 """
 import sys
 import logging
@@ -45,15 +47,10 @@ class CalibrationManager(QObject):
         cm.start()   # or cm.import_saved(serial)
     """
 
-    # stage_num (1-3), description
     stage_changed = Signal(int, str)
-    # overall progress 0.0 – 1.0
     progress_updated = Signal(float)
-    # all cal data dict (for saving)
     calibration_complete = Signal(dict)
-    # failure reason
     calibration_failed = Signal(str)
-    # iAPF status payload
     iapf_updated = Signal(dict)
 
     STAGE_NFB = 1
@@ -65,7 +62,11 @@ class CalibrationManager(QObject):
     STAGE_2_END = 0.66
     STAGE_3_END = 1.0
     BASELINE_TIMEOUT_MS = 90_000
-    MAX_PHY_RETRIES = 3
+    MAX_PHY_RETRIES = 1
+    PHY_HARD_DEADLINE_MS = 120_000
+    PHY_STATUS_PENDING = "pending"
+    PHY_STATUS_COMPLETE = "complete"
+    PHY_STATUS_TIMED_OUT = "timed_out"
 
     def __init__(self, device, lib, prod_handler, physio_handler, parent=None):
         super().__init__(parent)
@@ -85,10 +86,21 @@ class CalibrationManager(QObject):
         self._serial = None
         self._mode = self.MODE_QUICK
         self._last_progress = 0.0
-        self._watchdog_stage = 0
+        self._terminal_emitted = False
+
+        self._prod_started = False
+        self._prod_completed = False
+        self._latest_prod_progress = 0.0
+
+        self._phy_started = False
+        self._phy_completed = False
+        self._latest_phy_progress = 0.0
         self._phy_retry_count = 0
         self._pending_phy_retry = False
-        self._terminal_emitted = False
+        self._phy_status = self.PHY_STATUS_PENDING
+        self._phy_progress_seen = False
+        self._phy_baselines_seen = False
+        self._phy_state_packets_seen = 0
 
         self._prod_start_timer = QTimer(self)
         self._prod_start_timer.setSingleShot(True)
@@ -98,17 +110,25 @@ class CalibrationManager(QObject):
         self._phy_start_timer.setSingleShot(True)
         self._phy_start_timer.timeout.connect(self._start_phy_stage)
 
-        self._stage_watchdog = QTimer(self)
-        self._stage_watchdog.setSingleShot(True)
-        self._stage_watchdog.timeout.connect(self._on_stage_timeout)
+        self._prod_watchdog = QTimer(self)
+        self._prod_watchdog.setSingleShot(True)
+        self._prod_watchdog.timeout.connect(self._on_prod_timeout)
 
-        # Connect classifier baseline signals
+        self._phy_watchdog = QTimer(self)
+        self._phy_watchdog.setSingleShot(True)
+        self._phy_watchdog.timeout.connect(self._on_phy_timeout)
+
+        self._phy_deadline = QTimer(self)
+        self._phy_deadline.setSingleShot(True)
+        self._phy_deadline.timeout.connect(self._on_phy_hard_deadline)
+
         self._prod_h.baselines_updated.connect(self._on_prod_baselines)
         self._prod_h.calibration_progress.connect(self._on_prod_progress)
         self._phy_h.baselines_updated.connect(self._on_phy_baselines)
         self._phy_h.calibration_progress.connect(self._on_phy_progress)
+        if hasattr(self._phy_h, "states_updated"):
+            self._phy_h.states_updated.connect(self._on_phy_states)
 
-    # ── Public API ────────────────────────────────────────────────────
     def can_import(self, serial: str) -> bool:
         return has_saved_calibration(serial)
 
@@ -123,19 +143,16 @@ class CalibrationManager(QObject):
         self._calibrator = Calibrator(self._device, self._lib)
 
         try:
-            # Stage 1 – NFB
             if "nfb" in data:
                 nfb = dict_to_nfb(data["nfb"])
                 self._calibrator.import_alpha(nfb)
                 self._nfb_data = nfb
 
-            # Stage 2 – Productivity baselines
             if "prod_baselines" in data:
                 bl = dict_to_prod_baselines(data["prod_baselines"])
                 self._prod_h.import_baselines(bl)
                 self._prod_baselines = bl
 
-            # Stage 3 – PhysiologicalStates baselines
             if "phy_baselines" in data:
                 bl = dict_to_phy_baselines(data["phy_baselines"])
                 self._phy_h.import_baselines(bl)
@@ -158,10 +175,7 @@ class CalibrationManager(QObject):
             )
             return True
         except Exception as exc:
-            msg = str(exc)
-            if hasattr(exc, 'message') and isinstance(exc.message, bytes):
-                msg = exc.message.decode('utf-8', errors='replace')
-            self.calibration_failed.emit(msg)
+            self.calibration_failed.emit(self._safe_message(exc))
             return False
 
     def start(self, serial: str, mode: str = MODE_QUICK):
@@ -191,13 +205,15 @@ class CalibrationManager(QObject):
             self.stage_changed.emit(self.STAGE_NFB, description)
             self._emit_progress(0.0)
 
-            # Local 1-Hz timer to animate progress during the 30 s NFB stage
             self._nfb_elapsed = 0
-            self._nfb_duration = 30          # seconds
+            self._nfb_duration = 30
             self._nfb_timer = QTimer(self)
             self._nfb_timer.setInterval(1000)
             self._nfb_timer.timeout.connect(self._nfb_tick)
             self._nfb_timer.start()
+
+            if self._mode == self.MODE_QUICK:
+                self._queue_phy_stage_start()
 
             self._calibrator.calibrate_quick()
         except Exception as exc:
@@ -210,7 +226,6 @@ class CalibrationManager(QObject):
         self.start(serial, mode=self.MODE_QUICK)
 
     def _nfb_tick(self):
-        """Called every 1 s during the NFB stage to update progress."""
         self._nfb_elapsed += 1
         if self._nfb_elapsed >= self._nfb_duration:
             self._nfb_timer.stop()
@@ -218,20 +233,18 @@ class CalibrationManager(QObject):
         fraction = self._nfb_elapsed / self._nfb_duration
         self._emit_progress(fraction * self.STAGE_1_END)
 
-    # ── NFB callbacks ─────────────────────────────────────────────────
     def _on_nfb_stage(self, calibrator_obj):
-        pass  # quick mode has a single stage
+        pass
 
     def _on_nfb_finished(self, calibrator_obj, nfb_data: IndividualNFBData):
         if self._terminal_emitted or self._current_stage != self.STAGE_NFB:
             return
         try:
-            # Stop the local countdown timer
-            if hasattr(self, '_nfb_timer') and self._nfb_timer.isActive():
+            if hasattr(self, "_nfb_timer") and self._nfb_timer.isActive():
                 self._nfb_timer.stop()
 
             if self._calibrator.has_calibration_failed():
-                self._fail("NFB calibration failed \u2013 too many artifacts")
+                self._fail("NFB calibration failed - too many artifacts")
                 return
 
             log.info("Calibration NFB stage finished")
@@ -274,62 +287,133 @@ class CalibrationManager(QObject):
         except Exception as exc:
             self._fail(self._safe_message(exc))
 
-    # ── Productivity callbacks ────────────────────────────────────────
     def _on_prod_progress(self, progress: float):
-        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PROD:
+        if (
+            self._terminal_emitted
+            or self._mode != self.MODE_QUICK
+            or self._prod_completed
+            or self._current_stage not in {self.STAGE_PROD, self.STAGE_PHY}
+        ):
             return
         fraction = max(0.0, min(1.0, float(progress)))
-        overall = self.STAGE_1_END + ((self.STAGE_2_END - self.STAGE_1_END) * fraction)
-        self._arm_stage_watchdog(self.STAGE_PROD)
-        self._emit_progress(overall)
+        self._latest_prod_progress = fraction
+        self._arm_prod_watchdog()
+        if self._current_stage == self.STAGE_PROD:
+            overall = self.STAGE_1_END + ((self.STAGE_2_END - self.STAGE_1_END) * fraction)
+            self._emit_progress(overall)
 
     def _on_prod_baselines(self, baselines):
+        if (
+            self._terminal_emitted
+            or self._mode != self.MODE_QUICK
+            or self._prod_completed
+            or self._current_stage not in {self.STAGE_PROD, self.STAGE_PHY}
+        ):
+            return
+
         self._prod_baselines = baselines
         self._prod_payload = self._serialize_prod_baselines(baselines)
-        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PROD:
-            return
+        self._prod_completed = True
+        self._latest_prod_progress = 1.0
         log.info("Calibration productivity baseline finished")
-        self._clear_stage_watchdog(self.STAGE_PROD)
+        self._clear_prod_watchdog()
         self._emit_progress(self.STAGE_2_END)
-        self._current_stage = self.STAGE_PHY
-        self._queue_phy_stage_start()
+        self._show_phy_stage()
 
-    # ── PhysStates callbacks ──────────────────────────────────────────
-    def _on_phy_progress(self, progress: float):
-        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PHY:
+        if self._phy_completed or self._phy_status == self.PHY_STATUS_TIMED_OUT:
+            self._emit_progress(1.0)
+            self._finish()
             return
+
+        self._emit_phy_stage_progress()
+
+    def _on_phy_states(self, data: dict):
+        if (
+            self._terminal_emitted
+            or self._mode != self.MODE_QUICK
+            or not self._phy_started
+            or self._phy_status != self.PHY_STATUS_PENDING
+            or self._current_stage not in {self.STAGE_NFB, self.STAGE_PROD, self.STAGE_PHY}
+        ):
+            return
+        self._phy_state_packets_seen += 1
+        if self._phy_state_packets_seen == 1:
+            log.info("Calibration physiological baseline is receiving physiological state packets")
+
+    def _on_phy_progress(self, progress: float):
+        if (
+            self._terminal_emitted
+            or self._mode != self.MODE_QUICK
+            or self._phy_status != self.PHY_STATUS_PENDING
+            or self._phy_completed
+            or self._current_stage not in {self.STAGE_NFB, self.STAGE_PROD, self.STAGE_PHY}
+        ):
+            return
+
         fraction = max(0.0, min(1.0, float(progress)))
-        overall = self.STAGE_2_END + ((self.STAGE_3_END - self.STAGE_2_END) * fraction)
-        self._arm_stage_watchdog(self.STAGE_PHY)
-        self._emit_progress(overall)
+        if fraction > self._latest_phy_progress:
+            self._latest_phy_progress = fraction
+            self._arm_phy_watchdog()
+
+        if not self._phy_progress_seen:
+            self._phy_progress_seen = True
+            log.info("Calibration physiological baseline progress started: %.3f", fraction)
+        elif fraction >= 1.0:
+            log.info("Calibration physiological baseline progress reached completion")
+
+        if self._current_stage == self.STAGE_PHY and self._prod_completed:
+            self._emit_phy_stage_progress()
 
     def _on_phy_baselines(self, baselines):
+        if (
+            self._terminal_emitted
+            or self._mode != self.MODE_QUICK
+            or self._phy_status == self.PHY_STATUS_TIMED_OUT
+            or self._phy_completed
+            or self._current_stage not in {self.STAGE_NFB, self.STAGE_PROD, self.STAGE_PHY}
+        ):
+            return
+
         self._phy_baselines = baselines
         self._phy_payload = self._serialize_phy_baselines(baselines)
-        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PHY:
+        self._phy_completed = True
+        self._phy_status = self.PHY_STATUS_COMPLETE
+        self._phy_baselines_seen = True
+        self._latest_phy_progress = 1.0
+        log.info(
+            "Calibration physiological baseline finished "
+            "(progress_seen=%s, state_packets=%d)",
+            self._phy_progress_seen,
+            self._phy_state_packets_seen,
+        )
+        self._clear_phy_watchdog()
+
+        if not self._prod_completed:
+            log.info("Calibration physiological baseline finished before productivity baseline")
             return
-        log.info("Calibration physiological baseline finished")
-        self._clear_stage_watchdog(self.STAGE_PHY)
+
+        if self._current_stage != self.STAGE_PHY:
+            self._show_phy_stage()
         self._emit_progress(1.0)
         self._finish()
 
-    # ── Finish ────────────────────────────────────────────────────────
     def _finish(self):
         if self._terminal_emitted:
             return
         self._terminal_emitted = True
         self._stop_runtime_timers()
-        cal_data = {}
+
+        save_data = {}
         if self._nfb_payload:
-            cal_data["nfb"] = dict(self._nfb_payload)
+            save_data["nfb"] = dict(self._nfb_payload)
         if self._prod_payload:
-            cal_data["prod_baselines"] = dict(self._prod_payload)
+            save_data["prod_baselines"] = dict(self._prod_payload)
         if self._phy_payload:
-            cal_data["phy_baselines"] = dict(self._phy_payload)
+            save_data["phy_baselines"] = dict(self._phy_payload)
 
         if self._serial:
             try:
-                save_calibration(self._serial, cal_data)
+                save_calibration(self._serial, save_data)
             except Exception as exc:
                 log.warning(
                     "Calibration finished but saving failed for %s: %s",
@@ -337,9 +421,18 @@ class CalibrationManager(QObject):
                     self._safe_message(exc),
                 )
 
-        cal_data["mode"] = self.MODE_QUICK
-        cal_data["applied"] = True
-        self.calibration_complete.emit(cal_data)
+        result = dict(save_data)
+        result["mode"] = self.MODE_QUICK
+        result["applied"] = True
+        result["phy_status"] = self._resolved_phy_status()
+        self.calibration_complete.emit(result)
+
+    def _resolved_phy_status(self) -> str:
+        if self._phy_status == self.PHY_STATUS_PENDING:
+            if self._phy_completed or self._phy_payload:
+                return self.PHY_STATUS_COMPLETE
+            return self.PHY_STATUS_TIMED_OUT
+        return self._phy_status
 
     def _fail(self, reason: str):
         if self._terminal_emitted:
@@ -354,6 +447,13 @@ class CalibrationManager(QObject):
             bounded = self._last_progress
         self._last_progress = bounded
         self.progress_updated.emit(round(bounded, 4))
+
+    def _emit_phy_stage_progress(self):
+        if self._current_stage != self.STAGE_PHY:
+            return
+        fraction = self._latest_phy_progress if not self._phy_completed else 1.0
+        overall = self.STAGE_2_END + ((self.STAGE_3_END - self.STAGE_2_END) * fraction)
+        self._emit_progress(overall)
 
     def _serialize_nfb(self, nfb_data):
         try:
@@ -397,18 +497,28 @@ class CalibrationManager(QObject):
     def _reset_runtime_state(self):
         self._stop_runtime_timers()
         self._current_stage = 0
-        self._watchdog_stage = 0
+        self._terminal_emitted = False
+        self._prod_started = False
+        self._prod_completed = False
+        self._latest_prod_progress = 0.0
+        self._phy_started = False
+        self._phy_completed = False
+        self._latest_phy_progress = 0.0
         self._phy_retry_count = 0
         self._pending_phy_retry = False
-        self._terminal_emitted = False
+        self._phy_status = self.PHY_STATUS_PENDING
+        self._phy_progress_seen = False
+        self._phy_baselines_seen = False
+        self._phy_state_packets_seen = 0
 
     def _stop_runtime_timers(self):
         if hasattr(self, "_nfb_timer") and self._nfb_timer is not None:
             self._nfb_timer.stop()
         self._prod_start_timer.stop()
         self._phy_start_timer.stop()
-        self._stage_watchdog.stop()
-        self._watchdog_stage = 0
+        self._prod_watchdog.stop()
+        self._phy_watchdog.stop()
+        self._phy_deadline.stop()
 
     def _queue_prod_stage_start(self):
         if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PROD:
@@ -418,30 +528,42 @@ class CalibrationManager(QObject):
             self._prod_start_timer.start(0)
 
     def _start_prod_stage(self):
-        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PROD:
+        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._prod_completed:
             return
         try:
+            self._prod_started = True
             log.info("Calibration productivity baseline started")
             self._prod_h.start_baseline_calibration()
-            self._arm_stage_watchdog(self.STAGE_PROD)
+            self._arm_prod_watchdog()
         except Exception as exc:
             self._fail(f"Unable to start productivity baseline calibration: {self._safe_message(exc)}")
 
     def _queue_phy_stage_start(self, retry: bool = False):
-        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PHY:
+        if (
+            self._terminal_emitted
+            or self._mode != self.MODE_QUICK
+            or self._current_stage not in {self.STAGE_NFB, self.STAGE_PROD, self.STAGE_PHY}
+            or self._phy_completed
+            or self._phy_status == self.PHY_STATUS_TIMED_OUT
+        ):
             return
         self._pending_phy_retry = retry
-        description = "Retrying physiological baseline..." if retry else "Calibrating physiological baseline"
-        self.stage_changed.emit(self.STAGE_PHY, description)
         if not self._phy_start_timer.isActive():
             self._phy_start_timer.start(0)
 
     def _start_phy_stage(self):
         retry = self._pending_phy_retry
         self._pending_phy_retry = False
-        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._current_stage != self.STAGE_PHY:
+        if (
+            self._terminal_emitted
+            or self._mode != self.MODE_QUICK
+            or self._current_stage not in {self.STAGE_NFB, self.STAGE_PROD, self.STAGE_PHY}
+            or self._phy_completed
+            or self._phy_status == self.PHY_STATUS_TIMED_OUT
+        ):
             return
         try:
+            self._phy_started = True
             if retry:
                 log.warning(
                     "Calibration physiological baseline retry started (%d/%d)",
@@ -451,49 +573,110 @@ class CalibrationManager(QObject):
             else:
                 log.info("Calibration physiological baseline started")
             self._phy_h.start_baseline_calibration()
-            self._arm_stage_watchdog(self.STAGE_PHY)
+            self._arm_phy_watchdog()
+            if not self._phy_deadline.isActive():
+                self._phy_deadline.start(self.PHY_HARD_DEADLINE_MS)
         except Exception as exc:
             self._fail(f"Unable to start physiological baseline calibration: {self._safe_message(exc)}")
 
-    def _arm_stage_watchdog(self, stage: int):
-        self._watchdog_stage = stage
-        backoff = 1.0 + 0.25 * self._phy_retry_count if stage == self.STAGE_PHY else 1.0
-        timeout = int(self.BASELINE_TIMEOUT_MS * backoff)
-        self._stage_watchdog.start(timeout)
-
-    def _clear_stage_watchdog(self, stage: int | None = None):
-        if stage is None or self._watchdog_stage == stage:
-            self._stage_watchdog.stop()
-            self._watchdog_stage = 0
-
-    def _on_stage_timeout(self):
-        stage = self._watchdog_stage
-        self._watchdog_stage = 0
-        if self._terminal_emitted:
+    def _show_phy_stage(self):
+        if self._terminal_emitted or self._mode != self.MODE_QUICK:
             return
-        if stage == self.STAGE_PROD and self._current_stage == self.STAGE_PROD:
-            log.warning("Calibration productivity baseline timed out after %d ms", self.BASELINE_TIMEOUT_MS)
-            self._fail("Productivity baseline calibration timed out. Please retry.")
+        self._current_stage = self.STAGE_PHY
+        self.stage_changed.emit(self.STAGE_PHY, self._phy_stage_description())
+
+    def _phy_stage_description(self) -> str:
+        if self._phy_status == self.PHY_STATUS_TIMED_OUT:
+            return "Physiological baseline timed out"
+        if self._phy_retry_count > 0 and not self._phy_completed:
+            return "Retrying physiological baseline..."
+        return "Calibrating physiological baseline"
+
+    def _arm_prod_watchdog(self):
+        self._prod_watchdog.start(self.BASELINE_TIMEOUT_MS)
+
+    def _clear_prod_watchdog(self):
+        self._prod_watchdog.stop()
+
+    def _arm_phy_watchdog(self):
+        timeout = int(self.BASELINE_TIMEOUT_MS * (1.0 + 0.25 * self._phy_retry_count))
+        self._phy_watchdog.start(timeout)
+
+    def _clear_phy_watchdog(self):
+        self._phy_watchdog.stop()
+
+    def _on_prod_timeout(self):
+        if self._terminal_emitted or self._mode != self.MODE_QUICK or self._prod_completed:
             return
-        if stage == self.STAGE_PHY and self._current_stage == self.STAGE_PHY:
-            elapsed_ms = int(self.BASELINE_TIMEOUT_MS * (1.0 + 0.25 * self._phy_retry_count))
-            if self._phy_retry_count < self.MAX_PHY_RETRIES:
-                self._phy_retry_count += 1
-                log.warning(
-                    "Calibration physiological baseline timed out after %d ms; retrying (%d/%d)",
-                    elapsed_ms,
-                    self._phy_retry_count,
-                    self.MAX_PHY_RETRIES,
-                )
-                self._queue_phy_stage_start(retry=True)
-                return
+        log.warning("Calibration productivity baseline timed out after %d ms", self.BASELINE_TIMEOUT_MS)
+        self._fail("Productivity baseline calibration timed out. Please retry.")
+
+    def _on_phy_timeout(self):
+        if (
+            self._terminal_emitted
+            or self._mode != self.MODE_QUICK
+            or self._phy_completed
+            or self._phy_status == self.PHY_STATUS_TIMED_OUT
+        ):
+            return
+
+        elapsed_ms = int(self.BASELINE_TIMEOUT_MS * (1.0 + 0.25 * self._phy_retry_count))
+        diagnostics = self._phy_diagnostics_summary()
+        if self._phy_retry_count < self.MAX_PHY_RETRIES:
+            self._phy_retry_count += 1
             log.warning(
-                "Calibration physiological baseline timed out after %d ms and %d retries; "
-                "completing with NFB + productivity data only",
+                "Calibration physiological baseline timed out after %d ms; retrying (%d/%d). %s",
                 elapsed_ms,
+                self._phy_retry_count,
                 self.MAX_PHY_RETRIES,
+                diagnostics,
             )
-            # Phy states could not be calibrated (hardware/PPG issue) but NFB and
-            # productivity baselines are valid – complete gracefully.
+            if self._current_stage == self.STAGE_PHY:
+                self.stage_changed.emit(self.STAGE_PHY, self._phy_stage_description())
+            self._queue_phy_stage_start(retry=True)
+            return
+
+        self._phy_status = self.PHY_STATUS_TIMED_OUT
+        log.warning(
+            "Calibration physiological baseline timed out after %d ms and %d retries; "
+            "completing with NFB + productivity data only. %s",
+            elapsed_ms,
+            self.MAX_PHY_RETRIES,
+            diagnostics,
+        )
+
+        if self._prod_completed:
+            if self._current_stage != self.STAGE_PHY:
+                self._show_phy_stage()
+            self._emit_progress(1.0)
+            self._finish()
+
+    def _phy_diagnostics_summary(self) -> str:
+        return (
+            "Diagnostics: "
+            f"state_packets={self._phy_state_packets_seen}, "
+            f"progress_seen={self._phy_progress_seen}, "
+            f"baselines_seen={self._phy_baselines_seen}"
+        )
+
+    def _on_phy_hard_deadline(self):
+        """Absolute ceiling – fires once regardless of progress resets."""
+        if (
+            self._terminal_emitted
+            or self._phy_completed
+            or self._phy_status == self.PHY_STATUS_TIMED_OUT
+        ):
+            return
+        self._phy_status = self.PHY_STATUS_TIMED_OUT
+        self._phy_watchdog.stop()
+        log.warning(
+            "Calibration physiological baseline hit hard deadline (%d ms); "
+            "completing without physio baselines. %s",
+            self.PHY_HARD_DEADLINE_MS,
+            self._phy_diagnostics_summary(),
+        )
+        if self._prod_completed:
+            if self._current_stage != self.STAGE_PHY:
+                self._show_phy_stage()
             self._emit_progress(1.0)
             self._finish()

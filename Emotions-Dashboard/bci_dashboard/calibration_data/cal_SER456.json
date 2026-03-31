@@ -2,26 +2,26 @@
   "nfb": {
     "timestampMilli": 1,
     "failReason": 0,
-    "individualFrequency": 9.8,
-    "individualPeakFrequency": 10.0,
-    "individualPeakFrequencyPower": 1.1,
-    "individualPeakFrequencySuppression": 0.3,
+    "individualFrequency": 9.4,
+    "individualPeakFrequency": 9.6,
+    "individualPeakFrequencyPower": 1.2,
+    "individualPeakFrequencySuppression": 0.4,
     "individualBandwidth": 4.0,
-    "individualNormalizedPower": 0.6,
+    "individualNormalizedPower": 0.7,
     "lowerFrequency": 8.0,
     "upperFrequency": 12.0
   },
   "prod_baselines": {
-    "timestampMilli": 1,
-    "gravity": 1.0,
-    "productivity": 2.0,
-    "fatigue": 3.0,
-    "reverseFatigue": 4.0,
+    "timestampMilli": 20,
+    "gravity": 3.0,
+    "productivity": 4.0,
+    "fatigue": 2.0,
+    "reverseFatigue": 6.0,
     "relaxation": 5.0,
-    "concentration": 6.0
+    "concentration": 1.0
   },
   "phy_baselines": {
-    "timestampMilli": 1,
+    "timestampMilli": 10,
     "alpha": 1.0,
     "beta": 2.0,
     "alphaGravity": 3.0,

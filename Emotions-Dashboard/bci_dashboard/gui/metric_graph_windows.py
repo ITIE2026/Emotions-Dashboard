@@ -35,6 +35,7 @@ _TIME_SCALE_OPTIONS = {
     "1 min": 60.0,
     "5 min": 300.0,
     "15 min": 900.0,
+    "Session": 0.0,
 }
 
 
@@ -411,9 +412,12 @@ class TimeSeriesGraphWindow(QWidget):
         blocker = self._scale_combo.blockSignals(True)
         self._scale_combo.setCurrentText(label)
         self._scale_combo.blockSignals(blocker)
-        span_seconds = int(_TIME_SCALE_OPTIONS[label])
+        span_seconds = _TIME_SCALE_OPTIONS[label]
         self._scale_badge.setText(label)
-        self._span_label.setText(f"Span: {span_seconds} sec")
+        if span_seconds > 0:
+            self._span_label.setText(f"Span: {int(span_seconds)} sec")
+        else:
+            self._span_label.setText("Span: Full session")
         self._refresh_plot()
 
     def set_history_data(self, history: dict[str, list[tuple[float, float]]], references: dict[str, float | None] | None = None):
@@ -436,8 +440,12 @@ class TimeSeriesGraphWindow(QWidget):
             if points
         ]
         now = max(latest_points) if latest_points else time.monotonic()
-        start = max(self._session_start, now - span_seconds)
-        end = max(start + span_seconds, now)
+        if span_seconds <= 0:
+            start = self._session_start
+            end = max(start + 10.0, now)
+        else:
+            start = max(self._session_start, now - span_seconds)
+            end = max(start + span_seconds, now)
 
         y_values: list[float] = []
         latest_values: dict[str, float] = {}

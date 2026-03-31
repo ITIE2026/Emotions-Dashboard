@@ -1,25 +1,25 @@
 {
   "nfb": {
-    "individualFrequency": 9.815536499023438,
-    "individualPeakFrequency": 9.399999618530273,
+    "individualFrequency": 9.324441909790039,
+    "individualPeakFrequency": 9.5,
     "lowerFrequency": 7.0,
     "upperFrequency": 13.0
   },
   "prod_baselines": {
-    "timestampMilli": 1774259151287,
+    "timestampMilli": 1774957214351,
     "gravity": 0.6539717316627502,
     "productivity": 0.14487798511981964,
     "fatigue": 6.90286111831665,
     "reverseFatigue": 0.14487798511981964,
-    "relaxation": 4.595643043518066,
+    "relaxation": 0.0,
     "concentration": 0.2178066223859787
   },
   "phy_baselines": {
     "timestampMilli": 0,
-    "alpha": 0.398261159658432,
-    "beta": 0.15138201415538788,
-    "alphaGravity": 0.7229849100112915,
-    "betaGravity": 0.09664907306432724,
-    "concentration": 0.3507314920425415
+    "alpha": 0.6358205080032349,
+    "beta": 0.23859889805316925,
+    "alphaGravity": 0.8305080533027649,
+    "betaGravity": 0.10518515110015869,
+    "concentration": 0.3796504735946655
   }
 }

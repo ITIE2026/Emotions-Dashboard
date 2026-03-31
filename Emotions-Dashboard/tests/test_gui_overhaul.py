@@ -157,6 +157,9 @@ class GuiOverhaulTests(unittest.TestCase):
             manager = CalibrationManager(object(), object(), prod, phys)
             manager.calibration_complete.connect(completed.append)
             manager.start_quick("SER456")
+            APP.processEvents()
+            self.assertFalse(prod.started)
+            self.assertTrue(phys.started)
 
             nfb = SimpleNamespace(
                 timestampMilli=1,
@@ -172,9 +175,9 @@ class GuiOverhaulTests(unittest.TestCase):
             )
             manager._on_nfb_finished(manager._calibrator, nfb)
             self.assertFalse(prod.started)
-            self.assertFalse(phys.started)
             APP.processEvents()
             self.assertTrue(prod.started)
+            self.assertTrue(phys.started)
 
             prod.baselines_updated.emit(SimpleNamespace(
                 timestampMilli=1,
@@ -185,9 +188,6 @@ class GuiOverhaulTests(unittest.TestCase):
                 relaxation=5.0,
                 concentration=6.0,
             ))
-            self.assertFalse(phys.started)
-            APP.processEvents()
-            self.assertTrue(phys.started)
             phys.baselines_updated.emit(SimpleNamespace(
                 timestampMilli=1,
                 alpha=1.0,
@@ -199,6 +199,7 @@ class GuiOverhaulTests(unittest.TestCase):
 
         self.assertEqual(completed[-1]["mode"], "quick")
         self.assertTrue(completed[-1]["applied"])
+        self.assertEqual(completed[-1]["phy_status"], "complete")
 
     def test_session_recorder_creates_bundle_and_optional_csv(self):
         with tempfile.TemporaryDirectory() as tempdir:

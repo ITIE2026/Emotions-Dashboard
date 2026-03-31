@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt
 from calibration.calibration_store import load_calibration
 from gui.metric_graph_windows import (
     CognitiveStatesWindow,
+    GRAPH_SPECS,
     TimeSeriesGraphWindow,
     graph_spec,
 )
@@ -60,38 +61,43 @@ class GraphWindowManagerMixin:
         if graph_id not in self._graph_windows:
             return
         self._active_graphs.add(graph_id)
-        self.reset_graph_history(graph_id)
-        self._seed_graph_history(graph_id)
+        if self._bg_graph_session_start is not None and graph_id in self._bg_graph_histories:
+            self._graph_session_starts[graph_id] = self._bg_graph_session_start
+            self._graph_histories[graph_id] = {
+                key: deque(pts) for key, pts in self._bg_graph_histories[graph_id].items()
+            }
+        else:
+            self.reset_graph_history(graph_id)
+            self._seed_graph_history(graph_id)
         self._refresh_metric_graph_window(graph_id)
 
     def deactivate_graph(self, graph_id: str):
         self._active_graphs.discard(graph_id)
-        self._graph_histories.pop(graph_id, None)
-        self._graph_session_starts.pop(graph_id, None)
 
     def reset_graph_history(self, graph_id: str):
         self._graph_session_starts[graph_id] = time.monotonic()
         self._graph_histories[graph_id] = self._build_graph_history_store(graph_id)
 
     def append_graph_point(self, graph_id: str, series_key: str, value, timestamp: float | None = None):
+        ts = float(timestamp if timestamp is not None else time.monotonic())
+        try:
+            numeric = float(value) if value is not None else None
+        except (TypeError, ValueError):
+            numeric = None
+        if numeric is not None:
+            self._append_bg_graph_point(graph_id, series_key, numeric, ts)
         if not self.is_graph_active(graph_id):
+            return
+        if numeric is None:
             return
         history_store = self._graph_histories.setdefault(
             graph_id,
             self._build_graph_history_store(graph_id),
         )
-        if series_key not in history_store or value is None:
+        if series_key not in history_store:
             return
-        try:
-            numeric = float(value)
-        except (TypeError, ValueError):
-            return
-        ts = float(timestamp if timestamp is not None else time.monotonic())
         history = history_store[series_key]
         history.append((ts, numeric))
-        cutoff = ts - GRAPH_HISTORY_RETENTION_SEC
-        while history and history[0][0] < cutoff:
-            history.popleft()
 
     def _seed_graph_history(self, graph_id: str):
         timestamp = time.monotonic()
@@ -231,3 +237,29 @@ class GraphWindowManagerMixin:
         if not self._latest_indexes and not self._latest_physio:
             return None
         return 0.0 if (has_prod_artifacts or has_physio_artifacts) else 100.0
+
+    # ── Background (session-long) graph history ──────────────────────────
+
+    def _init_background_graph_histories(self):
+        """Start recording all time-series graphs. Called on calibration done."""
+        self._bg_graph_session_start = time.monotonic()
+        self._bg_graph_histories = {}
+        for graph_id, spec in GRAPH_SPECS.items():
+            self._bg_graph_histories[graph_id] = {
+                series.key: deque() for series in spec.series
+            }
+
+    def _clear_background_graph_histories(self):
+        """Stop background recording and discard data. Called on disconnect."""
+        self._bg_graph_histories = {}
+        self._bg_graph_session_start = None
+
+    def _append_bg_graph_point(self, graph_id: str, series_key: str, value: float, timestamp: float):
+        """Unconditionally append a data point to the background store."""
+        bg_store = self._bg_graph_histories.get(graph_id)
+        if bg_store is None:
+            return
+        series_deque = bg_store.get(series_key)
+        if series_deque is None:
+            return
+        series_deque.append((timestamp, value))

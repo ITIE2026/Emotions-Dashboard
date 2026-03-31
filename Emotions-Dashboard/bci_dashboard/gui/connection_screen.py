@@ -438,9 +438,9 @@ class ConnectionScreen(QWidget):
             self._diagram.stop_scan()
             self._post_group.setVisible(True)
             self._post_group.setStyleSheet(
-                f"background: {BG_CARD}; border: 1px solid {ACCENT_GREEN}; "
-                f"border-radius: 12px; "
-                f"box-shadow: 0 0 12px rgba(105,240,174,0.25);"
+                "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+                f"stop:0 {BG_CARD}, stop:1 #10261D); "
+                f"border: 1px solid {ACCENT_GREEN}; border-radius: 12px;"
             )
             self._connect_btn.setText("Connected")
             self._scan_btn.setVisible(False)

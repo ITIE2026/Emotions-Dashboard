@@ -103,6 +103,7 @@ class NavBar(QWidget):
         ("\U0001F3E0", "Home"),         # 🏠
         ("\U0001F4CA", "Monitoring"),   # 📊
         ("\U0001F3AE", "Training"),     # 🎮
+        ("\U0001F3C6", "Games"),        # 🏆
         ("\U0001F4C1", "Sessions"),     # 📁
         ("\U0001F3AC", "Media"),        # 🎬
     ]
