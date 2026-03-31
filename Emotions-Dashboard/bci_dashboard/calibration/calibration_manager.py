@@ -387,6 +387,13 @@ class CalibrationManager(QObject):
             return exc.message.decode("utf-8", errors="replace")
         return str(exc)
 
+    def stop(self):
+        """Cancel any in-progress calibration without emitting failure signals."""
+        if not self._terminal_emitted:
+            self._terminal_emitted = True
+        self._stop_runtime_timers()
+        self._current_stage = 0
+
     def _reset_runtime_state(self):
         self._stop_runtime_timers()
         self._current_stage = 0
@@ -481,8 +488,12 @@ class CalibrationManager(QObject):
                 self._queue_phy_stage_start(retry=True)
                 return
             log.warning(
-                "Calibration physiological baseline timed out after %d ms and %d retries",
+                "Calibration physiological baseline timed out after %d ms and %d retries; "
+                "completing with NFB + productivity data only",
                 elapsed_ms,
                 self.MAX_PHY_RETRIES,
             )
-            self._fail("Physiological baseline calibration timed out. Please retry.")
+            # Phy states could not be calibrated (hardware/PPG issue) but NFB and
+            # productivity baselines are valid – complete gracefully.
+            self._emit_progress(1.0)
+            self._finish()

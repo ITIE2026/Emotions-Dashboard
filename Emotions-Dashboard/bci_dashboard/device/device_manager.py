@@ -169,7 +169,8 @@ class DeviceManager(QObject):
                 pass
 
     def disconnect(self):
-        self._stop_scan_process()
+        self._scan_active = False
+        self._scan_timeout.stop()
         if self._device:
             try:
                 self._device.stop()

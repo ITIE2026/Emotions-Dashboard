@@ -207,6 +207,9 @@ class SignalDispatcherMixin:
         youtube_screen = getattr(self, "_youtube_screen", None)
         if youtube_screen is not None and hasattr(youtube_screen, "on_emotions"):
             youtube_screen.on_emotions(data)
+        gyro_mouse = getattr(self, "_gyro_mouse", None)
+        if gyro_mouse is not None:
+            gyro_mouse.on_emotions(data)
         if self.is_graph_active("cognitive_states"):
             self._refresh_metric_graph_window("cognitive_states")
         if self._session_active:
@@ -340,6 +343,9 @@ class SignalDispatcherMixin:
             self._mems_screen.on_mems(mems_timed_data)
         if self._stack.currentIndex() == PAGE_TRAINING:
             self._training_screen.on_mems(mems_timed_data)
+        gyro_mouse = getattr(self, "_gyro_mouse", None)
+        if gyro_mouse is not None:
+            gyro_mouse.on_mems(mems_timed_data)
         if self._session_active:
             self._recorder.record_mems_packet(mems_timed_data)
 

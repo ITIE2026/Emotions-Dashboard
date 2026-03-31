@@ -96,6 +96,7 @@ class NavBar(QWidget):
     """Emits *tab_selected(index)* when a tab is clicked."""
 
     tab_selected = Signal(int)
+    gyro_mouse_toggled = Signal()  # emitted when gyro mouse button clicked
 
     # (icon_unicode, label) — 5 tabs covering all main sections
     _TABS = [
@@ -135,6 +136,12 @@ class NavBar(QWidget):
             tabs_row.addWidget(btn, stretch=1)
             self._buttons.append(btn)
 
+        # Gyro mouse toggle button (right side of nav bar)
+        self._gyro_btn = _TabButton("\U0001F5B1", "Gyro")
+        self._gyro_btn.clicked.connect(self._on_gyro_click)
+        self._gyro_mouse_active = False
+        tabs_row.addWidget(self._gyro_btn, stretch=1)
+
         outer.addLayout(tabs_row)
         self._select(0, animate=False)
 
@@ -167,3 +174,28 @@ class NavBar(QWidget):
         """Enable / disable all tabs (e.g. disable during calibration)."""
         for btn in self._buttons:
             btn.setEnabled(enabled)
+
+    def _on_gyro_click(self):
+        self.gyro_mouse_toggled.emit()
+
+    def set_gyro_mouse_active(self, active: bool):
+        """Update the gyro button appearance based on controller state."""
+        self._gyro_mouse_active = active
+        if active:
+            self._gyro_btn._icon.setStyleSheet(
+                f"font-size: 18px; color: {ACCENT_GREEN}; background: transparent;"
+            )
+            self._gyro_btn._label.setStyleSheet(
+                f"font-size: 10px; color: {ACCENT_GREEN}; font-weight: bold; "
+                f"background: transparent; letter-spacing: 0.5px;"
+            )
+            self._gyro_btn._label.setText("Gyro ON")
+        else:
+            self._gyro_btn._icon.setStyleSheet(
+                f"font-size: 18px; color: {TEXT_SECONDARY}; background: transparent;"
+            )
+            self._gyro_btn._label.setStyleSheet(
+                f"font-size: 10px; color: {TEXT_SECONDARY}; font-weight: normal; "
+                f"background: transparent; letter-spacing: 0.3px;"
+            )
+            self._gyro_btn._label.setText("Gyro")

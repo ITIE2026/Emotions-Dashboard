@@ -12,7 +12,7 @@ from queue import Queue
 import numpy as np
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -47,6 +47,7 @@ from gui.sessions_screen import SessionsScreen
 from gui.signal_dispatcher import SignalDispatcherMixin
 from gui.training_screen import TrainingScreen
 from gui.youtube_screen import YouTubeScreen
+from gui.bci_mouse_controller import BciMouseController
 from gui.widgets.nav_bar import NavBar
 from prosthetic_arm.phaseon_runtime import PhaseonRuntime
 from storage.session_recorder import SessionRecorder
@@ -405,6 +406,9 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._phaseon_screen = PhaseonScreen(self._phaseon_runtime)
         self._youtube_screen = YouTubeScreen()
 
+        # ── BCI Gyro Mouse Controller ─────────────────────────────
+        self._gyro_mouse = BciMouseController(parent=self)
+
         self._stack.addWidget(self._conn_screen)
         self._stack.addWidget(self._cal_screen)
         self._stack.addWidget(self._dash_screen)
@@ -419,8 +423,14 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._nav_bar = NavBar()
         root.addWidget(self._nav_bar)
         self._nav_bar.tab_selected.connect(self._on_nav_tab_selected)
+        self._nav_bar.gyro_mouse_toggled.connect(self._gyro_mouse.toggle)
+        self._gyro_mouse.toggled.connect(self._nav_bar.set_gyro_mouse_active)
         self._stack.currentChanged.connect(self._sync_nav_bar)
         self._stack.currentChanged.connect(self._update_live_view_activity)
+
+        # ── Ctrl+Shift+M toggle for gyro mouse ───────────────────
+        self._gyro_shortcut = QShortcut(QKeySequence("Ctrl+Shift+M"), self)
+        self._gyro_shortcut.activated.connect(self._gyro_mouse.toggle)
         self._conn_screen.filter_signal_changed.connect(self._on_connection_filter_changed)
 
         self._dash_screen.set_iapf_status()
@@ -660,6 +670,8 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
 
     def _cancel_calibration(self):
         self._cal_screen.set_result_text("Calibration cancelled.")
+        if self._cal_mgr:
+            self._cal_mgr.stop()
         if self._embedded_neuroflow_calibration:
             self._training_screen.on_neuroflow_calibration_finished(False, "Calibration cancelled.")
         self._finish_calibration_flow()
