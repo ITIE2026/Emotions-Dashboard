@@ -775,8 +775,8 @@ class DashboardScreen(QWidget):
         self._duration_label.setText(f"Session Duration: {h:02d}:{m:02d}:{s:02d}")
 
     def _open_sessions_folder(self):
-        os.makedirs(SESSION_DIR, exist_ok=True)
-        os.startfile(SESSION_DIR)
+        from utils.platform import open_folder
+        open_folder(SESSION_DIR)
 
     def _refresh_live_panels(self):
         if not self._streaming_active or not self._view_active:

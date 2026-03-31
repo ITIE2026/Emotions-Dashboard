@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+import json
+import logging
 import math
 import os
 import random
@@ -46,7 +48,9 @@ STAGES = [
     ("Focus", STAGE_FOCUS),
 ]
 
-APPS = [
+_log = logging.getLogger(__name__)
+
+_BUILTIN_APPS = [
     {
         "name": "Google Chrome",
         "icon": "🌐",
@@ -83,6 +87,28 @@ APPS = [
         "shell": True,
     },
 ]
+
+_APPS_JSON_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data",
+    "neuroflow_apps.json",
+)
+
+
+def _load_apps() -> list[dict]:
+    """Load launch targets from JSON config, falling back to built-in defaults."""
+    if os.path.isfile(_APPS_JSON_PATH):
+        try:
+            with open(_APPS_JSON_PATH, "r", encoding="utf-8") as f:
+                apps = json.load(f)
+            if isinstance(apps, list) and apps:
+                return apps
+        except Exception:
+            _log.warning("Failed to load %s; using built-in defaults", _APPS_JSON_PATH)
+    return list(_BUILTIN_APPS)
+
+
+APPS = _load_apps()
 
 
 @dataclass(frozen=True)

@@ -590,5 +590,5 @@ class SessionsScreen(QWidget):
                 lbl.setText("--")
 
     def _open_folder(self):
-        os.makedirs(SESSION_DIR, exist_ok=True)
-        os.startfile(SESSION_DIR)
+        from utils.platform import open_folder
+        open_folder(SESSION_DIR)
