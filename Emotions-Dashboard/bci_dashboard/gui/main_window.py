@@ -42,6 +42,7 @@ from gui.mems_screen import MemsScreen
 from gui.phaseon_screen import PhaseonScreen
 from gui.sessions_screen import SessionsScreen
 from gui.training_screen import TrainingScreen
+from gui.youtube_screen import YouTubeScreen
 from gui.widgets.nav_bar import NavBar
 from prosthetic_arm.phaseon_runtime import PhaseonRuntime
 from storage.session_recorder import SessionRecorder
@@ -74,6 +75,7 @@ PAGE_MEMS = 3
 PAGE_TRAINING = 4
 PAGE_SESSIONS = 5
 PAGE_PHASEON = 6
+PAGE_YOUTUBE = 7
 
 
 class AsyncSessionRecorder:
@@ -405,6 +407,7 @@ class MainWindow(QMainWindow):
         self._training_screen = TrainingScreen(runtime=self._phaseon_runtime)
         self._sessions_screen = SessionsScreen()
         self._phaseon_screen = PhaseonScreen(self._phaseon_runtime)
+        self._youtube_screen = YouTubeScreen()
 
         self._stack.addWidget(self._conn_screen)
         self._stack.addWidget(self._cal_screen)
@@ -413,6 +416,7 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._training_screen)
         self._stack.addWidget(self._sessions_screen)
         self._stack.addWidget(self._phaseon_screen)
+        self._stack.addWidget(self._youtube_screen)
         root.addWidget(self._stack, stretch=1)
 
         # ── Bottom NavBar: Home / Monitoring / Training / Sessions ────
@@ -1060,12 +1064,13 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(1200, self._finish_calibration_flow)
 
     def _on_nav_tab_selected(self, tab_idx: int):
-        """Map NavBar tab index (0-3) to stack page."""
+        """Map NavBar tab index (0-4) to stack page."""
         mapping = {
             0: PAGE_CONNECTION,
             1: PAGE_DASHBOARD,
             2: PAGE_TRAINING,
             3: PAGE_SESSIONS,
+            4: PAGE_YOUTUBE,
         }
         page = mapping.get(tab_idx, PAGE_CONNECTION)
         if page == PAGE_TRAINING and self._stack.currentIndex() == PAGE_TRAINING:
@@ -1082,6 +1087,7 @@ class MainWindow(QMainWindow):
             PAGE_TRAINING: 2,
             PAGE_SESSIONS: 3,
             PAGE_PHASEON: 2,       # PhaseON is a training mode
+            PAGE_YOUTUBE: 4,       # Media tab
         }
         tab = reverse_map.get(page_index, 0)
         self._nav_bar.set_active_tab(tab)
@@ -1214,6 +1220,7 @@ class MainWindow(QMainWindow):
         self._latest_emo = data or {}
         self._dash_screen.on_emotions(data)
         self._training_screen.on_emotions(data)
+        self._youtube_screen.on_emotions(data)
         if self.is_graph_active("cognitive_states"):
             self._refresh_metric_graph_window("cognitive_states")
         if self._session_active:
@@ -1224,6 +1231,7 @@ class MainWindow(QMainWindow):
         self._dash_screen.on_productivity(data)
         self._phaseon_runtime.ingest_productivity(data)
         self._training_screen.on_productivity(data)
+        self._youtube_screen.on_productivity(data)
         now = time.monotonic()
         self.append_graph_point("concentration_index", "concentrationScore", self._latest_prod.get("concentrationScore"), timestamp=now)
         self.append_graph_point("relaxation_index", "relaxationScore", self._latest_prod.get("relaxationScore"), timestamp=now)

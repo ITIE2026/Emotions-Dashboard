@@ -97,12 +97,13 @@ class NavBar(QWidget):
 
     tab_selected = Signal(int)
 
-    # (icon_unicode, label) — 4 tabs covering all main sections
+    # (icon_unicode, label) — 5 tabs covering all main sections
     _TABS = [
         ("\U0001F3E0", "Home"),         # 🏠
         ("\U0001F4CA", "Monitoring"),   # 📊
         ("\U0001F3AE", "Training"),     # 🎮
         ("\U0001F4C1", "Sessions"),     # 📁
+        ("\U0001F3AC", "Media"),        # 🎬
     ]
 
     def __init__(self, parent=None):

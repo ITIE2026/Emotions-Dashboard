@@ -14,6 +14,45 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 if APP_DIR not in sys.path:
     sys.path.insert(0, APP_DIR)
 
+# ── Bootstrap PySide6 WebEngine addons from short-path install ────────
+# PySide6_Addons (contains QtWebEngineWidgets) is installed to C:\p6 to
+# work around Windows MAX_PATH (260-char) restrictions during package install.
+# MUST run before any PySide6 import so Qt env vars are set in time.
+_P6_ADDONS = r"C:\p6\PySide6"
+if os.path.isdir(_P6_ADDONS):
+    try:
+        # Tell Qt where QtWebEngineProcess.exe, ICU data and locale paks live
+        _exe = os.path.join(_P6_ADDONS, "QtWebEngineProcess.exe")
+        _res = os.path.join(_P6_ADDONS, "resources")
+        _loc = os.path.join(_P6_ADDONS, "translations", "qtwebengine_locales")
+        if os.path.isfile(_exe):
+            os.environ.setdefault("QTWEBENGINEPROCESS_PATH", _exe)
+        if os.path.isdir(_res):
+            os.environ.setdefault("QTWEBENGINE_RESOURCES_PATH", _res)
+        if os.path.isdir(_loc):
+            os.environ.setdefault("QTWEBENGINE_LOCALES_PATH", _loc)
+        # Software rendering – GPU context creation fails on some machines
+        os.environ.setdefault(
+            "QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox --disable-gpu"
+        )
+
+        import PySide6 as _pyside6
+        if _P6_ADDONS not in _pyside6.__path__:
+            _pyside6.__path__.insert(0, _P6_ADDONS)
+        _main_pyside = os.path.dirname(_pyside6.__file__)
+        os.add_dll_directory(_main_pyside)
+        os.add_dll_directory(_P6_ADDONS)
+        # QtWebEngineProcess.exe is a child process – it inherits PATH,
+        # not os.add_dll_directory.  Add both PySide6 dirs so it finds
+        # Qt6Core.dll (main) + Qt6WebEngineCore.dll (addons).
+        _path = os.environ.get("PATH", "")
+        for _d in (_P6_ADDONS, _main_pyside):
+            if _d not in _path:
+                os.environ["PATH"] = _d + os.pathsep + _path
+                _path = os.environ["PATH"]
+    except Exception:
+        pass  # Non-fatal
+
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import Qt
 

@@ -1,4 +1,7 @@
 PySide6>=6.5
+# PySide6_Addons (QtWebEngineWidgets) must be installed separately to a short path
+# due to Windows MAX_PATH limits.  Run:
+#   python3.11 -m pip install PySide6_Addons==<your_pyside6_version> --target C:\p6 --no-deps --no-user
 pyqtgraph>=0.13
 numpy>=1.24
 pandas>=2.0
