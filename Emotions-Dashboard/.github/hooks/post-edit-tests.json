@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "event": "PostToolUse",
+        "type": "command",
+        "command": "python -m pytest tests/ -x -q --tb=short 2>&1 | head -40",
+        "windows": "python -m pytest tests/ -x -q --tb=short 2>&1 | Select-Object -First 40",
+        "cwd": "${workspaceFolder}/Emotions-Dashboard",
+        "timeout": 30,
+        "matchers": ["edit_file", "replace_string_in_file", "multi_replace_string_in_file", "create_file"]
+      }
+    ]
+  }
+}

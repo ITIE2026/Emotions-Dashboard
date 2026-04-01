@@ -40,6 +40,7 @@ from gui.widgets.gravity_drift_widget import GravityDriftWidget
 from gui.widgets.synapse_serpent_widget import SynapseSerpentWidget
 from gui.widgets.aero_zen_widget import AeroZenWidget
 from gui.widgets.chrono_shift_widget import ChronoShiftWidget
+from gui.widgets.neural_drive_widget import NeuralDriveWidget
 from utils.config import ACCENT_GREEN, BORDER_SUBTLE, TEXT_PRIMARY, TEXT_SECONDARY
 
 
@@ -195,7 +196,7 @@ class _SoundtrackCard(QFrame):
 # ── Main GamesScreen ─────────────────────────────────────────────────
 
 class GamesScreen(QWidget):
-    IMMERSIVE_GAME_IDS = {"tug_of_war", "space_shooter", "bubble_burst", "jump_ball", "neon_vice", "hill_climb_racer", "gravity_drift", "synapse_serpent", "aero_zen", "chrono_shift"}
+    IMMERSIVE_GAME_IDS = {"tug_of_war", "space_shooter", "bubble_burst", "jump_ball", "neon_vice", "hill_climb_racer", "gravity_drift", "synapse_serpent", "aero_zen", "chrono_shift", "neural_drive"}
 
     SOUNDTRACKS = {
         "Aurora Drift": {
@@ -524,6 +525,7 @@ class GamesScreen(QWidget):
         self._synapse_serpent_widget = SynapseSerpentWidget()
         self._aero_zen_widget = AeroZenWidget()
         self._chrono_shift_widget = ChronoShiftWidget()
+        self._neural_drive_widget = NeuralDriveWidget()
 
         self._tug_of_war_widget.set_menu_callback(self._cancel_gameplay)
         self._space_shooter_widget.set_menu_callback(self._cancel_gameplay)
@@ -535,6 +537,7 @@ class GamesScreen(QWidget):
         self._synapse_serpent_widget.set_menu_callback(self._cancel_gameplay)
         self._aero_zen_widget.set_menu_callback(self._cancel_gameplay)
         self._chrono_shift_widget.set_menu_callback(self._cancel_gameplay)
+        self._neural_drive_widget.set_menu_callback(self._cancel_gameplay)
 
         self._game_widget_map = {
             "mind_maze": self._maze_board,
@@ -550,6 +553,7 @@ class GamesScreen(QWidget):
             "synapse_serpent": self._synapse_serpent_widget,
             "aero_zen": self._aero_zen_widget,
             "chrono_shift": self._chrono_shift_widget,
+            "neural_drive": self._neural_drive_widget,
         }
         for widget in self._game_widget_map.values():
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)

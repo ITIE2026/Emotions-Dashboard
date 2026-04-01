@@ -39,6 +39,11 @@ from gui.widgets.training_game_widgets import (
     SpaceShooterWidget,
     TugOfWarWidget,
 )
+from gui.widgets.gravity_drift_widget import GravityDriftWidget
+from gui.widgets.synapse_serpent_widget import SynapseSerpentWidget
+from gui.widgets.aero_zen_widget import AeroZenWidget
+from gui.widgets.chrono_shift_widget import ChronoShiftWidget
+from gui.widgets.neural_drive_widget import NeuralDriveWidget
 from prosthetic_arm.arm_lab_panel import ArmLabPanel
 from prosthetic_arm.arm_state import ArmStateEngine, dominant_state_for_metrics
 from prosthetic_arm.arduino_arm import ArduinoArmController
@@ -198,7 +203,7 @@ class SoundtrackCard(QFrame):
 
 class TrainingScreen(QWidget):
     neuroflow_quick_calibration_requested = Signal()
-    IMMERSIVE_GAME_IDS = {"tug_of_war", "space_shooter", "bubble_burst", "jump_ball", "neon_vice", "hill_climb_racer"}
+    IMMERSIVE_GAME_IDS = {"tug_of_war", "space_shooter", "bubble_burst", "jump_ball", "neon_vice", "hill_climb_racer", "gravity_drift", "synapse_serpent", "aero_zen", "chrono_shift", "neural_drive"}
 
     SOUNDTRACKS = {
         "Aurora Drift": {
@@ -843,6 +848,11 @@ class TrainingScreen(QWidget):
         self._prosthetic_arm_widget = ProstheticArmWidget()
         self._neon_vice_widget = NeonViceWidget()
         self._hill_climb_racer_widget = HillClimbRacerWidget()
+        self._gravity_drift_widget = GravityDriftWidget()
+        self._synapse_serpent_widget = SynapseSerpentWidget()
+        self._aero_zen_widget = AeroZenWidget()
+        self._chrono_shift_widget = ChronoShiftWidget()
+        self._neural_drive_widget = NeuralDriveWidget()
         self._tug_of_war_widget.set_menu_callback(self._cancel_gameplay)
         self._space_shooter_widget.set_menu_callback(self._cancel_gameplay)
         self._bubble_burst_widget.set_menu_callback(self._cancel_gameplay)
@@ -863,6 +873,11 @@ class TrainingScreen(QWidget):
             "prosthetic_arm": self._prosthetic_arm_widget,
             "neon_vice": self._neon_vice_widget,
             "hill_climb_racer": self._hill_climb_racer_widget,
+            "gravity_drift": self._gravity_drift_widget,
+            "synapse_serpent": self._synapse_serpent_widget,
+            "aero_zen": self._aero_zen_widget,
+            "chrono_shift": self._chrono_shift_widget,
+            "neural_drive": self._neural_drive_widget,
         }
         for widget in self._game_widget_map.values():
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)

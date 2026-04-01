@@ -42,6 +42,7 @@ from gui.training_games_arcade import (  # noqa: F401
     SynapseSerpentController,
     AeroZenController,
     ChronoShiftController,
+    NeuralDriveController,
 )
 from gui.training_games_memory import (  # noqa: F401
     MemoryGameController,
@@ -484,6 +485,32 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         music_profile="calm",
     ),
     TrainingGameSpec(
+        game_id="neural_drive",
+        section="Arcade neurofeedback",
+        eyebrow="EEG Road Runner",
+        card_title="Neural Drive",
+        detail_title="An EEG-powered perspective road game where your mind steers the car",
+        duration="8 min",
+        description="Concentrate to steer right, relax to go left. Drive through brick-wall gates without crashing.",
+        detail_body=(
+            "Neural Drive puts you behind the wheel of a perspective road runner controlled entirely by your "
+            "brainwaves — no gyroscope needed. Concentration shifts the car right, relaxation steers it left. "
+            "Brick-wall gates scroll toward you from the horizon; thread through each gap cleanly for points. "
+            "Three escalating circuits push gap width narrower and gate speed higher each level."
+        ),
+        instructions=(
+            "Concentrate to steer right. Relax to drift left. Guide the car through each gate gap. "
+            "Hit a wall and you stun for 2 seconds. Clear all target gates on each circuit to advance."
+        ),
+        calibration_copy="Relax and hold a neutral mental state so we can capture your EEG baseline before driving.",
+        preview_label="DRIVE",
+        colors=("#0a1020", "#0066ff"),
+        enabled=True,
+        controller_factory=NeuralDriveController,
+        widget_kind="neural_drive",
+        music_profile="arcade",
+    ),
+    TrainingGameSpec(
         game_id="chrono_shift",
         section="Arcade neurofeedback",
         eyebrow="Time Runner",
@@ -532,6 +559,7 @@ GAME_SECTION_IDS: set[str] = {
     "synapse_serpent",
     "aero_zen",
     "chrono_shift",
+    "neural_drive",
 }
 
 

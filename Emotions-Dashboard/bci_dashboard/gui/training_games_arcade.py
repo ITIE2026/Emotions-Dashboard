@@ -3004,3 +3004,165 @@ class ChronoShiftController(ArcadeTrainingController):
             moved=moved, level_completed=level_completed, run_completed=run_completed,
             recommended_label="Navigate chrono gates",
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  NEURAL DRIVE – EEG-only gate runner (no gyro)
+#  Concentrate to steer right, relax to drift left.
+#  Navigate a car through brick-wall gaps at escalating speeds.
+# ═══════════════════════════════════════════════════════════════════════
+
+_ND_DRIFT_SCALE = 0.032   # car movement per tick per unit of EEG delta
+_ND_STUN_TICKS  = 8       # 2 s at 4 Hz
+_ND_CLEAR_TICKS = 5       # 1.25 s green flash
+
+
+class NeuralDriveController(ArcadeTrainingController):
+    """EEG-only gate runner.  Concentrate → car drifts right.
+    Relax → car drifts left.  Navigate through brick-wall gaps."""
+
+    LEVELS = [
+        TrainingLevel("City Streets", 60),
+        TrainingLevel("Highway",      75),
+        TrainingLevel("Neon Circuit", 90),
+    ]
+    LEVEL_CONFIGS = [
+        {"gap_width": 0.55, "gate_speed": 0.016, "spawn_interval": 2.6, "target_passes":  8},
+        {"gap_width": 0.38, "gate_speed": 0.025, "spawn_interval": 2.2, "target_passes": 10},
+        {"gap_width": 0.22, "gate_speed": 0.038, "spawn_interval": 1.8, "target_passes": 12},
+    ]
+
+    def __init__(self) -> None:
+        super().__init__(self.LEVELS)
+
+    def _reset_level_state(self) -> None:
+        cfg = self.LEVEL_CONFIGS[self._level_index]
+        self._gap_width:      float = cfg["gap_width"]
+        self._gate_speed:     float = cfg["gate_speed"]
+        self._spawn_interval: float = cfg["spawn_interval"]
+        self._target_passes:  int   = cfg["target_passes"]
+        self._car_x:          float = 0.5
+        self._gates:          list[dict] = []
+        self._score:          int   = 0
+        self._crashes:        int   = 0
+        self._passes:         int   = 0
+        self._stun_ticks:     int   = 0
+        self._cleared_ticks:  int   = 0
+        self._spawn_timer:    float = 0.0
+        self._tick:           int   = 0
+        self._message:        str   = ""
+
+    def update_gameplay(
+        self,
+        concentration: float,
+        relaxation: float,
+        valid: bool,
+        stale: bool,
+        elapsed_seconds: float,
+    ) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation   - (self._relax_baseline or 0.0)
+        blocked        = ""
+        moved          = False
+        level_completed = False
+        run_completed  = False
+
+        if stale:
+            blocked = "Waiting for signal\u2026"
+        elif not valid:
+            blocked = "Artifacts detected \u2013 paused"
+        else:
+            # ── steer car via EEG balance ────────────────────────────
+            if self._stun_ticks > 0:
+                self._stun_ticks -= 1
+            else:
+                net = (conc_delta - relax_delta) * _ND_DRIFT_SCALE
+                self._car_x = max(0.04, min(0.96, self._car_x + net))
+                if abs(net) > 0.001:
+                    moved = True
+
+            if self._cleared_ticks > 0:
+                self._cleared_ticks -= 1
+
+            # ── scroll and spawn gates ────────────────────────────────
+            dt = 0.25
+            self._spawn_timer += dt
+
+            if self._spawn_timer >= self._spawn_interval:
+                self._spawn_timer = 0.0
+                # deterministic randomness from tick + elapsed
+                seed = abs(hash((self._tick, int(elapsed_seconds * 1000))))
+                gap_center = 0.22 + (seed % 56) / 100.0   # 0.22 – 0.78
+                self._gates.append({
+                    "y": 0.0,
+                    "gap_center": gap_center,
+                    "gap_width": self._gap_width,
+                    "checked": False,
+                })
+
+            survived = []
+            for g in self._gates:
+                g["y"] += self._gate_speed
+
+                # collision check once gate enters the car zone
+                if not g["checked"] and 0.80 < g["y"] < 0.98:
+                    g["checked"] = True
+                    gc, gw = g["gap_center"], g["gap_width"]
+                    if gc - gw / 2 <= self._car_x <= gc + gw / 2:
+                        # clean pass through gap
+                        self._score += 10
+                        self._passes += 1
+                        self._cleared_ticks = _ND_CLEAR_TICKS
+                        self._message = "Clear!"
+                        moved = True
+                    else:
+                        # hit the wall
+                        self._crashes += 1
+                        self._stun_ticks = _ND_STUN_TICKS
+                        self._message = "Crash!"
+                        moved = True
+
+                if g["y"] <= 1.12:
+                    survived.append(g)
+            self._gates = survived
+
+            # ── level advance when target clean passes reached ────────
+            if self._passes >= self._target_passes and not run_completed:
+                level_completed = True
+                self._record_level_result(True, elapsed_seconds)
+                run_completed = self._advance_level()
+
+            self._tick += 1
+
+        self._view_state = {
+            "mode": "neural_drive",
+            "car_x": self._car_x,
+            "gates": list(self._gates),
+            "score": self._score,
+            "crashes": self._crashes,
+            "passes": self._passes,
+            "target_passes": self._target_passes,
+            "stun_ticks": self._stun_ticks,
+            "cleared_ticks": self._cleared_ticks,
+            "tick": self._tick,
+            "message": self._message if not blocked else blocked,
+            "level_title": self.current_level.title,
+            "headline": self.current_level.title,
+            "blocked": blocked,
+            "conc_delta": conc_delta,
+            "relax_delta": relax_delta,
+            "serenity":     max(0.0, min(100.0, 50.0 + relax_delta * 5.0)),
+            "restlessness": max(0.0, min(100.0, 50.0 + conc_delta * 5.0)),
+            "music_scene": "neural_drive",
+            "music_bias":  max(-1.0, min(1.0, (conc_delta - relax_delta) / 3.0)),
+        }
+
+        action = "focus" if conc_delta > 0.15 else ("relax" if relax_delta > 0.15 else None)
+        return self._arcade_snapshot(
+            phase="neural_drive", phase_label="Neural Drive",
+            direction=action, blocked_reason=blocked,
+            control_hint="Concentrate to steer right \u2022 Relax to go left",
+            conc_delta=conc_delta, relax_delta=relax_delta,
+            moved=moved, level_completed=level_completed, run_completed=run_completed,
+            recommended_label="Navigate through the gates",
+        )
