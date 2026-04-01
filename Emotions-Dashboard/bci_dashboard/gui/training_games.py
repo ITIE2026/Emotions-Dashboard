@@ -41,6 +41,7 @@ from gui.training_games_arcade import (  # noqa: F401
     GravityDriftController,
     SynapseSerpentController,
     AeroZenController,
+    ChronoShiftController,
 )
 from gui.training_games_memory import (  # noqa: F401
     MemoryGameController,
@@ -482,6 +483,33 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         widget_kind="aero_zen",
         music_profile="calm",
     ),
+    TrainingGameSpec(
+        game_id="chrono_shift",
+        section="Arcade neurofeedback",
+        eyebrow="Time Runner",
+        card_title="Chrono Shift",
+        detail_title="A time-manipulation runner with chrono-gated obstacles",
+        duration="9 min",
+        description="Control the flow of time with your brain. Focus for fast-forward, relax for slow-motion, and steer through chrono gates.",
+        detail_body=(
+            "Chrono Shift is a forward-scrolling runner where your mental state warps the flow of time. "
+            "Concentration triggers fast-forward mode with a 2\u00d7 score multiplier but faster, harder obstacles. "
+            "Relaxation activates slow-motion for Matrix-style precision through tight gaps. Chrono Gates \u2014 "
+            "colour-coded obstacles \u2014 only open in the matching time mode, forcing rapid brain-state switching."
+        ),
+        instructions=(
+            "Tilt your head to steer the chrono-orb. Focus to enter fast-forward (red gates open, 2\u00d7 score). "
+            "Relax to enter slow-motion (blue gates open, precision bonus). White gates are always open. "
+            "Survive all three temporal zones."
+        ),
+        calibration_copy="Hold your head centred for gyro calibration and settle into a stable EEG baseline.",
+        preview_label="CHRONO",
+        colors=("#0a0420", "#ff9020"),
+        enabled=True,
+        controller_factory=ChronoShiftController,
+        widget_kind="chrono_shift",
+        music_profile="arcade",
+    ),
 ]
 
 
@@ -503,6 +531,7 @@ GAME_SECTION_IDS: set[str] = {
     "gravity_drift",
     "synapse_serpent",
     "aero_zen",
+    "chrono_shift",
 }
 
 

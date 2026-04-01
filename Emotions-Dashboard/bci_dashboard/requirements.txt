@@ -8,3 +8,4 @@ pandas>=2.0
 pyserial>=3.5
 h5py>=3.10
 mne>=1.8
+websockets>=12.0

@@ -37,6 +37,7 @@ from gui.screen_router import (
     PAGE_CONNECTION,
     PAGE_DASHBOARD,
     PAGE_MEMS,
+    PAGE_MULTIPLAYER,
     PAGE_PHASEON,
     PAGE_SESSIONS,
     PAGE_TRAINING,
@@ -47,11 +48,14 @@ from gui.sessions_screen import SessionsScreen
 from gui.signal_dispatcher import SignalDispatcherMixin
 from gui.training_screen import TrainingScreen
 from gui.games_window import GamesWindow
+from gui.multiplayer_game_screen import MultiplayerGameScreen
 from gui.youtube_screen import YouTubeScreen
 from gui.aim_trainer import AimTrainerWindow
 from gui.brain_speller import BrainSpellerWindow
 from gui.bci_music_dj import BciMusicDjWindow
 from gui.focus_timer import FocusTimerWindow
+from gui.neuro_art_canvas import NeuroArtCanvasWindow
+from gui.neuro_journal import NeuroJournalWindow
 from gui.bci_mouse_controller import BciMouseController
 from gui.widgets.nav_bar import NavBar
 from prosthetic_arm.phaseon_runtime import PhaseonRuntime
@@ -410,10 +414,13 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._mems_screen = MemsScreen()
         self._training_screen = TrainingScreen(runtime=self._phaseon_runtime)
         self._games_window = GamesWindow()
+        self._multiplayer_screen = MultiplayerGameScreen()
         self._aim_trainer = AimTrainerWindow()
         self._brain_speller = BrainSpellerWindow()
         self._music_dj = BciMusicDjWindow()
         self._focus_timer = FocusTimerWindow()
+        self._neuro_art = NeuroArtCanvasWindow()
+        self._neuro_journal = NeuroJournalWindow()
         self._sessions_screen = SessionsScreen()
         self._phaseon_screen = PhaseonScreen(self._phaseon_runtime)
         self._youtube_screen = YouTubeScreen()
@@ -429,6 +436,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._stack.addWidget(self._sessions_screen)
         self._stack.addWidget(self._phaseon_screen)
         self._stack.addWidget(self._youtube_screen)
+        self._stack.addWidget(self._multiplayer_screen)
         root.addWidget(self._stack, stretch=1)
 
         # ── Bottom NavBar: Home / Monitoring / Training / Sessions ────
@@ -458,6 +466,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         if tab_idx == 3:
             self._open_games_window()
             return
+        # Tab indices shifted: 4=Multiplayer, 5=Sessions, 6=Media
         from gui.screen_router import ScreenRouterMixin
         ScreenRouterMixin._on_nav_tab_selected(self, tab_idx)
 
@@ -491,6 +500,18 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._focus_timer.raise_()
         self._focus_timer.activateWindow()
 
+    def _open_neuro_art(self):
+        """Show and raise the Neuro Art Canvas window."""
+        self._neuro_art.show()
+        self._neuro_art.raise_()
+        self._neuro_art.activateWindow()
+
+    def _open_neuro_journal(self):
+        """Show and raise the Neuro Journal window."""
+        self._neuro_journal.show()
+        self._neuro_journal.raise_()
+        self._neuro_journal.activateWindow()
+
     def _build_menu_bar(self):
         mb = self.menuBar()
         mb.setStyleSheet(
@@ -523,6 +544,12 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         timer_act = QAction("Focus Timer", self)
         timer_act.triggered.connect(lambda: self._open_focus_timer())
         file_menu.addAction(timer_act)
+        art_act = QAction("Neuro Art Canvas", self)
+        art_act.triggered.connect(lambda: self._open_neuro_art())
+        file_menu.addAction(art_act)
+        journal_act = QAction("Neuro Journal", self)
+        journal_act.triggered.connect(lambda: self._open_neuro_journal())
+        file_menu.addAction(journal_act)
         sessions_act = QAction("Sessions Data", self)
         sessions_act.triggered.connect(lambda: self._stack.setCurrentIndex(PAGE_SESSIONS))
         file_menu.addAction(sessions_act)
@@ -636,6 +663,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
             self._dash_screen.set_streaming_active(False)
             self._training_screen.set_streaming_active(False)
             self._games_window.set_streaming_active(False)
+            self._multiplayer_screen.set_streaming_active(False)
             self._update_live_view_activity(self._stack.currentIndex())
             self._dm.stop_streaming()
             self._stop_session()
@@ -703,6 +731,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
             self._dash_screen.set_streaming_active(False)
             self._training_screen.set_streaming_active(False)
             self._games_window.set_streaming_active(False)
+            self._multiplayer_screen.set_streaming_active(False)
             self._mems_screen.set_streaming_active(False)
             self._dm.stop_streaming()
             self._streaming = False
@@ -797,6 +826,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._dash_screen.set_streaming_active(True)
         self._training_screen.set_streaming_active(True)
         self._games_window.set_streaming_active(True)
+        self._multiplayer_screen.set_streaming_active(True)
         self._training_screen.set_eeg_stream_metadata(
             sample_rate_hz=self._dm.eeg_sample_rate,
             channel_names=self._dm.display_channel_names,
@@ -833,6 +863,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._dash_screen.set_streaming_active(False)
         self._training_screen.set_streaming_active(False)
         self._games_window.set_streaming_active(False)
+        self._multiplayer_screen.set_streaming_active(False)
         self._mems_screen.set_streaming_active(False)
         self._update_live_view_activity(self._stack.currentIndex())
         self._log_timer.stop()
@@ -891,6 +922,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
                 pass
         self._training_screen.shutdown()
         self._games_window.shutdown()
+        self._multiplayer_screen.shutdown()
         self._aim_trainer.shutdown()
         self._brain_speller.shutdown()
         self._music_dj.shutdown()

@@ -11,6 +11,7 @@ PAGE_TRAINING = 4
 PAGE_SESSIONS = 5
 PAGE_PHASEON = 6
 PAGE_YOUTUBE = 7
+PAGE_MULTIPLAYER = 8
 
 
 class ScreenRouterMixin:
@@ -48,8 +49,10 @@ class ScreenRouterMixin:
             1: PAGE_DASHBOARD,
             2: PAGE_TRAINING,
             # 3 = Games → separate window, handled by MainWindow override
-            4: PAGE_SESSIONS,
-            5: PAGE_YOUTUBE,
+            # 4 = Multiplayer → PAGE_MULTIPLAYER
+            4: PAGE_MULTIPLAYER,
+            5: PAGE_SESSIONS,
+            6: PAGE_YOUTUBE,
         }
         page = mapping.get(tab_idx)
         if page is None:
@@ -67,9 +70,10 @@ class ScreenRouterMixin:
             PAGE_MEMS: 1,          # MEMS is part of Monitoring
             PAGE_TRAINING: 2,
             # tab 3 = Games (external window, no stack page)
-            PAGE_SESSIONS: 4,
+            PAGE_MULTIPLAYER: 4,   # Multiplayer tab
+            PAGE_SESSIONS: 5,
             PAGE_PHASEON: 2,       # PhaseON is a training mode
-            PAGE_YOUTUBE: 5,       # Media tab
+            PAGE_YOUTUBE: 6,       # Media tab
         }
         tab = reverse_map.get(page_index, 0)
         self._nav_bar.set_active_tab(tab)
@@ -92,8 +96,11 @@ class ScreenRouterMixin:
         dashboard_active = index == PAGE_DASHBOARD
         mems_active = index == PAGE_MEMS
         training_active = index == PAGE_TRAINING
+        multiplayer_active = index == PAGE_MULTIPLAYER
         self._dash_screen.set_view_active(dashboard_active)
         if hasattr(self._mems_screen, "set_view_active"):
             self._mems_screen.set_view_active(mems_active)
         if hasattr(self._training_screen, "set_view_active"):
             self._training_screen.set_view_active(training_active)
+        if hasattr(self, "_multiplayer_screen") and hasattr(self._multiplayer_screen, "set_view_active"):
+            self._multiplayer_screen.set_view_active(multiplayer_active)

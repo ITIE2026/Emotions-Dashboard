@@ -2752,3 +2752,255 @@ class AeroZenController(ArcadeTrainingController):
             moved=moved, level_completed=level_completed, run_completed=run_completed,
             recommended_label="Find your zen altitude",
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  CHRONO SHIFT – Time-manipulation runner (gyro steers, focus = fast-
+#  forward, relax = slow-motion, chrono-gated obstacles)
+# ═══════════════════════════════════════════════════════════════════════
+
+_CS_GYRO_DEAD_ZONE = 0.04
+_CS_GYRO_EMA = 0.30
+
+
+class ChronoShiftController(ArcadeTrainingController):
+    """Forward-scrolling runner where brain state controls the flow of time.
+    Focus = fast-forward (2× speed, higher multiplier, opens red gates).
+    Relax = slow-motion (0.35× speed, opens blue gates).
+    Steady = normal flow.  Gyro steers the chrono-orb."""
+
+    LEVELS = [
+        TrainingLevel("Time Gate", 55),
+        TrainingLevel("Temporal Storm", 70),
+        TrainingLevel("Paradox Core", 85),
+    ]
+    LEVEL_CONFIGS = [
+        {"base_speed": 2.0, "gap_min": 0.42, "gap_shrink": 0.015,
+         "obstacle_interval": 2.0, "blue_ratio": 0.15, "red_ratio": 0.10},
+        {"base_speed": 3.0, "gap_min": 0.34, "gap_shrink": 0.020,
+         "obstacle_interval": 1.5, "blue_ratio": 0.25, "red_ratio": 0.20},
+        {"base_speed": 4.0, "gap_min": 0.26, "gap_shrink": 0.025,
+         "obstacle_interval": 1.0, "blue_ratio": 0.30, "red_ratio": 0.30},
+    ]
+
+    def __init__(self) -> None:
+        super().__init__(self.LEVELS)
+        self._gyro_x = 0.0
+        self._gyro_y = 0.0
+        self._gyro_zero_x = 0.0
+        self._gyro_zero_y = 0.0
+        self._gyro_samples: list[tuple[float, float]] = []
+        self._gyro_calibrated = False
+
+    # ── gyro input (identical pattern to GravityDrift) ────────────────
+    def update_mems(self, accel_x: float, accel_y: float, accel_z: float,
+                    gyro_x: float, gyro_y: float, gyro_z: float) -> None:
+        raw_x, raw_y = accel_y, accel_x
+        if not self._gyro_calibrated:
+            self._gyro_samples.append((raw_x, raw_y))
+            if len(self._gyro_samples) >= 60:
+                self._gyro_zero_x = sum(s[0] for s in self._gyro_samples) / len(self._gyro_samples)
+                self._gyro_zero_y = sum(s[1] for s in self._gyro_samples) / len(self._gyro_samples)
+                self._gyro_calibrated = True
+            return
+        ax = raw_x - self._gyro_zero_x
+        ay = raw_y - self._gyro_zero_y
+        if abs(ax) < _CS_GYRO_DEAD_ZONE:
+            ax = 0.0
+        if abs(ay) < _CS_GYRO_DEAD_ZONE:
+            ay = 0.0
+        self._gyro_x += _CS_GYRO_EMA * (ax - self._gyro_x)
+        self._gyro_y += _CS_GYRO_EMA * (ay - self._gyro_y)
+
+    # ── level reset ───────────────────────────────────────────────────
+    def _reset_level_state(self) -> None:
+        cfg = self.LEVEL_CONFIGS[self._level_index]
+        self._base_speed: float = cfg["base_speed"]
+        self._gap_min: float = cfg["gap_min"]
+        self._gap_shrink: float = cfg["gap_shrink"]
+        self._obstacle_interval: float = cfg["obstacle_interval"]
+        self._blue_ratio: float = cfg["blue_ratio"]
+        self._red_ratio: float = cfg["red_ratio"]
+        self._orb_x: float = 0.5
+        self._orb_y: float = 0.5
+        self._speed: float = self._base_speed
+        self._time_scale: float = 1.0
+        self._time_mode: str = "normal"  # "fast" | "slow" | "normal"
+        self._score: int = 0
+        self._distance: float = 0.0
+        self._hull: int = 4
+        self._obstacles: list[dict] = []
+        self._particles: list[dict] = []
+        self._trail: list[dict] = []
+        self._spawn_timer: float = 0.0
+        self._tick: int = 0
+        self._message = ""
+
+    # ── determine gate type for a new obstacle ────────────────────────
+    def _pick_gate_type(self, seed: int) -> str:
+        frac = (seed % 100) / 100.0
+        if frac < self._blue_ratio:
+            return "blue"
+        if frac < self._blue_ratio + self._red_ratio:
+            return "red"
+        return "white"
+
+    # ── main gameplay tick ────────────────────────────────────────────
+    def update_gameplay(self, concentration: float, relaxation: float,
+                        valid: bool, stale: bool, elapsed_seconds: float) -> GameplaySnapshot:
+        conc_delta = concentration - (self._conc_baseline or 0.0)
+        relax_delta = relaxation - (self._relax_baseline or 0.0)
+        blocked = ""
+        moved = False
+        level_completed = False
+        run_completed = False
+
+        if stale:
+            blocked = "Waiting for signal…"
+        elif not valid:
+            blocked = "Artifacts detected – paused"
+        else:
+            intent = self._arcade_intent(conc_delta, relax_delta)
+
+            # ── time mode from intent ─────────────────────────────────
+            if intent == "focus":
+                self._time_scale = 2.0
+                self._time_mode = "fast"
+            elif intent == "relax":
+                self._time_scale = 0.35
+                self._time_mode = "slow"
+            else:
+                self._time_scale = 1.0
+                self._time_mode = "normal"
+
+            # ── steer orb via gyro ────────────────────────────────────
+            self._orb_x = max(0.05, min(0.95, self._orb_x + self._gyro_x * 0.08))
+            self._orb_y = max(0.10, min(0.90, self._orb_y + self._gyro_y * 0.06))
+            moved = abs(self._gyro_x) > _CS_GYRO_DEAD_ZONE or abs(self._gyro_y) > _CS_GYRO_DEAD_ZONE
+
+            # ── trail (afterimage for last 8 positions) ───────────────
+            self._trail.append({"x": self._orb_x, "y": self._orb_y})
+            if len(self._trail) > 8:
+                self._trail = self._trail[-8:]
+
+            # ── advance distance (scaled by time) ─────────────────────
+            dt = 0.25
+            effective_speed = self._base_speed * self._time_scale
+            self._speed = effective_speed
+            self._distance += effective_speed * dt
+            self._spawn_timer += dt * self._time_scale
+
+            # ── spawn obstacles ───────────────────────────────────────
+            if self._spawn_timer >= self._obstacle_interval:
+                self._spawn_timer = 0.0
+                seed = int(self._distance * 137) + self._tick
+                gap_center = 0.15 + (hash(seed) % 70) / 100.0
+                gap_width = max(self._gap_min, 0.52 - self._gap_shrink * len(self._obstacles))
+                gate_type = self._pick_gate_type(hash(seed + 7))
+                self._obstacles.append({
+                    "y": -0.05,
+                    "gap_center": gap_center,
+                    "gap_width": gap_width,
+                    "gate_type": gate_type,
+                    "openness": 1.0 if gate_type == "white" else 0.0,
+                })
+
+            # ── update obstacles ──────────────────────────────────────
+            survived = []
+            for obs in self._obstacles:
+                obs["y"] += effective_speed * dt * 0.018
+
+                # animate gate openness toward target
+                gate = obs["gate_type"]
+                if gate == "white":
+                    target_open = 1.0
+                elif gate == "blue":
+                    target_open = 1.0 if self._time_mode == "slow" else 0.15
+                else:  # red
+                    target_open = 1.0 if self._time_mode == "fast" else 0.15
+                obs["openness"] += 0.12 * (target_open - obs["openness"])
+
+                if obs["y"] > 1.15:
+                    # cleared obstacle
+                    base_pts = 10
+                    if self._time_mode == "fast":
+                        base_pts *= 2
+                    if gate == "blue" and self._time_mode == "slow":
+                        base_pts += 25
+                    elif gate == "red" and self._time_mode == "fast":
+                        base_pts += 30
+                    self._score += base_pts
+                    continue
+
+                # collision check in the danger band
+                if 0.80 < obs["y"] < 0.95:
+                    gc = obs["gap_center"]
+                    effective_gw = obs["gap_width"] * obs["openness"]
+                    if self._orb_x < gc - effective_gw / 2 or self._orb_x > gc + effective_gw / 2:
+                        self._hull -= 1
+                        self._message = "Impact!"
+                        self._particles.extend([
+                            {"x": self._orb_x, "y": self._orb_y,
+                             "dx": (i - 4) * 0.02, "dy": -0.03 + i * 0.005,
+                             "life": 14}
+                            for i in range(9)
+                        ])
+                        if self._hull <= 0:
+                            run_completed = True
+                        obs["y"] = 1.2  # mark as passed
+                survived.append(obs)
+            self._obstacles = survived
+
+            # ── particles ─────────────────────────────────────────────
+            alive_p = []
+            for p in self._particles:
+                p["x"] += p["dx"]
+                p["y"] += p["dy"]
+                p["life"] -= 1
+                if p["life"] > 0:
+                    alive_p.append(p)
+            self._particles = alive_p
+
+            # ── level completion by distance ──────────────────────────
+            target_dist = self.current_level.target_seconds * self._base_speed * 0.8
+            if self._distance >= target_dist and not run_completed:
+                level_completed = True
+                self._record_level_result(True, elapsed_seconds)
+                run_completed = self._advance_level()
+
+            self._tick += 1
+
+        # ── build view state ──────────────────────────────────────────
+        self._view_state = {
+            "mode": "chrono_shift",
+            "orb_x": self._orb_x, "orb_y": self._orb_y,
+            "speed": self._speed,
+            "time_scale": self._time_scale,
+            "time_mode": self._time_mode,
+            "score": self._score, "hull": self._hull,
+            "distance": self._distance,
+            "obstacles": list(self._obstacles),
+            "particles": list(self._particles),
+            "trail": list(self._trail),
+            "tick": self._tick,
+            "message": self._message if not blocked else blocked,
+            "level_title": self.current_level.title,
+            "headline": self.current_level.title,
+            "blocked": blocked,
+            "conc_delta": conc_delta,
+            "relax_delta": relax_delta,
+            "serenity": max(0.0, min(100.0, 50.0 + relax_delta * 5.0)),
+            "restlessness": max(0.0, min(100.0, 50.0 + conc_delta * 5.0)),
+            "music_scene": "chrono_shift",
+            "music_bias": max(-1.0, min(1.0, (conc_delta - relax_delta) / 3.0)),
+        }
+
+        action = "focus" if self._time_mode == "fast" else ("relax" if self._time_mode == "slow" else None)
+        return self._arcade_snapshot(
+            phase="chrono_shift", phase_label="Chrono Shift",
+            direction=action, blocked_reason=blocked,
+            control_hint="Tilt to steer • Focus for fast-forward • Relax for slow-motion",
+            conc_delta=conc_delta, relax_delta=relax_delta,
+            moved=moved, level_completed=level_completed, run_completed=run_completed,
+            recommended_label="Navigate chrono gates",
+        )

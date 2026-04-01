@@ -13,7 +13,7 @@ from classifiers.mems_handler import MemsHandler
 from classifiers.physio_handler import PhysioHandler
 from classifiers.productivity_handler import ProductivityHandler
 from device.device_status_monitor import DeviceStatusMonitor
-from gui.screen_router import PAGE_CONNECTION, PAGE_DASHBOARD, PAGE_MEMS, PAGE_TRAINING
+from gui.screen_router import PAGE_CONNECTION, PAGE_DASHBOARD, PAGE_MEMS, PAGE_MULTIPLAYER, PAGE_TRAINING
 
 log = logging.getLogger(__name__)
 
@@ -222,6 +222,12 @@ class SignalDispatcherMixin:
         focus_timer = getattr(self, "_focus_timer", None)
         if focus_timer is not None:
             focus_timer.on_emotions(data)
+        neuro_art = getattr(self, "_neuro_art", None)
+        if neuro_art is not None:
+            neuro_art.on_emotions(data)
+        neuro_journal = getattr(self, "_neuro_journal", None)
+        if neuro_journal is not None:
+            neuro_journal.on_emotions(data)
         if self.is_graph_active("cognitive_states"):
             self._refresh_metric_graph_window("cognitive_states")
         if self._session_active:
@@ -234,6 +240,8 @@ class SignalDispatcherMixin:
         self._training_screen.on_productivity(data)
         if hasattr(self, "_games_window"):
             self._games_window.on_productivity(data)
+        if hasattr(self, "_multiplayer_screen"):
+            self._multiplayer_screen.on_productivity(data)
         youtube_screen = getattr(self, "_youtube_screen", None)
         if youtube_screen is not None and hasattr(youtube_screen, "on_productivity"):
             youtube_screen.on_productivity(data)
@@ -293,6 +301,8 @@ class SignalDispatcherMixin:
         self._training_screen.on_physio_states(data)
         if hasattr(self, "_games_window"):
             self._games_window.on_physio_states(data)
+        if hasattr(self, "_multiplayer_screen"):
+            self._multiplayer_screen.on_physio_states(data)
         self._append_eeg_quality_history(timestamp=time.monotonic())
         self._refresh_metric_graph_window("eeg_quality")
 
@@ -379,6 +389,9 @@ class SignalDispatcherMixin:
         music_dj = getattr(self, "_music_dj", None)
         if music_dj is not None:
             music_dj.on_mems(mems_timed_data)
+        neuro_art = getattr(self, "_neuro_art", None)
+        if neuro_art is not None:
+            neuro_art.on_mems(mems_timed_data)
         if self._session_active:
             self._recorder.record_mems_packet(mems_timed_data)
 
