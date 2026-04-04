@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui.widgets.neural_art_canvas import NeuralArtChart
 from gui.widgets.spectrum_chart import SpectrumChart
 from utils.config import (
     BG_CARD,
@@ -222,6 +223,7 @@ class HemisphereRadarChart(QWidget):
 class ToggleableEegGraphPanel(QWidget):
     VIEW_SPECTRUM = "spectrum"
     VIEW_HEMISPHERE_RADAR = "hemisphere_radar"
+    VIEW_NEURAL_ART = "neural_art"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -240,8 +242,10 @@ class ToggleableEegGraphPanel(QWidget):
 
         self._spectrum_view = SpectrumChart(self._stack_host)
         self._hemisphere_view = HemisphereRadarChart(self._stack_host)
+        self._neural_art_view = NeuralArtChart(self._stack_host)
         self._stack.addWidget(self._spectrum_view)
         self._stack.addWidget(self._hemisphere_view)
+        self._stack.addWidget(self._neural_art_view)
         self._stack.setCurrentWidget(self._spectrum_view)
         layout.addWidget(self._stack_host, stretch=1)
 
@@ -267,6 +271,9 @@ class ToggleableEegGraphPanel(QWidget):
         if mode == self.VIEW_HEMISPHERE_RADAR:
             self._view_mode = self.VIEW_HEMISPHERE_RADAR
             self._stack.setCurrentWidget(self._hemisphere_view)
+        elif mode == self.VIEW_NEURAL_ART:
+            self._view_mode = self.VIEW_NEURAL_ART
+            self._stack.setCurrentWidget(self._neural_art_view)
         else:
             self._view_mode = self.VIEW_SPECTRUM
             self._stack.setCurrentWidget(self._spectrum_view)
@@ -274,6 +281,8 @@ class ToggleableEegGraphPanel(QWidget):
     def toggle_view_mode(self):
         if self._view_mode == self.VIEW_SPECTRUM:
             self.set_view_mode(self.VIEW_HEMISPHERE_RADAR)
+        elif self._view_mode == self.VIEW_HEMISPHERE_RADAR:
+            self.set_view_mode(self.VIEW_NEURAL_ART)
         else:
             self.set_view_mode(self.VIEW_SPECTRUM)
 
@@ -289,6 +298,12 @@ class ToggleableEegGraphPanel(QWidget):
     def hemisphere_band_powers(self):
         return self._hemisphere_view.hemisphere_band_powers()
 
+    def update_brain_metrics(
+        self, attention: float, relaxation: float, stress: float, cognitive_load: float
+    ):
+        self._neural_art_view.update_brain_metrics(attention, relaxation, stress, cognitive_load)
+
     def clear_data(self):
         self._spectrum_view.update_psd([], [])
         self._hemisphere_view.clear_data()
+        self._neural_art_view.clear_data()

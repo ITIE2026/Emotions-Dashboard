@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import random
 
 from gui.eeg_game_base import GameplaySnapshot, TrainingLevel
 from gui.training_games_base import (
@@ -3166,3 +3167,493 @@ class NeuralDriveController(ArcadeTrainingController):
             moved=moved, level_completed=level_completed, run_completed=run_completed,
             recommended_label="Navigate through the gates",
         )
+
+
+# ── Mini Militia Arena constants ──────────────────────────────────────
+_MMA_GRAVITY = 1200.0
+_MMA_WORLD_W = 2600
+_MMA_GROUND_Y = 820
+_MMA_MOVE_ACCEL = 1100.0
+_MMA_MAX_SPEED = 260.0
+_MMA_JETPACK_LIFT = 980.0
+_MMA_ENERGY_DRAIN = 30.0
+_MMA_ENERGY_REGEN = 22.0
+_MMA_RESPAWN_TIME = 2.4
+_MMA_FIRE_COOLDOWN_FOCUS = 0.38
+_MMA_SHIELD_COOLDOWN = 1.5
+_MMA_SHIELD_DURATION = 1.0
+_MMA_SHIELD_DAMAGE_MULT = 0.45
+_MMA_MAX_PARTICLES = 30
+_MMA_SUB_STEPS = 10
+_MMA_SUB_DT = 0.025
+
+_MMA_RIFLE = ("Rifle", 900.0, 14.0, 0.18, 3.0, 1, "#ffdc78")
+_MMA_SHOTGUN = ("Shotgun", 820.0, 8.0, 0.55, 18.0, 5, "#ffaa78")
+_MMA_SNIPER = ("Sniper", 1350.0, 34.0, 0.85, 1.0, 1, "#aaffff")
+
+_MMA_PLATFORMS = [
+    (0, _MMA_GROUND_Y, _MMA_WORLD_W, 80),
+    (120, 520, 270, 22),
+    (470, 360, 220, 20),
+    (690, 540, 260, 20),
+    (980, 410, 210, 20),
+    (1220, 260, 230, 22),
+    (1520, 560, 240, 22),
+    (1760, 390, 230, 20),
+    (2050, 230, 260, 20),
+    (2280, 500, 210, 20),
+]
+
+_MMA_SPAWN_POINTS = [(180, 240), (720, 220), (1260, 260), (1810, 200), (2320, 240)]
+_MMA_BOT_COLORS = ["#ff8282", "#ffd26e", "#a0ffa0"]
+_MMA_BOT_NAMES = ["Bot Alpha", "Bot Beta", "Bot Gamma"]
+
+
+def _mma_rects_overlap(a, b):
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    return ax < bx + bw and ax + aw > bx and ay < by + bh and ay + ah > by
+
+
+class MiniMilitiaArenaController(ArcadeTrainingController):
+    LEVELS = [
+        TrainingLevel("Recon Patrol", 60),
+        TrainingLevel("Firefight", 75),
+        TrainingLevel("Full Assault", 90),
+    ]
+    LEVEL_CONFIGS = [
+        {"bot_count": 1, "ai_speed": 0.35, "ai_aggression": 0.6,
+         "score_target": 5, "death_limit": 8, "pickup_kinds": ["heal"]},
+        {"bot_count": 2, "ai_speed": 0.28, "ai_aggression": 0.75,
+         "score_target": 8, "death_limit": 10,
+         "pickup_kinds": ["shotgun", "heal", "heal"]},
+        {"bot_count": 3, "ai_speed": 0.22, "ai_aggression": 0.85,
+         "score_target": 12, "death_limit": 12,
+         "pickup_kinds": ["shotgun", "sniper", "heal", "heal"]},
+    ]
+
+    def __init__(self):
+        super().__init__(self.LEVELS)
+
+    # ── state setup ───────────────────────────────────────────────
+
+    def _reset_level_state(self) -> None:
+        cfg = self.LEVEL_CONFIGS[self._level_index]
+        self._player = self._make_soldier(
+            0, "You", "#6edcff", _MMA_SPAWN_POINTS[0])
+        self._bots = [
+            self._make_soldier(
+                i + 1, _MMA_BOT_NAMES[i], _MMA_BOT_COLORS[i],
+                _MMA_SPAWN_POINTS[(i + 1) % len(_MMA_SPAWN_POINTS)])
+            for i in range(cfg["bot_count"])
+        ]
+        self._ai_states = [
+            {"decision_timer": 0.0, "move_dir": 0.0,
+             "jetpack": False, "fire": False, "shield": False}
+            for _ in self._bots
+        ]
+        self._bullets: list[dict] = []
+        self._particles: list[dict] = []
+        self._pickups = self._build_pickups(cfg["pickup_kinds"])
+        self._focus_fire_cooldown = 0.0
+        self._shield_cooldown = 0.0
+        self._camera_x = 0.0
+        self._match_elapsed = 0.0
+        self._match_over = False
+        self._winner_name = ""
+        self._intent_label = "steady"
+        self._view_state = self._militia_view_state(0.0, 0.0)
+
+    @staticmethod
+    def _make_soldier(entity_id, name, color, spawn):
+        return {
+            "entity_id": entity_id, "x": float(spawn[0]),
+            "y": float(spawn[1]), "vx": 0.0, "vy": 0.0,
+            "health": 100.0, "energy": 100.0, "facing": 1,
+            "on_ground": False, "shield_timer": 0.0,
+            "weapon": _MMA_RIFLE, "fire_timer": 0.0,
+            "respawn_timer": 0.0, "score": 0, "deaths": 0,
+            "streak": 0, "alive": True, "name": name, "color": color,
+        }
+
+    def _build_pickups(self, kinds):
+        pickups = []
+        spacing = _MMA_WORLD_W / (len(kinds) + 1)
+        for i, kind in enumerate(kinds):
+            pickups.append({
+                "x": spacing * (i + 1), "y": _MMA_GROUND_Y - 50,
+                "kind": kind, "active": True, "respawn_timer": 0.0,
+            })
+        return pickups
+
+    # ── physics helpers ───────────────────────────────────────────
+
+    def _step_soldier(self, soldier, intent_h, intent_jetpack, dt):
+        air_control = 0.72 if not soldier["on_ground"] else 1.0
+        soldier["vx"] += intent_h * _MMA_MOVE_ACCEL * air_control * dt
+        damping = 0.88 if soldier["on_ground"] else 0.96
+        soldier["vx"] *= damping
+        soldier["vx"] = max(-_MMA_MAX_SPEED, min(_MMA_MAX_SPEED, soldier["vx"]))
+        if abs(intent_h) > 0.15:
+            soldier["facing"] = 1 if intent_h > 0 else -1
+        if intent_jetpack and soldier["energy"] > 2.5:
+            soldier["vy"] -= _MMA_JETPACK_LIFT * dt
+            soldier["energy"] = max(0.0, soldier["energy"] - _MMA_ENERGY_DRAIN * dt)
+        else:
+            soldier["energy"] = min(100.0, soldier["energy"] + _MMA_ENERGY_REGEN * dt)
+        soldier["vy"] += _MMA_GRAVITY * dt
+        soldier["x"] += soldier["vx"] * dt
+        soldier["y"] += soldier["vy"] * dt
+        soldier["x"] = max(30.0, min(float(_MMA_WORLD_W - 30), soldier["x"]))
+        soldier["on_ground"] = False
+        sr = (soldier["x"] - 16, soldier["y"] - 34, 32, 68)
+        for px, py, pw, ph in _MMA_PLATFORMS:
+            if _mma_rects_overlap(sr, (px, py, pw, ph)):
+                prev_bottom = (soldier["y"] + 34) - soldier["vy"] * dt
+                if soldier["vy"] >= 0 and prev_bottom <= py + 12:
+                    soldier["y"] = py - 34
+                    soldier["vy"] = 0.0
+                    soldier["on_ground"] = True
+        if soldier["y"] > 1100:
+            return True
+        return False
+
+    # ── bot AI ────────────────────────────────────────────────────
+
+    def _bot_think(self, bot, ai_state, all_soldiers, dt, cfg):
+        ai_state["decision_timer"] -= dt
+        if ai_state["decision_timer"] > 0:
+            return
+        live = [s for s in all_soldiers
+                if s["entity_id"] != bot["entity_id"] and s["alive"]]
+        if not live:
+            ai_state["decision_timer"] = 0.3
+            return
+        nearest = min(live, key=lambda e: abs(e["x"] - bot["x"]) + abs(e["y"] - bot["y"]))
+        dx = nearest["x"] - bot["x"]
+        dy = nearest["y"] - bot["y"]
+        ai_state["move_dir"] = 1.0 if dx > 30 else (-1.0 if dx < -30 else 0.0)
+        ai_state["jetpack"] = dy < -90 and bot["energy"] > 20
+        ai_state["fire"] = abs(dx) < 520 and random.random() < cfg["ai_aggression"]
+        ai_state["shield"] = bot["health"] < 35 and random.random() < 0.35
+        ai_state["decision_timer"] = random.uniform(
+            cfg["ai_speed"] * 0.8, cfg["ai_speed"] * 1.4)
+
+    # ── combat helpers ────────────────────────────────────────────
+
+    def _fire_weapon(self, shooter, all_soldiers):
+        targets = [s for s in all_soldiers
+                   if s["entity_id"] != shooter["entity_id"] and s["alive"]]
+        if targets:
+            target = min(targets, key=lambda e: abs(e["x"] - shooter["x"]) + abs(e["y"] - shooter["y"]))
+            base_angle = math.atan2(target["y"] - shooter["y"],
+                                    target["x"] - shooter["x"])
+        else:
+            base_angle = 0.0 if shooter["facing"] >= 0 else math.pi
+        name, speed, damage, cooldown, spread, count, color = shooter["weapon"]
+        for _ in range(count):
+            spread_rad = math.radians(random.uniform(-spread, spread))
+            ang = base_angle + spread_rad
+            self._bullets.append({
+                "x": shooter["x"] + shooter["facing"] * 18,
+                "y": shooter["y"] - 18,
+                "vx": math.cos(ang) * speed,
+                "vy": math.sin(ang) * speed,
+                "damage": damage, "owner_id": shooter["entity_id"],
+                "color": color, "life": 1.8,
+            })
+
+    def _kill(self, victim, killer):
+        victim["respawn_timer"] = _MMA_RESPAWN_TIME
+        victim["deaths"] += 1
+        victim["streak"] = 0
+        victim["alive"] = False
+        victim["x"] = -200.0
+        victim["y"] = -200.0
+        victim["vx"] = 0.0
+        victim["vy"] = 0.0
+        for _ in range(min(8, _MMA_MAX_PARTICLES - len(self._particles))):
+            self._particles.append({
+                "x": victim["x"] + random.uniform(-10, 10),
+                "y": victim["y"] + random.uniform(-10, 10),
+                "vx": random.uniform(-120, 120),
+                "vy": random.uniform(-180, -20),
+                "radius": random.uniform(2, 5),
+                "color": victim["color"], "alpha": 1.0,
+                "ttl": random.uniform(0.4, 0.9),
+            })
+        if killer is not None and killer["entity_id"] != victim["entity_id"]:
+            killer["score"] += 1
+            killer["streak"] += 1
+            killer["health"] = min(100.0, killer["health"] + 14)
+            killer["energy"] = min(100.0, killer["energy"] + 24)
+
+    def _respawn_check(self, soldier, dt):
+        if soldier["alive"]:
+            return
+        soldier["respawn_timer"] -= dt
+        if soldier["respawn_timer"] <= 0:
+            spawn = random.choice(_MMA_SPAWN_POINTS)
+            soldier["x"], soldier["y"] = float(spawn[0]), float(spawn[1])
+            soldier["health"] = 100.0
+            soldier["energy"] = 100.0
+            soldier["vx"] = 0.0
+            soldier["vy"] = 0.0
+            soldier["shield_timer"] = 0.0
+            soldier["fire_timer"] = 0.0
+            soldier["weapon"] = _MMA_RIFLE
+            soldier["alive"] = True
+            soldier["on_ground"] = False
+
+    # ── sub-step simulation ───────────────────────────────────────
+
+    def _simulate_substep(self, dt, player_h, player_jetpack,
+                          player_fire, player_shield, cfg):
+        all_soldiers = [self._player] + self._bots
+
+        # player physics
+        if self._player["alive"]:
+            fell = self._step_soldier(self._player, player_h, player_jetpack, dt)
+            if fell:
+                self._kill(self._player, None)
+            # shield tick
+            if self._player["shield_timer"] > 0:
+                self._player["shield_timer"] -= dt
+            if player_shield and self._shield_cooldown <= 0 and self._player["shield_timer"] <= 0:
+                self._player["shield_timer"] = _MMA_SHIELD_DURATION
+                self._shield_cooldown = _MMA_SHIELD_COOLDOWN
+            self._shield_cooldown = max(0.0, self._shield_cooldown - dt)
+            # fire tick
+            self._player["fire_timer"] -= dt
+            if player_fire and self._player["fire_timer"] <= 0:
+                self._fire_weapon(self._player, all_soldiers)
+                self._player["fire_timer"] = self._player["weapon"][3]
+
+        # bot logic
+        for i, bot in enumerate(self._bots):
+            if bot["alive"]:
+                self._bot_think(bot, self._ai_states[i], all_soldiers, dt, cfg)
+                fell = self._step_soldier(
+                    bot, self._ai_states[i]["move_dir"],
+                    self._ai_states[i]["jetpack"], dt)
+                if fell:
+                    self._kill(bot, None)
+                    continue
+                bot["fire_timer"] -= dt
+                if self._ai_states[i]["fire"] and bot["fire_timer"] <= 0:
+                    self._fire_weapon(bot, all_soldiers)
+                    bot["fire_timer"] = bot["weapon"][3]
+                if self._ai_states[i]["shield"] and bot["shield_timer"] <= 0:
+                    bot["shield_timer"] = _MMA_SHIELD_DURATION
+                bot["shield_timer"] = max(0.0, bot["shield_timer"] - dt)
+
+        # bullets
+        live_bullets = []
+        for b in self._bullets:
+            b["x"] += b["vx"] * dt
+            b["y"] += b["vy"] * dt
+            b["life"] -= dt
+            if b["life"] <= 0 or b["x"] < -50 or b["x"] > _MMA_WORLD_W + 50:
+                continue
+            hit = False
+            for s in all_soldiers:
+                if s["entity_id"] == b["owner_id"] or not s["alive"]:
+                    continue
+                if abs(s["x"] - b["x"]) < 20 and abs(s["y"] - b["y"]) < 36:
+                    dmg = b["damage"]
+                    if s["shield_timer"] > 0:
+                        dmg *= _MMA_SHIELD_DAMAGE_MULT
+                    s["health"] -= dmg
+                    if s["health"] <= 0:
+                        owner = next((o for o in all_soldiers
+                                      if o["entity_id"] == b["owner_id"]), None)
+                        self._kill(s, owner)
+                    hit = True
+                    break
+            if not hit:
+                live_bullets.append(b)
+        self._bullets = live_bullets
+
+        # pickups
+        for pk in self._pickups:
+            if not pk["active"]:
+                pk["respawn_timer"] -= dt
+                if pk["respawn_timer"] <= 0:
+                    pk["active"] = True
+                continue
+            for s in all_soldiers:
+                if not s["alive"]:
+                    continue
+                if abs(s["x"] - pk["x"]) < 28 and abs(s["y"] - pk["y"]) < 28:
+                    if pk["kind"] == "heal":
+                        s["health"] = min(100.0, s["health"] + 30)
+                    elif pk["kind"] == "shotgun":
+                        s["weapon"] = _MMA_SHOTGUN
+                    elif pk["kind"] == "sniper":
+                        s["weapon"] = _MMA_SNIPER
+                    pk["active"] = False
+                    pk["respawn_timer"] = 8.0
+                    break
+
+        # respawns
+        for s in all_soldiers:
+            self._respawn_check(s, dt)
+
+        # particles
+        live_p = []
+        for p in self._particles:
+            p["x"] += p["vx"] * dt
+            p["y"] += p["vy"] * dt
+            p["vy"] += 400.0 * dt
+            p["ttl"] -= dt
+            p["alpha"] = max(0.0, p["ttl"] / 0.9)
+            if p["ttl"] > 0:
+                live_p.append(p)
+        self._particles = live_p[:_MMA_MAX_PARTICLES]
+
+        # camera
+        target_cam = self._player["x"] - 480
+        self._camera_x += (target_cam - self._camera_x) * 0.12
+        self._camera_x = max(0.0, min(float(_MMA_WORLD_W - 960), self._camera_x))
+
+    # ── main update ───────────────────────────────────────────────
+
+    def update_gameplay(self, concentration, relaxation, valid, stale,
+                        elapsed_seconds) -> GameplaySnapshot:
+        conc_delta = concentration - self._conc_baseline
+        relax_delta = relaxation - self._relax_baseline
+        blocked = ""
+        moved = False
+        level_completed = False
+        run_completed = False
+
+        if not valid or stale:
+            blocked = "Weak signal" if not valid else "Stale reading"
+            self._view_state = self._militia_view_state(conc_delta, relax_delta)
+            return self._arcade_snapshot(
+                phase="mini_militia_arena", phase_label="Mini Militia Arena",
+                direction=None, blocked_reason=blocked,
+                control_hint="Focus\u2192move right \u2022 Relax\u2192move left \u2022 Steady\u2192jetpack",
+                conc_delta=conc_delta, relax_delta=relax_delta,
+                moved=False, level_completed=False, run_completed=False,
+                recommended_label="Survive the arena",
+            )
+
+        if self._match_over:
+            cfg = self.LEVEL_CONFIGS[self._level_index]
+            if self._player["score"] >= cfg["score_target"]:
+                level_completed = True
+                run_completed = not self._advance_level()
+                self._record_level_result(True, elapsed_seconds)
+            else:
+                run_completed = True
+                self._record_level_result(False, elapsed_seconds)
+            self._view_state = self._militia_view_state(conc_delta, relax_delta)
+            return self._arcade_snapshot(
+                phase="mini_militia_arena", phase_label="Mini Militia Arena",
+                direction=None, blocked_reason="",
+                control_hint="Match over!",
+                conc_delta=conc_delta, relax_delta=relax_delta,
+                moved=True, level_completed=level_completed,
+                run_completed=run_completed,
+                recommended_label="Arena complete",
+            )
+
+        cfg = self.LEVEL_CONFIGS[self._level_index]
+        intent = self._arcade_intent(conc_delta, relax_delta)
+        self._intent_label = intent or "steady"
+
+        player_h = 0.0
+        player_jetpack = False
+        player_fire = False
+        player_shield = False
+
+        if intent == "focus":
+            player_h = 1.0
+            moved = True
+            self._focus_fire_cooldown -= 0.25
+            if self._focus_fire_cooldown <= 0 and self._stabilize_intent("focus"):
+                player_fire = True
+                self._focus_fire_cooldown = _MMA_FIRE_COOLDOWN_FOCUS
+        elif intent == "relax":
+            player_h = -1.0
+            moved = True
+            if self._stabilize_intent("relax"):
+                player_shield = True
+        elif intent == "steady":
+            player_jetpack = True
+            moved = True
+
+        self._match_elapsed += 0.25
+
+        for _ in range(_MMA_SUB_STEPS):
+            self._simulate_substep(
+                _MMA_SUB_DT, player_h, player_jetpack,
+                player_fire, player_shield, cfg)
+
+        # win/loss check
+        if self._player["score"] >= cfg["score_target"]:
+            self._match_over = True
+            self._winner_name = "You"
+        elif self._player["deaths"] >= cfg["death_limit"]:
+            self._match_over = True
+            top_bot = max(self._bots, key=lambda b: b["score"])
+            self._winner_name = top_bot["name"]
+        elif self._match_elapsed >= self.current_level.target_seconds:
+            self._match_over = True
+            all_s = [self._player] + self._bots
+            top = max(all_s, key=lambda s: s["score"])
+            self._winner_name = top["name"]
+
+        self._view_state = self._militia_view_state(conc_delta, relax_delta)
+        direction = "focus" if conc_delta > 0.15 else (
+            "relax" if relax_delta > 0.15 else None)
+        return self._arcade_snapshot(
+            phase="mini_militia_arena", phase_label="Mini Militia Arena",
+            direction=direction, blocked_reason=blocked,
+            control_hint="Focus\u2192move right \u2022 Relax\u2192move left \u2022 Steady\u2192jetpack",
+            conc_delta=conc_delta, relax_delta=relax_delta,
+            moved=moved, level_completed=level_completed,
+            run_completed=run_completed,
+            recommended_label="Survive the arena",
+        )
+
+    # ── view state builder ────────────────────────────────────────
+
+    def _militia_view_state(self, conc_delta, relax_delta):
+        all_s = [self._player] + self._bots
+        scoreboard = sorted(
+            [{"name": s["name"], "score": s["score"],
+              "deaths": s["deaths"], "streak": s["streak"],
+              "color": s["color"]} for s in all_s],
+            key=lambda e: e["score"], reverse=True)
+        remaining = int(max(0, self.current_level.target_seconds - self._match_elapsed))
+        return {
+            "mode": "mini_militia_arena",
+            "world_width": _MMA_WORLD_W,
+            "ground_y": _MMA_GROUND_Y,
+            "platforms": [{"x": px, "y": py, "w": pw, "h": ph}
+                          for px, py, pw, ph in _MMA_PLATFORMS],
+            "player": dict(self._player),
+            "bots": [dict(b) for b in self._bots],
+            "bullets": [{"x": b["x"], "y": b["y"], "color": b["color"]}
+                        for b in self._bullets],
+            "pickups": [{"x": p["x"], "y": p["y"], "kind": p["kind"],
+                         "active": p["active"]} for p in self._pickups],
+            "particles": [{"x": p["x"], "y": p["y"],
+                           "radius": p["radius"], "color": p["color"],
+                           "alpha": p["alpha"]} for p in self._particles],
+            "camera_x": self._camera_x,
+            "scoreboard": scoreboard,
+            "remaining_time": remaining,
+            "brain_intent": self._intent_label,
+            "weapon_name": self._player["weapon"][0],
+            "match_over": self._match_over,
+            "winner_name": self._winner_name,
+            "message": (f"{self._winner_name} wins!" if self._match_over else ""),
+            "headline": self.current_level.title,
+            "music_scene": "arcade",
+            "music_bias": max(-1.0, min(1.0, (conc_delta - relax_delta) / 3.0)),
+            "serenity": max(0.0, min(100.0, 50.0 + relax_delta * 5.0)),
+            "restlessness": max(0.0, min(100.0, 50.0 + conc_delta * 5.0)),
+        }

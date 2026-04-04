@@ -167,7 +167,9 @@ class DashboardScreen(QWidget):
         self._mode_label = QLabel("Mode: Unspecified")
         self._battery_label = QLabel("Battery: ?")
         self._iapf_label = QLabel("iAPF: Not set")
-        self._filter_label = QLabel("EEG Filter: On")
+        self._filter_label = QLabel(
+            f"EEG Filter: {self._eeg_display_filter.status_text(self._eeg_filter_enabled)}"
+        )
         for lbl in (
             self._conn_label,
             self._serial_label,
@@ -453,6 +455,13 @@ class DashboardScreen(QWidget):
             self._card_stress.set_value(self._latest_emotions.get("stress", 0))
             self._card_anger.set_value(self._latest_emotions.get("anger", 0))
             self._card_self_ctrl.set_value(self._latest_emotions.get("selfControl", 0))
+            # Feed Neural Art Generator
+            self._spectrum.update_brain_metrics(
+                attention=self._latest_emotions.get("focus", 0),
+                relaxation=self._latest_emotions.get("chill", 0),
+                stress=self._latest_emotions.get("anger", 0),
+                cognitive_load=self._latest_emotions.get("stress", 0),
+            )
         except Exception:
             pass
 

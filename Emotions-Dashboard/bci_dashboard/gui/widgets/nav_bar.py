@@ -107,6 +107,7 @@ class NavBar(QWidget):
         ("\u2694\uFE0F", "Multiplayer"),# ⚔️
         ("\U0001F4C1", "Sessions"),     # 📁
         ("\U0001F3AC", "Media"),        # 🎬
+        ("\U0001F4F8", "Instagram"),   # 📸
     ]
 
     def __init__(self, parent=None):

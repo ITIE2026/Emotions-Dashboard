@@ -2539,3 +2539,309 @@ class HillClimbRacerWidget(_ImmersiveGameWidget):
             painter.setPen(QColor(200, 200, 200))
             text = "TIME UP"
         painter.drawText(QRectF(0, h * 0.35, w, 50), Qt.AlignCenter, text)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Mini Militia Arena Widget
+# ══════════════════════════════════════════════════════════════════════
+
+class MiniMilitiaWidget(_ImmersiveGameWidget):
+    """2D side-view arena shooter rendered from controller view-state."""
+
+    _SKY_TOP = QColor(18, 26, 50)
+    _SKY_BOT = QColor(18, 26, 70)
+    _PLAT_FILL = QColor(58, 66, 92)
+    _PLAT_GROUND = QColor(46, 52, 72)
+    _PLAT_BORDER = QColor(98, 106, 138)
+    _HUD_BG = QColor(15, 20, 30, 220)
+    _HUD_BORDER = QColor(95, 110, 145)
+    _TEXT = QColor(235, 240, 250)
+    _TEXT_DIM = QColor(180, 190, 210)
+    _HEAD_COLOR = QColor(238, 229, 214)
+    _GUN_COLOR = QColor(60, 60, 70)
+    _SHIELD_COLOR = QColor(120, 220, 255, 120)
+    _HEALTH_FG = QColor(115, 255, 135)
+    _HEALTH_BG = QColor(65, 45, 45)
+    _ENERGY_FG = QColor(120, 210, 255)
+    _ENERGY_BG = QColor(45, 55, 75)
+    _PICKUP_COLORS = {
+        "shotgun": QColor(255, 160, 120),
+        "sniper": QColor(160, 240, 255),
+        "heal": QColor(120, 255, 150),
+    }
+    _PICKUP_LABELS = {"shotgun": "SG", "sniper": "SR", "heal": "+"}
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(560)
+
+    def sizeHint(self):  # noqa: N802
+        return QSize(1200, 700)
+
+    # ── main paint ────────────────────────────────────────────────
+
+    def paintEvent(self, event):  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        w = float(self.width())
+        h = float(self.height())
+
+        # background gradient
+        bg = QLinearGradient(0, 0, 0, h)
+        bg.setColorAt(0.0, self._SKY_TOP)
+        bg.setColorAt(1.0, self._SKY_BOT)
+        painter.fillRect(self.rect(), bg)
+
+        cam = float(self._state.get("camera_x", 0))
+        world_w = float(self._state.get("world_width", 2600))
+        ground_y = float(self._state.get("ground_y", 820))
+
+        # scale factor: fit world height into widget height
+        sy = h / (ground_y + 80)
+        sx = sy  # uniform scaling
+        view_w = w / sx
+
+        painter.save()
+        painter.scale(sx, sy)
+        painter.translate(-cam, 0)
+
+        self._draw_platforms(painter, ground_y)
+        self._draw_pickups(painter)
+        self._draw_bullets(painter)
+        self._draw_particles(painter)
+        self._draw_soldiers(painter)
+
+        painter.restore()
+
+        # HUD on top (unscaled)
+        self._draw_hud(painter, w, h)
+        self._draw_scoreboard(painter, w, h)
+        self._draw_balance_panel(painter, top=h - 152, width_ratio=0.50)
+
+        # menu button
+        menu_rect = QRectF(16, 16, 48, 48)
+        self._menu_button_rect = menu_rect
+        self._draw_menu_btn(painter, menu_rect)
+
+        # match-over overlay
+        if self._state.get("match_over"):
+            self._draw_match_over(painter, w, h)
+
+    # ── world drawing (in world coords) ──────────────────────────
+
+    def _draw_platforms(self, painter: QPainter, ground_y: float) -> None:
+        for plat in self._state.get("platforms", []):
+            px = float(plat["x"])
+            py = float(plat["y"])
+            pw = float(plat["w"])
+            ph = float(plat["h"])
+            is_ground = py >= ground_y - 2
+            fill = self._PLAT_GROUND if is_ground else self._PLAT_FILL
+            rect = QRectF(px, py, pw, ph)
+            painter.setPen(QPen(self._PLAT_BORDER, 2))
+            painter.setBrush(fill)
+            painter.drawRoundedRect(rect, 10, 10)
+
+    def _draw_pickups(self, painter: QPainter) -> None:
+        font = QFont("Arial", 14)
+        font.setBold(True)
+        painter.setFont(font)
+        for pk in self._state.get("pickups", []):
+            if not pk.get("active", False):
+                continue
+            x = float(pk["x"])
+            y = float(pk["y"])
+            kind = pk.get("kind", "heal")
+            color = self._PICKUP_COLORS.get(kind, QColor(200, 200, 200))
+            rect = QRectF(x - 18, y - 18, 36, 36)
+            painter.setPen(QPen(QColor(255, 255, 255), 2))
+            painter.setBrush(color)
+            painter.drawRoundedRect(rect, 8, 8)
+            painter.setPen(QColor(20, 20, 20))
+            painter.drawText(rect, Qt.AlignCenter, self._PICKUP_LABELS.get(kind, "?"))
+
+    def _draw_bullets(self, painter: QPainter) -> None:
+        painter.setPen(Qt.NoPen)
+        for b in self._state.get("bullets", []):
+            color = QColor(b.get("color", "#ffdc78"))
+            painter.setBrush(color)
+            painter.drawEllipse(QPointF(float(b["x"]), float(b["y"])), 4, 4)
+
+    def _draw_particles(self, painter: QPainter) -> None:
+        for p in self._state.get("particles", []):
+            alpha = max(40, min(255, int(255 * float(p.get("alpha", 1.0)))))
+            color = QColor(p.get("color", "#ffffff"))
+            color.setAlpha(alpha)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(color)
+            r = float(p.get("radius", 3))
+            painter.drawEllipse(QPointF(float(p["x"]), float(p["y"])), r, r)
+
+    def _draw_soldiers(self, painter: QPainter) -> None:
+        player = self._state.get("player", {})
+        bots = self._state.get("bots", [])
+        for soldier in [player] + bots:
+            if not soldier:
+                continue
+            self._draw_one_soldier(painter, soldier)
+
+    def _draw_one_soldier(self, painter: QPainter, s: dict) -> None:
+        if not s.get("alive", False):
+            if s.get("respawn_timer", 0) > 0:
+                # Respawn countdown
+                font = QFont("Arial", 13)
+                painter.setFont(font)
+                painter.setPen(self._TEXT_DIM)
+                painter.drawText(
+                    QRectF(float(s.get("x", 0)) - 60, float(s.get("y", 0)) - 50, 120, 20),
+                    Qt.AlignCenter,
+                    f"Respawn {s['respawn_timer']:.1f}s",
+                )
+            return
+
+        x = float(s["x"])
+        y = float(s["y"])
+        facing = int(s.get("facing", 1))
+        color = QColor(s.get("color", "#6edcff"))
+
+        # shield
+        if float(s.get("shield_timer", 0)) > 0:
+            painter.setPen(QPen(self._SHIELD_COLOR, 3))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(QPointF(x, y - 16), 33, 33)
+
+        # body
+        body = QRectF(x - 14, y - 34, 28, 52)
+        painter.setPen(QPen(QColor(20, 24, 40), 2))
+        painter.setBrush(color)
+        painter.drawRoundedRect(body, 8, 8)
+
+        # head
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(self._HEAD_COLOR)
+        painter.drawEllipse(QPointF(x, y - 46), 12, 12)
+
+        # gun line
+        painter.setPen(QPen(self._GUN_COLOR, 5))
+        painter.drawLine(QPointF(x, y - 18), QPointF(x + facing * 24, y - 18))
+
+        # health bar
+        self._draw_bar(painter, x - 22, y - 68, 44, 6,
+                       float(s.get("health", 100)) / 100.0,
+                       self._HEALTH_FG, self._HEALTH_BG)
+
+        # energy bar
+        self._draw_bar(painter, x - 22, y - 58, 44, 5,
+                       float(s.get("energy", 100)) / 100.0,
+                       self._ENERGY_FG, self._ENERGY_BG)
+
+        # name label
+        font = QFont("Arial", 11)
+        painter.setFont(font)
+        painter.setPen(self._TEXT)
+        painter.drawText(
+            QRectF(x - 50, y - 85, 100, 16), Qt.AlignCenter,
+            str(s.get("name", "")),
+        )
+
+    # ── HUD panels (screen coords) ──────────────────────────────
+
+    def _draw_hud(self, painter: QPainter, w: float, h: float) -> None:
+        panel = QRectF(16, 72, 310, 120)
+        painter.setPen(QPen(self._HUD_BORDER, 2))
+        painter.setBrush(self._HUD_BG)
+        painter.drawRoundedRect(panel, 14, 14)
+
+        font = QFont("Arial", 12)
+        painter.setFont(font)
+        painter.setPen(self._TEXT)
+        y_off = 84.0
+        intent = self._state.get("brain_intent", "steady")
+        weapon = self._state.get("weapon_name", "Rifle")
+        painter.drawText(QPointF(28, y_off), f"Brain: {intent}")
+        y_off += 22
+        painter.drawText(QPointF(28, y_off), f"Weapon: {weapon}")
+
+        # focus bar
+        y_off += 22
+        painter.drawText(QPointF(28, y_off), "Focus")
+        player = self._state.get("player", {})
+        # approximate focus/relax from conc/relax deltas stored elsewhere
+        self._draw_bar(painter, 90, y_off - 10, 120, 10, 0.5, QColor(255, 205, 110), QColor(46, 52, 70))
+        y_off += 22
+        painter.drawText(QPointF(28, y_off), "Relax")
+        self._draw_bar(painter, 90, y_off - 10, 120, 10, 0.5, QColor(120, 230, 255), QColor(46, 52, 70))
+
+    def _draw_scoreboard(self, painter: QPainter, w: float, h: float) -> None:
+        board = self._state.get("scoreboard", [])
+        remaining = int(self._state.get("remaining_time", 0))
+        panel_h = 36 + len(board) * 24
+        panel = QRectF(w - 310, 72, 294, panel_h)
+        painter.setPen(QPen(self._HUD_BORDER, 2))
+        painter.setBrush(self._HUD_BG)
+        painter.drawRoundedRect(panel, 14, 14)
+
+        font_big = QFont("Arial", 16)
+        font_big.setBold(True)
+        painter.setFont(font_big)
+        painter.setPen(self._TEXT)
+        painter.drawText(QPointF(w - 298, 98), f"Time {remaining:03d}s")
+
+        font = QFont("Arial", 11)
+        painter.setFont(font)
+        y_off = 118.0
+        for entry in board:
+            name = str(entry.get("name", ""))
+            score = int(entry.get("score", 0))
+            deaths = int(entry.get("deaths", 0))
+            streak = int(entry.get("streak", 0))
+            color = QColor(entry.get("color", "#ffffff"))
+            painter.setPen(color)
+            painter.drawText(
+                QPointF(w - 298, y_off),
+                f"{name:<10} K:{score:2d}  D:{deaths:2d}  x{streak}",
+            )
+            y_off += 24
+
+    # ── helpers ───────────────────────────────────────────────────
+
+    @staticmethod
+    def _draw_bar(painter: QPainter, x: float, y: float, w: float, h: float,
+                  value: float, fg: QColor, bg: QColor) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(bg)
+        painter.drawRoundedRect(QRectF(x, y, w, h), 4, 4)
+        fill = w * max(0.0, min(1.0, value))
+        if fill > 0:
+            painter.setBrush(fg)
+            painter.drawRoundedRect(QRectF(x, y, fill, h), 4, 4)
+        painter.setPen(QPen(QColor(255, 255, 255, 80), 1))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(QRectF(x, y, w, h), 4, 4)
+
+    def _draw_menu_btn(self, painter: QPainter, rect: QRectF) -> None:
+        painter.setPen(QPen(self._HUD_BORDER, 2))
+        painter.setBrush(self._HUD_BG)
+        painter.drawRoundedRect(rect, 10, 10)
+        painter.setPen(QPen(self._TEXT, 3))
+        cx = rect.center().x()
+        for dy in (-8, 0, 8):
+            y = rect.center().y() + dy
+            painter.drawLine(QPointF(cx - 10, y), QPointF(cx + 10, y))
+
+    def _draw_match_over(self, painter: QPainter, w: float, h: float) -> None:
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 150))
+        painter.drawRect(self.rect())
+        winner = self._state.get("winner_name", "")
+        font = QFont("Arial", 36)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(self._TEXT)
+        painter.drawText(QRectF(0, h * 0.38, w, 50), Qt.AlignCenter,
+                         f"Winner: {winner}")
+        font2 = QFont("Arial", 18)
+        painter.setFont(font2)
+        painter.setPen(self._TEXT_DIM)
+        painter.drawText(QRectF(0, h * 0.48, w, 30), Qt.AlignCenter,
+                         "Level will advance automatically")

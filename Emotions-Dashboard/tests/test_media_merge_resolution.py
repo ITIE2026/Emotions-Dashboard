@@ -112,21 +112,37 @@ class MediaNavigationTests(unittest.TestCase):
     def test_screen_router_defines_youtube_page_constant(self):
         self.assertEqual(getattr(screen_router, "PAGE_YOUTUBE", None), 7)
 
-    def test_nav_tab_selected_routes_media_tab_to_youtube_page(self):
+    def test_nav_tab_selected_routes_multiplayer_tab_to_multiplayer_page(self):
         dummy = type("Dummy", (), {})()
         dummy._stack = _FakeStack(screen_router.PAGE_CONNECTION)
 
         screen_router.ScreenRouterMixin._on_nav_tab_selected(dummy, 4)
 
-        self.assertEqual(dummy._stack.currentIndex(), 7)
+        self.assertEqual(dummy._stack.currentIndex(), screen_router.PAGE_MULTIPLAYER)
+
+    def test_nav_tab_selected_routes_media_tab_to_youtube_page(self):
+        dummy = type("Dummy", (), {})()
+        dummy._stack = _FakeStack(screen_router.PAGE_CONNECTION)
+
+        screen_router.ScreenRouterMixin._on_nav_tab_selected(dummy, 6)
+
+        self.assertEqual(dummy._stack.currentIndex(), screen_router.PAGE_YOUTUBE)
+
+    def test_sync_nav_bar_maps_multiplayer_page_to_multiplayer_tab(self):
+        dummy = type("Dummy", (), {})()
+        dummy._nav_bar = _NavBarStub()
+
+        screen_router.ScreenRouterMixin._sync_nav_bar(dummy, screen_router.PAGE_MULTIPLAYER)
+
+        self.assertEqual(dummy._nav_bar.last_active_tab, 4)
 
     def test_sync_nav_bar_maps_youtube_page_to_media_tab(self):
         dummy = type("Dummy", (), {})()
         dummy._nav_bar = _NavBarStub()
 
-        screen_router.ScreenRouterMixin._sync_nav_bar(dummy, 7)
+        screen_router.ScreenRouterMixin._sync_nav_bar(dummy, screen_router.PAGE_YOUTUBE)
 
-        self.assertEqual(dummy._nav_bar.last_active_tab, 4)
+        self.assertEqual(dummy._nav_bar.last_active_tab, 6)
 
 
 class MediaSignalFanoutTests(unittest.TestCase):

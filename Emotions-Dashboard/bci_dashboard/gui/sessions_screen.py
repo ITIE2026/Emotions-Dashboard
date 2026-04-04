@@ -457,6 +457,16 @@ class SessionsScreen(QWidget):
             w.setVisible(visible)
         self._placeholder.setVisible(not visible)
 
+    def session_count(self) -> int:
+        return len(self._cards)
+
+    def select_session_index(self, index: int) -> bool:
+        if index < 0 or index >= len(self._cards):
+            return False
+        card = self._cards[index]
+        self._on_card_clicked(card.get_entry(), card)
+        return True
+
     def refresh_list(self):
         self._clear_cards()
         os.makedirs(SESSION_DIR, exist_ok=True)

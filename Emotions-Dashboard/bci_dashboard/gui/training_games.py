@@ -43,6 +43,7 @@ from gui.training_games_arcade import (  # noqa: F401
     AeroZenController,
     ChronoShiftController,
     NeuralDriveController,
+    MiniMilitiaArenaController,
 )
 from gui.training_games_memory import (  # noqa: F401
     MemoryGameController,
@@ -537,6 +538,33 @@ TRAINING_SPECS: list[TrainingGameSpec] = [
         widget_kind="chrono_shift",
         music_profile="arcade",
     ),
+    TrainingGameSpec(
+        game_id="mini_militia_arena",
+        section="Arcade neurofeedback",
+        eyebrow="EEG arena",
+        card_title="Mini Militia Arena",
+        detail_title="A 2D jetpack arena shooter controlled by focus and relaxation",
+        duration="8 min",
+        description="Fly, fight, and survive a multi-bot arena using brain-state controls inspired by Mini Militia.",
+        detail_body=(
+            "Mini Militia Arena is an EEG-adapted 2D jetpack arena shooter. "
+            "Focus pushes you forward and triggers weapon fire, relaxation pulls back and activates a damage shield, "
+            "and a balanced steady state engages your jetpack. Battle AI bots across floating platforms, "
+            "pick up shotguns, snipers, and health packs, and outscore the opposition before time runs out."
+        ),
+        instructions=(
+            "Concentrate to move right and fire. Relax to move left and activate your shield. "
+            "Hold a balanced steady state to hover with your jetpack. Collect weapon and heal pickups. "
+            "Reach the kill target to advance through three arena levels."
+        ),
+        calibration_copy="Settle into a stable baseline so the arena controls respond cleanly.",
+        preview_label="ARENA",
+        colors=("#1a1a3e", "#38d7c5"),
+        enabled=True,
+        controller_factory=MiniMilitiaArenaController,
+        widget_kind="mini_militia_arena",
+        music_profile="arcade",
+    ),
 ]
 
 
@@ -560,12 +588,25 @@ GAME_SECTION_IDS: set[str] = {
     "aero_zen",
     "chrono_shift",
     "neural_drive",
+    "mini_militia_arena",
+}
+
+FEATURED_GAME_ORDER: dict[str, int] = {
+    "mini_militia_arena": 0,
 }
 
 
 def active_game_specs() -> list[TrainingGameSpec]:
     """Return enabled specs that belong to the GAMES section."""
-    return [spec for spec in TRAINING_SPECS if spec.enabled and spec.game_id in GAME_SECTION_IDS]
+    original_order = {spec.game_id: index for index, spec in enumerate(TRAINING_SPECS)}
+    specs = [spec for spec in TRAINING_SPECS if spec.enabled and spec.game_id in GAME_SECTION_IDS]
+    return sorted(
+        specs,
+        key=lambda spec: (
+            FEATURED_GAME_ORDER.get(spec.game_id, len(FEATURED_GAME_ORDER) + 1),
+            original_order.get(spec.game_id, len(TRAINING_SPECS)),
+        ),
+    )
 
 
 def active_training_only_specs() -> list[TrainingGameSpec]:

@@ -11,9 +11,10 @@ from queue import Queue
 
 import numpy as np
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -42,6 +43,7 @@ from gui.screen_router import (
     PAGE_SESSIONS,
     PAGE_TRAINING,
     PAGE_YOUTUBE,
+    PAGE_INSTAGRAM,
     ScreenRouterMixin,
 )
 from gui.sessions_screen import SessionsScreen
@@ -50,6 +52,7 @@ from gui.training_screen import TrainingScreen
 from gui.games_window import GamesWindow
 from gui.multiplayer_game_screen import MultiplayerGameScreen
 from gui.youtube_screen import YouTubeScreen
+from gui.instagram_screen import InstagramScreen
 from gui.aim_trainer import AimTrainerWindow
 from gui.brain_speller import BrainSpellerWindow
 from gui.bci_music_dj import BciMusicDjWindow
@@ -424,6 +427,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._sessions_screen = SessionsScreen()
         self._phaseon_screen = PhaseonScreen(self._phaseon_runtime)
         self._youtube_screen = YouTubeScreen()
+        self._instagram_screen = InstagramScreen()
 
         # ── BCI Gyro Mouse Controller ─────────────────────────────
         self._gyro_mouse = BciMouseController(parent=self)
@@ -437,6 +441,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._stack.addWidget(self._phaseon_screen)
         self._stack.addWidget(self._youtube_screen)
         self._stack.addWidget(self._multiplayer_screen)
+        self._stack.addWidget(self._instagram_screen)
         root.addWidget(self._stack, stretch=1)
 
         # ── Bottom NavBar: Home / Monitoring / Training / Sessions ────
@@ -447,6 +452,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         self._gyro_mouse.toggled.connect(self._nav_bar.set_gyro_mouse_active)
         self._stack.currentChanged.connect(self._sync_nav_bar)
         self._stack.currentChanged.connect(self._update_live_view_activity)
+        self._stack.currentChanged.connect(self._sync_instagram_screen_lifecycle)
 
         # ── Ctrl+Shift+M toggle for gyro mouse ───────────────────
         self._gyro_shortcut = QShortcut(QKeySequence("Ctrl+Shift+M"), self)
@@ -460,6 +466,10 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
             self._on_neuroflow_quick_calibration_requested
         )
         self._update_live_view_activity(self._stack.currentIndex())
+        app = QApplication.instance()
+        if app is not None:
+            app.applicationStateChanged.connect(self._on_application_state_changed)
+        self._sync_instagram_screen_lifecycle()
 
     def _on_nav_tab_selected(self, tab_idx: int):
         """Override mixin: intercept tab 3 (Games) to open separate window."""
@@ -469,6 +479,37 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
         # Tab indices shifted: 4=Multiplayer, 5=Sessions, 6=Media
         from gui.screen_router import ScreenRouterMixin
         ScreenRouterMixin._on_nav_tab_selected(self, tab_idx)
+
+    def _is_instagram_host_app_active(self, app_state=None) -> bool:
+        if app_state is None:
+            app = QApplication.instance()
+            app_state = (
+                app.applicationState()
+                if app is not None
+                else Qt.ApplicationState.ApplicationActive
+            )
+        return bool(
+            (
+                app_state == Qt.ApplicationState.ApplicationActive
+                or self.isActiveWindow()
+            )
+            and self.isVisible()
+            and not self.isMinimized()
+        )
+
+    def _sync_instagram_screen_lifecycle(self, _page_index: int | None = None) -> None:
+        instagram_screen = getattr(self, "_instagram_screen", None)
+        if instagram_screen is None:
+            return
+        instagram_screen.set_page_active(self._stack.currentIndex() == PAGE_INSTAGRAM)
+        instagram_screen.set_app_active(self._is_instagram_host_app_active())
+
+    def _on_application_state_changed(self, state) -> None:
+        instagram_screen = getattr(self, "_instagram_screen", None)
+        if instagram_screen is None:
+            return
+        instagram_screen.set_page_active(self._stack.currentIndex() == PAGE_INSTAGRAM)
+        instagram_screen.set_app_active(self._is_instagram_host_app_active(state))
 
     def _open_games_window(self):
         """Show and raise the standalone Games window."""
@@ -912,6 +953,19 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
             pct = -1
         self._on_battery_updated(pct)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._sync_instagram_screen_lifecycle)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._sync_instagram_screen_lifecycle()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange:
+            self._sync_instagram_screen_lifecycle()
+
     def closeEvent(self, event):
         log.info("Application closing")
         self._stop_session()
@@ -920,6 +974,7 @@ class MainWindow(GraphWindowManagerMixin, ScreenRouterMixin, SignalDispatcherMix
                 window.close()
             except Exception:
                 pass
+        self._instagram_screen.shutdown()
         self._training_screen.shutdown()
         self._games_window.shutdown()
         self._multiplayer_screen.shutdown()

@@ -38,8 +38,9 @@ class DeviceManager(QObject):
     def __init__(self, bridge, parent=None):
         super().__init__(parent)
         self._bridge = bridge
-        self._locator = bridge.locator
-        self._locator.set_on_devices_list(self._on_devices_list)
+        self._locator = getattr(bridge, "locator", None)
+        if hasattr(self._locator, "set_on_devices_list"):
+            self._locator.set_on_devices_list(self._on_devices_list)
         self._lib = bridge.lib
         self._device = None
         self._device_serial = None

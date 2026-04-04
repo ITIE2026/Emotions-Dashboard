@@ -153,10 +153,13 @@ class GuiOverhaulTests(unittest.TestCase):
         prod = _FakeProdHandler()
         phys = _FakePhysioHandler()
         completed = []
-        with patch("calibration.calibration_manager.Calibrator", _FakeCalibrator):
+        with tempfile.TemporaryDirectory() as tempdir, patch(
+            "calibration.calibration_store.CALIBRATION_DIR", tempdir
+        ), patch("calibration.calibration_manager.Calibrator", _FakeCalibrator):
             manager = CalibrationManager(object(), object(), prod, phys)
             manager.calibration_complete.connect(completed.append)
             manager.start_quick("SER456")
+            saved_path = os.path.join(tempdir, "cal_SER456.json")
             APP.processEvents()
             self.assertFalse(prod.started)
             self.assertTrue(phys.started)
@@ -196,6 +199,7 @@ class GuiOverhaulTests(unittest.TestCase):
                 betaGravity=4.0,
                 concentration=5.0,
             ))
+            self.assertTrue(os.path.isfile(saved_path))
 
         self.assertEqual(completed[-1]["mode"], "quick")
         self.assertTrue(completed[-1]["applied"])
@@ -250,9 +254,8 @@ class GuiOverhaulTests(unittest.TestCase):
             with patch("gui.sessions_screen.SESSION_DIR", tempdir):
                 screen = SessionsScreen()
                 try:
-                    self.assertGreater(screen._session_list.count(), 0)
-                    item = screen._session_list.item(0)
-                    screen._on_select(item, None)
+                    self.assertGreater(screen.session_count(), 0)
+                    self.assertTrue(screen.select_session_index(0))
                     self.assertIn("Headband", screen._sum_device.text())
                     self.assertIn("Raw EEG", screen._sum_options.text())
                 finally:

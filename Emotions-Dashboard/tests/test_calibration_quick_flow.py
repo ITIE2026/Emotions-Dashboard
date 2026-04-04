@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 import types
 import unittest
 from types import SimpleNamespace
@@ -24,71 +25,74 @@ class _BoundSignal:
             slot(*args, **kwargs)
 
 
-class _SignalDescriptor:
-    def __init__(self, *args, **kwargs):
-        self._storage_name = None
+try:
+    from PySide6.QtCore import QObject as _QObject, QTimer as _QTimer, Signal as _SignalDescriptor
+except ImportError:
+    class _SignalDescriptor:
+        def __init__(self, *args, **kwargs):
+            self._storage_name = None
 
-    def __set_name__(self, owner, name):
-        self._storage_name = f"__signal_{name}"
+        def __set_name__(self, owner, name):
+            self._storage_name = f"__signal_{name}"
 
-    def __get__(self, instance, owner):
-        if instance is None:
-            return self
-        signal = instance.__dict__.get(self._storage_name)
-        if signal is None:
-            signal = _BoundSignal()
-            instance.__dict__[self._storage_name] = signal
-        return signal
-
-
-class _QObject:
-    def __init__(self, parent=None):
-        self._parent = parent
+        def __get__(self, instance, owner):
+            if instance is None:
+                return self
+            signal = instance.__dict__.get(self._storage_name)
+            if signal is None:
+                signal = _BoundSignal()
+                instance.__dict__[self._storage_name] = signal
+            return signal
 
 
-class _QTimer:
-    def __init__(self, parent=None):
-        self._parent = parent
-        self.timeout = _BoundSignal()
-        self._active = False
-        self._single_shot = False
-        self._interval = 0
+    class _QObject:
+        def __init__(self, parent=None):
+            self._parent = parent
 
-    def setSingleShot(self, value):
-        self._single_shot = bool(value)
 
-    def setInterval(self, interval):
-        self._interval = interval
-
-    def start(self, interval=None):
-        if interval is not None:
-            self._interval = interval
-        self._active = True
-
-    def stop(self):
-        self._active = False
-
-    def isActive(self):
-        return self._active
-
-    def trigger(self):
-        if not self._active:
-            return
-        if self._single_shot:
+    class _QTimer:
+        def __init__(self, parent=None):
+            self._parent = parent
+            self.timeout = _BoundSignal()
             self._active = False
-        self.timeout.emit()
+            self._single_shot = False
+            self._interval = 0
+
+        def setSingleShot(self, value):
+            self._single_shot = bool(value)
+
+        def setInterval(self, interval):
+            self._interval = interval
+
+        def start(self, interval=None):
+            if interval is not None:
+                self._interval = interval
+            self._active = True
+
+        def stop(self):
+            self._active = False
+
+        def isActive(self):
+            return self._active
+
+        def trigger(self):
+            if not self._active:
+                return
+            if self._single_shot:
+                self._active = False
+            self.timeout.emit()
 
 
-qtcore = types.ModuleType("PySide6.QtCore")
-qtcore.QObject = _QObject
-qtcore.QTimer = _QTimer
-qtcore.Signal = _SignalDescriptor
+    qtcore = types.ModuleType("PySide6.QtCore")
+    qtcore.QObject = _QObject
+    qtcore.QTimer = _QTimer
+    qtcore.Signal = _SignalDescriptor
 
-pyside6 = types.ModuleType("PySide6")
-pyside6.QtCore = qtcore
+    pyside6 = types.ModuleType("PySide6")
+    pyside6.QtCore = qtcore
 
-sys.modules.setdefault("PySide6", pyside6)
-sys.modules["PySide6.QtCore"] = qtcore
+    sys.modules.setdefault("PySide6", pyside6)
+    sys.modules["PySide6.QtCore"] = qtcore
 
 
 from calibration.calibration_manager import CalibrationManager  # noqa: E402
@@ -143,6 +147,14 @@ def _nfb_data():
     )
 
 
+def _fire_timer(timer, callback):
+    if hasattr(timer, "trigger"):
+        timer.trigger()
+        return
+    timer.stop()
+    callback()
+
+
 class QuickCalibrationFlowTests(unittest.TestCase):
     def test_quick_mode_starts_physio_during_nfb_and_prod_after_nfb(self):
         prod = _FakeHandler()
@@ -155,13 +167,13 @@ class QuickCalibrationFlowTests(unittest.TestCase):
             self.assertTrue(manager._phy_start_timer.isActive())
             self.assertFalse(manager._prod_start_timer.isActive())
 
-            manager._phy_start_timer.trigger()
+            _fire_timer(manager._phy_start_timer, manager._start_phy_stage)
             self.assertEqual(phys.started, 1)
             self.assertEqual(prod.started, 0)
 
             manager._on_nfb_finished(manager._calibrator, _nfb_data())
             self.assertTrue(manager._prod_start_timer.isActive())
-            manager._prod_start_timer.trigger()
+            _fire_timer(manager._prod_start_timer, manager._start_prod_stage)
 
         self.assertEqual(prod.started, 1)
         self.assertEqual(phys.started, 1)
@@ -170,13 +182,17 @@ class QuickCalibrationFlowTests(unittest.TestCase):
         prod = _FakeHandler()
         phys = _FakeHandler()
         completed = []
+        saved_path = None
 
-        with patch("calibration.calibration_manager.Calibrator", _FakeCalibrator):
+        with tempfile.TemporaryDirectory() as tempdir, patch(
+            "calibration.calibration_store.CALIBRATION_DIR", tempdir
+        ), patch("calibration.calibration_manager.Calibrator", _FakeCalibrator):
             manager = CalibrationManager(object(), object(), prod, phys)
             manager.calibration_complete.connect(completed.append)
             manager.start_quick("SER456")
+            saved_path = os.path.join(tempdir, "cal_SER456.json")
 
-            manager._phy_start_timer.trigger()
+            _fire_timer(manager._phy_start_timer, manager._start_phy_stage)
             phys.baselines_updated.emit(SimpleNamespace(
                 timestampMilli=10,
                 alpha=1.0,
@@ -188,7 +204,7 @@ class QuickCalibrationFlowTests(unittest.TestCase):
             self.assertEqual(completed, [])
 
             manager._on_nfb_finished(manager._calibrator, _nfb_data())
-            manager._prod_start_timer.trigger()
+            _fire_timer(manager._prod_start_timer, manager._start_prod_stage)
             prod.baselines_updated.emit(SimpleNamespace(
                 concentration=1.0,
                 fatigue=2.0,
@@ -198,6 +214,7 @@ class QuickCalibrationFlowTests(unittest.TestCase):
                 reverseFatigue=6.0,
                 timestampMilli=20,
             ))
+            self.assertTrue(os.path.isfile(saved_path))
 
         self.assertEqual(completed[-1]["phy_status"], manager.PHY_STATUS_COMPLETE)
 

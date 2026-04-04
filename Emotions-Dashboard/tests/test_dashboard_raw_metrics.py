@@ -1,7 +1,6 @@
 import os
 import sys
 import unittest
-from unittest.mock import patch
 
 import numpy as np
 
@@ -50,13 +49,14 @@ class DashboardRawMetricsTests(unittest.TestCase):
         self.assertAlmostEqual(metrics["rr_mean"], 1.0, delta=0.2)
         self.assertLess(metrics["sdnn"], 0.2)
 
-    def test_display_filter_falls_back_to_passthrough_when_mne_is_missing(self):
+    def test_display_filter_uses_low_latency_path_without_mne_loader_hooks(self):
         samples = np.linspace(-50.0, 50.0, 256)
-        with patch("utils.eeg_filter._load_mne", return_value=None):
-            filt = EEGDisplayFilter()
-            filtered = filt.apply(samples)
+        filt = EEGDisplayFilter()
+        filtered = filt.apply(samples)
 
-        np.testing.assert_allclose(filtered, samples)
+        self.assertEqual(filtered.shape, samples.shape)
+        self.assertTrue(np.isfinite(filtered).all())
+        self.assertFalse(np.allclose(filtered, samples))
 
 
 if __name__ == "__main__":

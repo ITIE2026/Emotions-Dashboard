@@ -73,6 +73,8 @@ class GraphWindowManagerMixin:
 
     def deactivate_graph(self, graph_id: str):
         self._active_graphs.discard(graph_id)
+        self._graph_histories.pop(graph_id, None)
+        self._graph_session_starts.pop(graph_id, None)
 
     def reset_graph_history(self, graph_id: str):
         self._graph_session_starts[graph_id] = time.monotonic()

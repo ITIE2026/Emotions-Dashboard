@@ -169,6 +169,7 @@ class MainWindowGraphLifecycleTests(unittest.TestCase):
             "deactivate_graph",
             "reset_graph_history",
             "append_graph_point",
+            "_append_bg_graph_point",
             "_seed_graph_history",
             "_refresh_metric_graph_window",
             "_latest_eeg_quality_value",
@@ -183,6 +184,8 @@ class MainWindowGraphLifecycleTests(unittest.TestCase):
         host._graph_histories = {}
         host._graph_references = {"concentrationBaseline": 1.117}
         host._graph_session_starts = {}
+        host._bg_graph_session_start = None
+        host._bg_graph_histories = {}
         host._latest_emo = {}
         host._latest_prod = {"concentrationScore": 0.565}
         host._latest_peak_freqs = {}

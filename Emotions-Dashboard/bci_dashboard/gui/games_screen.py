@@ -31,6 +31,7 @@ from gui.widgets.training_game_widgets import (
     CandyCascadeWidget,
     HillClimbRacerWidget,
     JumpBallWidget,
+    MiniMilitiaWidget,
     NeonViceWidget,
     PatternRecallWidget,
     SpaceShooterWidget,
@@ -196,7 +197,7 @@ class _SoundtrackCard(QFrame):
 # ── Main GamesScreen ─────────────────────────────────────────────────
 
 class GamesScreen(QWidget):
-    IMMERSIVE_GAME_IDS = {"tug_of_war", "space_shooter", "bubble_burst", "jump_ball", "neon_vice", "hill_climb_racer", "gravity_drift", "synapse_serpent", "aero_zen", "chrono_shift", "neural_drive"}
+    IMMERSIVE_GAME_IDS = {"tug_of_war", "space_shooter", "bubble_burst", "jump_ball", "neon_vice", "hill_climb_racer", "gravity_drift", "synapse_serpent", "aero_zen", "chrono_shift", "neural_drive", "mini_militia_arena"}
 
     SOUNDTRACKS = {
         "Aurora Drift": {
@@ -526,6 +527,7 @@ class GamesScreen(QWidget):
         self._aero_zen_widget = AeroZenWidget()
         self._chrono_shift_widget = ChronoShiftWidget()
         self._neural_drive_widget = NeuralDriveWidget()
+        self._mini_militia_widget = MiniMilitiaWidget()
 
         self._tug_of_war_widget.set_menu_callback(self._cancel_gameplay)
         self._space_shooter_widget.set_menu_callback(self._cancel_gameplay)
@@ -538,6 +540,7 @@ class GamesScreen(QWidget):
         self._aero_zen_widget.set_menu_callback(self._cancel_gameplay)
         self._chrono_shift_widget.set_menu_callback(self._cancel_gameplay)
         self._neural_drive_widget.set_menu_callback(self._cancel_gameplay)
+        self._mini_militia_widget.set_menu_callback(self._cancel_gameplay)
 
         self._game_widget_map = {
             "mind_maze": self._maze_board,
@@ -554,6 +557,7 @@ class GamesScreen(QWidget):
             "aero_zen": self._aero_zen_widget,
             "chrono_shift": self._chrono_shift_widget,
             "neural_drive": self._neural_drive_widget,
+            "mini_militia_arena": self._mini_militia_widget,
         }
         for widget in self._game_widget_map.values():
             widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)

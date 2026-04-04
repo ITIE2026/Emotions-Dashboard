@@ -12,6 +12,7 @@ PAGE_SESSIONS = 5
 PAGE_PHASEON = 6
 PAGE_YOUTUBE = 7
 PAGE_MULTIPLAYER = 8
+PAGE_INSTAGRAM = 9
 
 
 class ScreenRouterMixin:
@@ -53,6 +54,7 @@ class ScreenRouterMixin:
             4: PAGE_MULTIPLAYER,
             5: PAGE_SESSIONS,
             6: PAGE_YOUTUBE,
+            7: PAGE_INSTAGRAM,
         }
         page = mapping.get(tab_idx)
         if page is None:
@@ -74,6 +76,7 @@ class ScreenRouterMixin:
             PAGE_SESSIONS: 5,
             PAGE_PHASEON: 2,       # PhaseON is a training mode
             PAGE_YOUTUBE: 6,       # Media tab
+            PAGE_INSTAGRAM: 7,     # Instagram tab
         }
         tab = reverse_map.get(page_index, 0)
         self._nav_bar.set_active_tab(tab)

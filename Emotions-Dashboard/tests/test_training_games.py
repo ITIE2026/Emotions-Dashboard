@@ -1402,6 +1402,16 @@ class TrainingGameControllerTests(unittest.TestCase):
         finally:
             screen.close()
 
+    def test_training_screen_keeps_mini_militia_in_games_window_only(self):
+        with patch("gui.training_screen.AdaptiveMusicEngine.ensure_assets", return_value=None):
+            screen = TrainingScreen()
+        try:
+            self.assertNotIn("mini_militia_arena", screen._game_widget_map)
+            active_ids = {spec.game_id for spec in screen._active_specs}
+            self.assertNotIn("mini_militia_arena", active_ids)
+        finally:
+            screen.close()
+
 
 class DashboardMemsFilteringTests(unittest.TestCase):
     def test_dashboard_swaps_emotions_and_ppg_sections(self):
@@ -1525,12 +1535,12 @@ class DashboardMemsFilteringTests(unittest.TestCase):
             finally:
                 window.close()
 
-    def test_filter_object_reports_unavailable_when_mne_is_missing(self):
+    def test_filter_object_ignores_legacy_loader_contract_and_stays_available(self):
         filt = EEGDisplayFilter(loader=lambda: (None, None, RuntimeError("missing mne")))
-        self.assertFalse(filt.available)
-        self.assertEqual(filt.status_text(True), "Unavailable")
+        self.assertTrue(filt.available)
+        self.assertEqual(filt.status_text(True), "Fast")
 
-    def test_filter_object_uses_mne_style_backend_when_available(self):
+    def test_filter_object_uses_low_latency_display_status_when_enabled(self):
         def fake_filter_data(data, **kwargs):
             return data * 0.5
 
@@ -1541,8 +1551,15 @@ class DashboardMemsFilteringTests(unittest.TestCase):
         raw = np.linspace(-20.0, 20.0, 600)
         filtered = filt.apply(raw, sample_rate=250.0)
         self.assertTrue(filt.available)
-        self.assertEqual(filt.status_text(True), "On")
+        self.assertEqual(filt.status_text(True), "Fast")
         self.assertFalse(np.allclose(raw, filtered))
+
+    def test_dashboard_filter_label_matches_low_latency_status_on_first_paint(self):
+        screen = DashboardScreen()
+        try:
+            self.assertEqual(screen._filter_label.text(), "EEG Filter: Fast")
+        finally:
+            screen.close()
 
     def test_electrode_table_applies_filtered_visible_signal(self):
         table = ElectrodeTable()

@@ -207,6 +207,9 @@ class SignalDispatcherMixin:
         youtube_screen = getattr(self, "_youtube_screen", None)
         if youtube_screen is not None and hasattr(youtube_screen, "on_emotions"):
             youtube_screen.on_emotions(data)
+        instagram_screen = getattr(self, "_instagram_screen", None)
+        if instagram_screen is not None and hasattr(instagram_screen, "on_emotions"):
+            instagram_screen.on_emotions(data)
         gyro_mouse = getattr(self, "_gyro_mouse", None)
         if gyro_mouse is not None:
             gyro_mouse.on_emotions(data)
