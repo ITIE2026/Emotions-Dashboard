@@ -5,6 +5,7 @@ PySide6>=6.5
 # Instagram reels playback uses pywebview with the Windows Edge WebView2 runtime.
 # The Edge WebView2 runtime is an OS component and is not installed via pip.
 pywebview>=6.1
+pythonnet>=3.0
 pyqtgraph>=0.13
 numpy>=1.24
 pandas>=2.0

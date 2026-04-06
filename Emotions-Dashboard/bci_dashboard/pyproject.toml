@@ -1,16 +1,18 @@
 [project]
 name = "bci-dashboard"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "PySide6>=6.5",
     "pywebview>=6.1",
+    "pythonnet>=3.0",
     "pyqtgraph>=0.13",
     "numpy>=1.24",
     "pandas>=2.0",
     "pyserial>=3.5",
     "h5py>=3.10",
     "mne>=1.8",
+    "websockets>=12.0",
 ]
 
 [project.optional-dependencies]

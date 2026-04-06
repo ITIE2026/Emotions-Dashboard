@@ -56,6 +56,12 @@ if os.path.isdir(_P6_ADDONS):
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import Qt
+from utils.runtime_requirements import (
+    REQUIRED_GIT_BRANCH,
+    detect_current_branch,
+    format_branch_requirement_error,
+    get_instagram_runtime_status,
+)
 
 
 def _setup_logging():
@@ -123,6 +129,25 @@ def _run_preflight_checks(log):
             __import__(mod_name)
         except ImportError:
             log.warning("Optional dependency '%s' is not installed (%s will be unavailable)", mod_name, purpose)
+
+    current_branch = detect_current_branch()
+    if current_branch and current_branch != REQUIRED_GIT_BRANCH:
+        log.warning(format_branch_requirement_error(current_branch))
+
+    instagram_status = get_instagram_runtime_status()
+    if instagram_status.ready:
+        log.info(
+            "Instagram runtime ready%s",
+            (
+                f" (WebView2 {instagram_status.webview2_version})"
+                if instagram_status.webview2_version
+                else ""
+            ),
+        )
+    else:
+        log.warning("Instagram preflight warning: %s", instagram_status.summary)
+        for issue in instagram_status.issues:
+            log.warning("Instagram prerequisite issue: %s", issue)
 
     if errors:
         summary = "Startup preflight failed:\n\n" + "\n\n".join(errors)

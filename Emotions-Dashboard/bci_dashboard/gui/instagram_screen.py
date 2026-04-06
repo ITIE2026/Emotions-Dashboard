@@ -8,6 +8,7 @@ separate _wv2_host.py process and is kept aligned with the Qt placeholder.
 """
 from __future__ import annotations
 
+from collections import deque
 import json
 import logging
 import os
@@ -39,6 +40,7 @@ from utils.config import (
     TEXT_PRIMARY,
     TEXT_SECONDARY,
 )
+from utils.runtime_requirements import get_instagram_runtime_status
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +51,7 @@ _FOCUS_SCROLL_THRESHOLD = 60
 _SCROLL_COOLDOWN_SEC = 6.0
 
 _ACCENT_PINK = "#E1306C"
+_ACCENT_WARNING = "#FF6B6B"
 
 _WV_STORAGE = os.path.join(
     os.path.expanduser("~"), ".bci_dashboard", "instagram_wv2"
@@ -56,6 +59,7 @@ _WV_STORAGE = os.path.join(
 os.makedirs(_WV_STORAGE, exist_ok=True)
 
 _HOST_SCRIPT = os.path.join(os.path.dirname(__file__), "_wv2_host.py")
+_HOST_READY_TIMEOUT_SEC = 5.0
 
 
 class _Wv2Process:
@@ -64,51 +68,177 @@ class _Wv2Process:
     All pywebview calls are forwarded as JSON over stdin.
     """
 
-    def __init__(self, initial_url: str) -> None:
+    def __init__(
+        self,
+        initial_url: str,
+        *,
+        host_script: str | None = None,
+        python_executable: str | None = None,
+        storage_dir: str | None = None,
+        ready_timeout_sec: float = _HOST_READY_TIMEOUT_SEC,
+    ) -> None:
         self._ready = threading.Event()
+        self._failed = threading.Event()
         self._proc: Optional[subprocess.Popen] = None
         self._lock = threading.Lock()
         self._current_url = initial_url
+        self._failure_reason = ""
+        self._stderr_lines: deque[str] = deque(maxlen=20)
+        self._host_script = host_script or _HOST_SCRIPT
+        self._python_executable = python_executable or sys.executable
+        self._storage_dir = storage_dir or _WV_STORAGE
+        self._ready_timeout_sec = max(float(ready_timeout_sec), 0.1)
         self._start(initial_url)
 
     def _start(self, initial_url: str) -> None:
-        def _run() -> None:
-            try:
-                self._proc = subprocess.Popen(
-                    [sys.executable, _HOST_SCRIPT, _WV_STORAGE, initial_url],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
-                    text=True,
-                    encoding="utf-8",
-                )
-                for raw_line in self._proc.stdout:  # type: ignore[union-attr]
-                    raw_line = raw_line.strip()
-                    if not raw_line:
-                        continue
-                    try:
-                        msg = json.loads(raw_line)
-                    except json.JSONDecodeError:
-                        continue
-                    event = msg.get("event")
-                    if event == "ready":
-                        log.info("Instagram Edge WebView2 host ready")
-                        self._ready.set()
-                    elif event == "url_changed":
-                        self._current_url = msg.get("url", self._current_url)
-                    elif event == "error":
-                        log.debug("wv2 host error: %s", msg.get("msg"))
-            except Exception as exc:
-                log.error("wv2 host thread: %s", exc)
+        try:
+            self._proc = subprocess.Popen(
+                [
+                    self._python_executable,
+                    self._host_script,
+                    self._storage_dir,
+                    initial_url,
+                ],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            self._mark_failure(f"Instagram WebView2 host failed to start: {exc}")
+            return
 
-        threading.Thread(target=_run, daemon=True, name="wv2-reader").start()
+        threading.Thread(
+            target=self._read_stdout,
+            daemon=True,
+            name="wv2-stdout",
+        ).start()
+        threading.Thread(
+            target=self._read_stderr,
+            daemon=True,
+            name="wv2-stderr",
+        ).start()
+        threading.Thread(
+            target=self._monitor_startup,
+            daemon=True,
+            name="wv2-startup-monitor",
+        ).start()
 
     @property
     def ready(self) -> bool:
         return self._ready.is_set()
 
+    @property
+    def failed(self) -> bool:
+        return self._failed.is_set()
+
+    @property
+    def failure_reason(self) -> str:
+        return self._failure_reason
+
+    def _read_stdout(self) -> None:
+        try:
+            for raw_line in self._proc.stdout:  # type: ignore[union-attr]
+                raw_line = raw_line.strip()
+                if not raw_line:
+                    continue
+                try:
+                    msg = json.loads(raw_line)
+                except json.JSONDecodeError:
+                    continue
+                event = msg.get("event")
+                if event == "ready":
+                    log.info("Instagram Edge WebView2 host ready")
+                    self._ready.set()
+                elif event == "url_changed":
+                    self._current_url = msg.get("url", self._current_url)
+                elif event == "error":
+                    message = str(msg.get("msg", "")).strip()
+                    if message:
+                        self._stderr_lines.append(message)
+                        log.warning("wv2 host error: %s", message)
+        except Exception as exc:
+            self._mark_failure(f"Instagram WebView2 host output reader failed: {exc}")
+            return
+
+        proc = self._proc
+        if proc is not None and not self._ready.is_set() and not self._failed.is_set():
+            try:
+                exit_code = proc.wait(timeout=0.2)
+            except subprocess.TimeoutExpired:
+                exit_code = proc.poll()
+            self._mark_failure(self._build_exit_failure(exit_code))
+
+    def _read_stderr(self) -> None:
+        proc = self._proc
+        if proc is None or proc.stderr is None:
+            return
+        try:
+            for raw_line in proc.stderr:
+                message = raw_line.strip()
+                if not message:
+                    continue
+                self._stderr_lines.append(message)
+                log.debug("wv2 host stderr: %s", message)
+        except Exception:
+            return
+
+    def _monitor_startup(self) -> None:
+        if self._ready.wait(self._ready_timeout_sec):
+            return
+        if self._failed.is_set():
+            return
+
+        proc = self._proc
+        if proc is not None and proc.poll() is not None:
+            self._mark_failure(self._build_exit_failure(proc.poll()))
+            return
+
+        timeout_msg = (
+            f"Instagram WebView2 host timed out after {self._ready_timeout_sec:.2f}s "
+            "while starting."
+        )
+        detail = self._stderr_excerpt()
+        if detail:
+            timeout_msg += f" Details: {detail}"
+        self._mark_failure(timeout_msg, terminate=True)
+
+    def _stderr_excerpt(self) -> str:
+        if not self._stderr_lines:
+            return ""
+        return " | ".join(self._stderr_lines)
+
+    def _build_exit_failure(self, exit_code: int | None) -> str:
+        detail = self._stderr_excerpt()
+        message = (
+            f"Instagram WebView2 host exited before becoming ready "
+            f"(exit code {exit_code!r})."
+        )
+        if detail:
+            message += f" Details: {detail}"
+        return message
+
+    def _mark_failure(self, message: str, *, terminate: bool = False) -> None:
+        if self._ready.is_set() or self._failed.is_set():
+            return
+        self._failure_reason = message
+        self._failed.set()
+        log.error(message)
+        if terminate:
+            proc = self._proc
+            if proc is not None and proc.poll() is None:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=1.0)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+
     def _send(self, msg: dict) -> None:
-        if not self._ready.is_set() or not self._proc:
+        if not self._ready.is_set() or self._failed.is_set() or not self._proc:
             return
         with self._lock:
             try:
@@ -298,13 +428,22 @@ class InstagramScreen(QWidget):
         self._last_host_rect: Optional[tuple[int, int, int, int]] = None
         self._show_retry_scheduled: bool = False
         self._shutdown: bool = False
+        self._runtime_issue_shown: bool = False
+        self._runtime_status = get_instagram_runtime_status()
 
         self._sync_timer = QTimer(self)
         self._sync_timer.setInterval(150)
         self._sync_timer.timeout.connect(self._sync_position)
 
         self._build_ui()
-        self._wv = _Wv2Process(_IG_REELS)
+        self._set_placeholder_loading_message()
+        if self._runtime_status.ready:
+            self._wv = _Wv2Process(_IG_REELS)
+        else:
+            self._show_runtime_diagnostic(
+                self._runtime_status.summary,
+                self._runtime_status.issues,
+            )
 
     def _build_ui(self) -> None:
         self.setStyleSheet(f"background: {BG_PRIMARY};")
@@ -346,6 +485,7 @@ class InstagramScreen(QWidget):
         reels_btn.clicked.connect(lambda: self._navigate(_IG_REELS))
         home_btn.clicked.connect(lambda: self._navigate(_IG_HOME))
         skip_btn.clicked.connect(self._bci_scroll)
+        self._toolbar_buttons = [load_btn, reels_btn, home_btn, skip_btn]
 
         tb_layout.addWidget(self._url_bar, stretch=1)
         tb_layout.addWidget(load_btn)
@@ -373,6 +513,55 @@ class InstagramScreen(QWidget):
         self._eeg_bar = _EEGBar(self)
         root.addWidget(self._eeg_bar)
 
+    def _set_placeholder_loading_message(self) -> None:
+        self._placeholder.setText(
+            "Loading Instagram via Edge WebView2...\n\n"
+            "Full H.264 video  |  Persistent login"
+        )
+        self._placeholder.setStyleSheet(
+            f"color: {TEXT_SECONDARY}; font-size: 14px; background: #000;"
+        )
+
+    def _set_toolbar_enabled(self, enabled: bool) -> None:
+        self._url_bar.setEnabled(enabled)
+        for button in getattr(self, "_toolbar_buttons", []):
+            button.setEnabled(enabled)
+
+    def _show_runtime_diagnostic(self, summary: str, issues: list[str]) -> None:
+        details = "\n".join(f"- {issue}" for issue in issues)
+        message = summary
+        if details:
+            message += f"\n\n{details}"
+        message += (
+            f"\n\nRun {self._runtime_status.fix_command} from the repo root, "
+            "then start the dashboard again."
+        )
+        self._placeholder.setText(message)
+        self._placeholder.setStyleSheet(
+            f"color: {_ACCENT_WARNING}; font-size: 13px; background: #000; padding: 24px;"
+        )
+        self._placeholder.show()
+        self._set_toolbar_enabled(False)
+        self._runtime_issue_shown = True
+
+    def _show_host_failure(self, reason: str) -> None:
+        if self._runtime_issue_shown:
+            return
+        self._show_runtime_diagnostic(
+            "Instagram failed to start on this machine.",
+            [reason],
+        )
+        self._sync_timer.stop()
+        wv = getattr(self, "_wv", None)
+        if wv is not None and self._host_visible:
+            wv.hide()
+        self._host_visible = False
+
+    def _refresh_runtime_failure_state(self) -> None:
+        wv = getattr(self, "_wv", None)
+        if wv is not None and getattr(wv, "failed", False):
+            self._show_host_failure(wv.failure_reason)
+
     def _on_navigate(self) -> None:
         url = self._url_bar.text().strip()
         if not url.startswith("http"):
@@ -381,8 +570,9 @@ class InstagramScreen(QWidget):
 
     def _navigate(self, url: str) -> None:
         self._url_bar.setText(url)
-        if self._wv.ready:
-            self._wv.navigate(url)
+        wv = getattr(self, "_wv", None)
+        if wv is not None and wv.ready:
+            wv.navigate(url)
 
     def set_page_active(self, active: bool) -> None:
         self._page_active = bool(active)
@@ -397,10 +587,12 @@ class InstagramScreen(QWidget):
             return
         self._shutdown = True
         self._sync_timer.stop()
-        if self._wv.ready and self._host_visible:
-            self._wv.hide()
+        wv = getattr(self, "_wv", None)
+        if wv is not None and wv.ready and self._host_visible:
+            wv.hide()
             self._host_visible = False
-        self._wv.quit()
+        if wv is not None:
+            wv.quit()
 
     def _bci_scroll(self) -> None:
         if not self._host_can_run_js():
@@ -458,16 +650,24 @@ class InstagramScreen(QWidget):
         )
 
     def _host_can_run_js(self) -> bool:
+        wv = getattr(self, "_wv", None)
         return (
-            self._wv.ready
+            wv is not None
+            and wv.ready
             and self._host_visible
             and self._should_host_be_visible()
         )
 
     def _refresh_host_visibility(self) -> None:
+        self._refresh_runtime_failure_state()
+        wv = getattr(self, "_wv", None)
+        if wv is None:
+            if self._widget_visible:
+                self._placeholder.show()
+            return
         if self._should_host_be_visible():
             self._sync_timer.start()
-            if self._wv.ready:
+            if wv.ready:
                 if not self._sync_host_window(force=not self._host_visible):
                     self._schedule_try_show()
             else:
@@ -475,27 +675,33 @@ class InstagramScreen(QWidget):
             return
 
         self._sync_timer.stop()
-        if self._wv.ready and self._host_visible:
-            self._wv.hide()
+        if wv.ready and self._host_visible:
+            wv.hide()
             self._host_visible = False
         if self._widget_visible:
             self._placeholder.show()
 
     def _sync_position(self) -> None:
-        if not self._wv.ready or self._shutdown:
+        self._refresh_runtime_failure_state()
+        wv = getattr(self, "_wv", None)
+        if wv is None or not wv.ready or self._shutdown:
             return
         self._sync_host_window()
 
     def _try_show(self) -> None:
         self._show_retry_scheduled = False
+        self._refresh_runtime_failure_state()
         if not self._should_host_be_visible():
             return
-        if self._wv.ready and self._sync_host_window(force=True):
+        wv = getattr(self, "_wv", None)
+        if wv is not None and wv.ready and self._sync_host_window(force=True):
             return
-        self._schedule_try_show()
+        if wv is not None and not wv.failed:
+            self._schedule_try_show()
 
     def _ensure_host_configured(self) -> bool:
-        if self._shutdown or not self._wv.ready:
+        wv = getattr(self, "_wv", None)
+        if self._shutdown or wv is None or not wv.ready:
             return False
         top = self.window()
         if top is None:
@@ -508,17 +714,21 @@ class InstagramScreen(QWidget):
             return False
         if self._host_configured and self._host_owner_hwnd == owner_hwnd:
             return True
-        self._wv.configure_host(owner_hwnd)
+        wv.configure_host(owner_hwnd)
         self._host_configured = True
         self._host_owner_hwnd = owner_hwnd
         self._last_host_rect = None
         return True
 
     def _sync_host_window(self, force: bool = False) -> bool:
+        self._refresh_runtime_failure_state()
+        wv = getattr(self, "_wv", None)
+        if wv is None:
+            return False
         visible = self._should_host_be_visible()
         if not visible:
             if self._host_visible:
-                self._wv.hide()
+                wv.hide()
             self._host_visible = False
             if self._widget_visible:
                 self._placeholder.show()
@@ -533,14 +743,14 @@ class InstagramScreen(QWidget):
         height = max(self._content.height(), 200)
         rect = (pos.x(), pos.y(), width, height)
         if force or rect != self._last_host_rect:
-            self._wv.move(rect[0], rect[1])
-            self._wv.resize(rect[2], rect[3])
+            wv.move(rect[0], rect[1])
+            wv.resize(rect[2], rect[3])
             self._last_host_rect = rect
         if force or not self._host_visible:
-            self._wv.show()
+            wv.show()
         self._host_visible = True
         self._placeholder.hide()
         if not self._overlay_injected:
-            self._wv.run_js(_INJECT_OVERLAY_JS)
+            wv.run_js(_INJECT_OVERLAY_JS)
             self._overlay_injected = True
         return True
